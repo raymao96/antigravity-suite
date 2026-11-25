@@ -785,6 +785,8 @@ test('default current period API reference amount, independent subscription spen
   assert.equal(titleEl.textContent, '💰 本期 API 参考金额');
   assert.equal(periodTag.textContent, '2026-11 (自然月)');
   assert.equal(grandVal.textContent, '约 $69.50');
+  assert.equal(grandVal.title, '参考费率折算值：$69.50');
+  assert.match(h.elements.get('cost-grand-sub').textContent, /缓存 \$0\.08 \/ 输出/);
 
   // 2) 验证并列展示的订阅支出（严禁回本或节省词汇）
   const subSpendVal = h.elements.get('cost-sub-spend-val');
@@ -795,6 +797,7 @@ test('default current period API reference amount, independent subscription spen
   // 3) 切换为“仅已识别模型”模式：展示已识别记录 $0.03
   h.elements.get('cost-btn-mode-identified').click();
   assert.equal(grandVal.textContent, '$0.03');
+  assert.equal(grandVal.title, '已识别模型价值：$0.03');
   assert.equal(h.elements.get('cost-coverage-pill').textContent, '4.8% 计价覆盖');
 
   // 4) 切换回“参考模型折算”并切换至“全量历史”
@@ -932,6 +935,7 @@ test('integrated verification: legacy payload without referenceCost calculates d
 
 test('instant region switch to Australia & Korea, price badge dynamic animation structure, and zero-latency state persistence', async () => {
   const h = harness();
+  h.sandbox.localStorage = { getItem: (k) => (k === 'ag_suite_base_currency' ? 'CNY' : null), setItem() {}, removeItem() {} };
   h.finishScan();
   h.pending[0].resolve(response({
     usage: { inputTokens: 10000, outputTokens: 1000 },
@@ -1194,7 +1198,7 @@ test('custom dropdowns for country, region, and currency support code/symbol sea
   audItem.click();
   await h.flush();
   assert.equal(api.getPlanSettings().currency, 'AUD');
-  assert.equal(h.elements.get('direct-currency-label').textContent, 'AUD (AU$ 澳元)');
+  assert.equal(h.elements.get('direct-currency-label').textContent, '🇦🇺 AUD');
 
   // 4. 验证 Esc 关闭
   curTrigger.click();

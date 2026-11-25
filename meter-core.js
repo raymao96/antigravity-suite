@@ -2163,20 +2163,53 @@
     ) || null;
   }
 
+  function getCurrencyRateToCNY(currency, regionQuery = null) {
+    let cur = String(currency || '').toUpperCase();
+    if (cur === 'NTD') cur = 'TWD';
+    if (cur === 'CNY') return 1.0;
+    let preset = findRegionPreset(regionQuery);
+    if (!preset || (cur && preset.currency !== cur)) {
+      preset = SUBSCRIPTION_REGIONS_PRESET.find(r => r.currency === cur);
+    }
+    return preset ? preset.rateToCNY : (
+      cur === 'USD' ? 6.72 : (
+        cur === 'TWD' ? 0.21 : (
+          cur === 'HKD' ? 0.857 : (
+            cur === 'JPY' ? 0.0425 : (
+              cur === 'EUR' ? 7.52 : (
+                cur === 'GBP' ? 8.75 : null
+              )
+            )
+          )
+        )
+      )
+    );
+  }
+
   function convertToCNY(amount, currency, regionQuery = null) {
     if (amount === null || amount === undefined || Number.isNaN(Number(amount))) return null;
     const num = Number(amount);
     if (num === 0) return 0;
     const cur = String(currency || '').toUpperCase();
     if (cur === 'CNY') return Number(num.toFixed(2));
-
-    let preset = findRegionPreset(regionQuery);
-    if (!preset || (cur && preset.currency !== cur)) {
-      preset = SUBSCRIPTION_REGIONS_PRESET.find(r => r.currency === cur);
-    }
-    const rate = preset ? preset.rateToCNY : (cur === 'USD' ? 6.72 : (cur === 'HKD' ? 0.857 : (cur === 'JPY' ? 0.0425 : (cur === 'EUR' ? 7.52 : (cur === 'GBP' ? 8.75 : null)))));
+    const rate = getCurrencyRateToCNY(cur, regionQuery);
     if (!rate) return null;
     return Number((num * rate).toFixed(2));
+  }
+
+  function convertCurrency(amount, fromCurrency, toCurrency = 'CNY', regionQuery = null) {
+    if (amount === null || amount === undefined || Number.isNaN(Number(amount))) return null;
+    const num = Number(amount);
+    if (num === 0) return 0;
+    let fromCur = String(fromCurrency || '').toUpperCase();
+    let toCur = String(toCurrency || 'CNY').toUpperCase();
+    if (fromCur === 'NTD') fromCur = 'TWD';
+    if (toCur === 'NTD') toCur = 'TWD';
+    if (fromCur === toCur) return Number(num.toFixed(2));
+    const fromRate = getCurrencyRateToCNY(fromCur, regionQuery);
+    const toRate = getCurrencyRateToCNY(toCur, null);
+    if (!fromRate || !toRate) return null;
+    return Number(((num * fromRate) / toRate).toFixed(2));
   }
 
   function resolvePlanQuotaPools(planInfo = {}) {
@@ -4034,6 +4067,7 @@
     normalizeUltraSubTier,
     findRegionPreset,
     convertToCNY,
+    convertCurrency,
     CURRENCY_SYMBOLS,
     normalizeModelId,
     resolveStableModelId,

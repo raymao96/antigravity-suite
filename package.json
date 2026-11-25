@@ -23,6 +23,7 @@
     "restore": "node cli.js restore",
     "uninstall-patch": "node cli.js restore",
     "build:renderer": "node scripts/build-renderer.js",
+    "sync:zh-tw": "node scripts/sync-zh-tw.js",
     "pretest": "node scripts/build-renderer.js",
     "test:suite": "node --test tests/meter-core.test.js tests/meter-renderer.test.js tests/meter-storage-proxy.test.js tests/meter-subscription.test.js tests/meter-integration.test.js tests/meter-suite-refactor.test.js",
     "test": "node --test tests/meter-core.test.js tests/meter-renderer.test.js tests/meter-storage-proxy.test.js tests/meter-subscription.test.js tests/meter-integration.test.js tests/meter-suite-refactor.test.js",

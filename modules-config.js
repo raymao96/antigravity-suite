@@ -26,7 +26,7 @@ const DEFAULT_CONFIG = {
     },
     chinese: {
       enabled: false,
-      language: 'en', // 'zh-CN' | 'en'（zh-TW 因上游词典缺少开源授权暂不内置）
+      language: 'en', // 'zh-CN' | 'zh-TW' | 'en'
       brandTitle: 'english', // 'english' | 'hidden' | 'translated'
       desktopOnly: true,
       lastUpdated: null
@@ -49,6 +49,7 @@ function normalizeBrandTitle(val) {
 
 function normalizeClientLanguage(val, enabledHint) {
   const s = String(val || '').trim().toLowerCase();
+  if (s === 'zh-tw' || s === 'zh-hant' || s === 'zh-hk' || s === 'tw' || s.startsWith('zh-tw-') || s.startsWith('zh-hant-')) return 'zh-TW';
   if (s === 'zh-cn' || s === 'zh' || s === 'zh-hans' || s === 'cn') return 'zh-CN';
   if (s === 'en' || s === 'english' || s === 'en-us') return 'en';
   if (enabledHint === true) return 'zh-CN';
@@ -132,7 +133,7 @@ function loadModulesConfig() {
           current.modules.chinese.enabled === true
         );
         current.modules.chinese.brandTitle = normalizeBrandTitle(parsed.modules.chinese?.brandTitle);
-        current.modules.chinese.enabled = current.modules.chinese.language === 'zh-CN';
+        current.modules.chinese.enabled = current.modules.chinese.language === 'zh-CN' || current.modules.chinese.language === 'zh-TW';
         current.modules.proxy = Object.assign({}, DEFAULT_CONFIG.modules.proxy, parsed.modules.proxy || {});
         return current;
       }

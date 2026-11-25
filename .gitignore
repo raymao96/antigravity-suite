@@ -17,6 +17,9 @@ releases/
 
 # Local development records
 .local/
+AGENTS.md
+*.md
+worklogs/
 HANDOFF_NEXT_SESSION.md
 scripts/benchmark_result.json
 scripts/capture-v080-screenshots.js

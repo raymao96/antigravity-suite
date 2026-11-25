@@ -208,7 +208,7 @@ async function cmdStatus(customPath) {
 }
 
 async function cmdCheck(customPath) {
-  console.log('🔍 [Antigravity 对话上下文查看器] 正在执行环境预检...');
+  console.log('🔍 [Antigravity 对话上下文检视器] 正在执行环境预检...');
   console.log(`  - Node.js 运行时: ${process.version} (${process.execPath})`);
   try {
     const asarPath = findAsarPath(customPath);
@@ -259,7 +259,7 @@ async function main() {
 
   if (cmd === 'install') {
     const meterVersion = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8')).version;
-    console.log(`🚀 [Antigravity 对话上下文查看器 v${meterVersion}] 正在安装上下文可视化组件...`);
+    console.log(`🚀 [Antigravity 对话上下文检视器 v${meterVersion}] 正在安装上下文可视化组件...`);
     await ensureLiveBridgeIfNeeded({ forceFreshBridge: true, noRemote });
     const manifest = await install({ path: customPath, backup: customBackup, force: isForce });
     await tryHotInject();
@@ -488,7 +488,7 @@ async function main() {
     console.log(`用法 (100% 零改包模式):
   node cli.js live [--no-remote]            免改盘 CDP 热挂载到当前运行窗口（默认命令；加 --no-remote 关闭手机远程监听）
   node cli.js update [--no-remote]          从 GitHub 拉取最新代码并自动热刷新当前窗口
-  node cli.js status                        查看运行状态与官方安装包签名完整性
+  node cli.js status                        显示运行状态与官方安装包签名完整性
   node cli.js remote [--tunnel on|off] [--reset-token] [--json]  打印手机「四通道」融合配对链接与终端二维码
   node cli.js check                         执行前置环境健康检查
   node cli.js upstreams [--json]            检查参考上游项目更新并与当前基线比对

@@ -3,9 +3,12 @@
  * 运行环境：客户端渲染进程 Main World / 浏览器扩展 MAIN World (同源 Connect-RPC + React Fiber 精准会话隔离)
  */
 (function () {
-    if (window.__AGY_CTX_CAPSULE_ACTIVE__) return;
-
-    const CAPSULE_VERSION = '1.5.0';
+    const CAPSULE_VERSION = '1.5.1';
+    if (window.__AGY_CTX_CAPSULE_ACTIVE__) {
+        if (window.__AGY_CTX_CAPSULE_VERSION__ === CAPSULE_VERSION) return;
+        try { window.__AGY_CTX_CAPSULE_DISPOSE__?.(); } catch {}
+        window.__AGY_CTX_CAPSULE_ACTIVE__ = false;
+    }
 
     // 网页端非 Antigravity 站点快速排除守卫 (避免在 Gmail / Google 搜索 / Cloud / Colab 等无关或敏感页面挂载钩子)
     const isElectronHost = typeof navigator !== 'undefined' && /Antigravity|Electron/i.test(navigator.userAgent || '');
@@ -123,27 +126,44 @@
         }
     }
 
-    // 语言模式：优先读取用户手动切换过的 localStorage，未设置时按系统 navigator.language 自动匹配 ('zh' | 'en')
+    // 语言模式：优先读取用户手动切换过的 localStorage，未设置时按系统 navigator.language 自动匹配 ('zh' | 'zh-TW' | 'en')
+    function normalizeCapsuleLang(raw) {
+        const s = String(raw || '').trim().toLowerCase();
+        if (!s) return '';
+        if (s === 'zh-tw' || s === 'zh-hant' || s === 'zh-hk' || s === 'tw' || s.startsWith('zh-tw-') || s.startsWith('zh-hant-')) return 'zh-TW';
+        if (s === 'zh' || s === 'zh-cn' || s === 'zh-hans' || s === 'cn' || s.startsWith('zh-')) return 'zh';
+        if (s.startsWith('en')) return 'en';
+        return '';
+    }
+
+    function capTr(lang, zh, tw, en) {
+        if (lang === 'en') return en;
+        if (lang === 'zh-TW') return tw;
+        return zh;
+    }
+
     function getLangMode() {
         try {
-            const saved = localStorage.getItem('__agy_ctx_lang__');
-            if (saved === 'en' || saved === 'zh') return saved;
+            const saved = normalizeCapsuleLang(localStorage.getItem('__agy_ctx_lang__'))
+                || normalizeCapsuleLang(localStorage.getItem('ag_suite_locale'));
+            if (saved) return saved;
         } catch (e) {}
         try {
             const sysLang = (
                 (typeof navigator !== 'undefined' && navigator.language) ||
                 (typeof document !== 'undefined' && document.documentElement && document.documentElement.lang) ||
-                'zh'
-            ).toLowerCase();
-            return sysLang.startsWith('zh') ? 'zh' : 'en';
+                'zh-TW'
+            );
+            return normalizeCapsuleLang(sysLang) || 'en';
         } catch (e) {
-            return 'zh';
+            return 'zh-TW';
         }
     }
 
     function toggleLangMode() {
         try {
-            const next = getLangMode() === 'zh' ? 'en' : 'zh';
+            const cur = getLangMode();
+            const next = cur === 'en' ? 'zh-TW' : 'en';
             localStorage.setItem('__agy_ctx_lang__', next);
         } catch (e) {}
         renderAllFooters();
@@ -1275,13 +1295,13 @@
         const diffMs = ms - Date.now();
         if (!Number.isFinite(diffMs) || diffMs <= 0) {
             if (diffMs > -120000) {
-                return lang === 'en' ? 'Resets soon' : '即将重置';
+                return capTr(lang, '即将重置', '即將重設', 'Resets soon');
             }
             return '';
         }
         const totalMins = Math.floor(diffMs / 60000);
         if (totalMins <= 0) {
-            return lang === 'en' ? 'Resets in <1m' : '<1m 后重置';
+            return capTr(lang, '<1m 后重置', '<1m 後重設', 'Resets in <1m');
         }
         const days = Math.floor(totalMins / (24 * 60));
         const hours = Math.floor((totalMins % (24 * 60)) / 60);
@@ -1294,7 +1314,7 @@
         } else {
             dur = `${mins}m`;
         }
-        return lang === 'en' ? `Resets in ${dur}` : `${dur} 后重置`;
+        return capTr(lang, `${dur} 后重置`, `${dur} 後重設`, `Resets in ${dur}`);
     }
 
     // 查找当前模型的 5 小时配额与重置时间 (合并 Fiber 与 GetUserStatus，并支持同配额池回退)
@@ -1460,6 +1480,12 @@
         if (usagePercent >= 50) return MORANDI_3A.yellow; // 剩余 20%~50%
         return getThemeAccentColor(refEl);                // 剩余 > 50%
     }
+
+    const cacheRateFormat = new Intl.NumberFormat('en-US', {
+        useGrouping: false,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
 
     function resolveCacheAlertState(data) {
         if (!data || typeof data !== 'object') {
@@ -1701,7 +1727,6 @@
         if (!data) return;
 
         const lang = getLangMode();
-        const isEn = lang === 'en';
         const light = isLightMode(capsuleBtn);
 
         // 对齐官方 Turbo 下拉菜单与日夜双模式高对比告警文字色
@@ -1752,7 +1777,7 @@
         titleSpan.textContent = String(modelTitle || '');
         const pctSpan = document.createElement('span');
         pctSpan.style.cssText = `font-weight:400;color:${mutedColor};flex-shrink:0;white-space:nowrap;`;
-        pctSpan.textContent = `${data.usagePercent.toFixed(1)}% ${isEn ? 'used' : '已用'}`;
+        pctSpan.textContent = `${data.usagePercent.toFixed(1)}% ${capTr(lang, '已用', '已用', 'used')}`;
         headerRow.appendChild(titleSpan);
         headerRow.appendChild(pctSpan);
         nodes.push(headerRow);
@@ -1768,11 +1793,11 @@
 
         // 3. 当前上下文占用 & 剩余可用容量 (不用“电量”，统一用“容量”)
         nodes.push(createStandardRow(
-            isEn ? 'Context Used' : '当前上下文占用',
+            capTr(lang, '当前上下文占用', '目前上下文佔用', 'Context Used'),
             `${data.contextUsed.toLocaleString()} / ${data.contextLimit.toLocaleString()}`
         ));
         nodes.push(createStandardRow(
-            isEn ? 'Remaining Capacity' : '剩余可用容量',
+            capTr(lang, '剩余可用容量', '剩餘可用容量', 'Remaining Capacity'),
             `${remainingTokens.toLocaleString()} (${data.remainPercent.toFixed(1)}%)`
         ));
 
@@ -1780,24 +1805,24 @@
         if (data.hasPreciseSnapshot) {
             nodes.push(createDivider());
             if (data.tokPerSec > 0) {
-                const avgLabel = isEn ? 'avg' : '均值';
+                const avgLabel = capTr(lang, '均值', '平均', 'avg');
                 nodes.push(createStandardRow(
-                    isEn ? 'Generation Speed' : '输出生成速度',
+                    capTr(lang, '输出生成速度', '輸出生成速度', 'Generation Speed'),
                     `${data.tokPerSec} tok/s (${avgLabel} ${data.avgTokPerSec || data.tokPerSec} tok/s)`
                 ));
             }
             nodes.push(createStandardRow(
-                isEn ? 'Context Cache Hit' : '上下文缓存命中率',
-                `${data.cacheHitRate.toFixed(1)}%`
+                capTr(lang, '上下文缓存命中率', '上下文快取命中率', 'Context Cache Hit'),
+                `${cacheRateFormat.format(data.cacheHitRate)}%`
             ));
             const breakdownRow = document.createElement('div');
             breakdownRow.style.cssText = `display:flex;align-items:center;justify-content:space-between;gap:12px;padding:1px 0;font-size:12px;color:${mutedColor};font-weight:400;min-width:0;`;
             const bdLeft = document.createElement('span');
             bdLeft.style.cssText = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-            bdLeft.textContent = `${isEn ? 'Cache' : '缓存'}: ${formatTokenValue(data.cacheReadTokens)} · ${isEn ? 'Input' : '新入'}: ${formatTokenValue(data.inputTokens)}`;
+            bdLeft.textContent = `${capTr(lang, '缓存', '快取', 'Cache')}: ${formatTokenValue(data.cacheReadTokens)} · ${capTr(lang, '新入', '新入', 'Input')}: ${formatTokenValue(data.inputTokens)}`;
             const bdRight = document.createElement('span');
             bdRight.style.cssText = 'flex-shrink:0;white-space:nowrap;';
-            bdRight.textContent = `${isEn ? 'Output' : '输出'}: ${formatTokenValue(data.outputTokens)}`;
+            bdRight.textContent = `${capTr(lang, '输出', '輸出', 'Output')}: ${formatTokenValue(data.outputTokens)}`;
             breakdownRow.appendChild(bdLeft);
             breakdownRow.appendChild(bdRight);
             nodes.push(breakdownRow);
@@ -1809,7 +1834,7 @@
             deltaRow.style.cssText = `display:flex;align-items:center;justify-content:space-between;gap:12px;padding:1px 0;font-size:12px;color:${mutedColor};font-weight:400;min-width:0;`;
             const deltaLeft = document.createElement('span');
             deltaLeft.style.cssText = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-            deltaLeft.textContent = isEn ? 'Estimated Delta' : '本轮新增估算';
+            deltaLeft.textContent = capTr(lang, '本轮新增估算', '本輪新增估算', 'Estimated Delta');
             const deltaRight = document.createElement('span');
             deltaRight.style.cssText = `color:${fgColor};flex-shrink:0;white-space:nowrap;`;
             deltaRight.textContent = `+${data.estimatedDelta.toLocaleString()}`;
@@ -1826,7 +1851,7 @@
             compRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;padding:1px 0;font-size:12px;font-weight:400;min-width:0;';
             const compLeft = document.createElement('span');
             compLeft.style.cssText = `color:${mutedColor};min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;`;
-            compLeft.textContent = isEn ? 'Auto-compressed' : '已触发自动压缩';
+            compLeft.textContent = capTr(lang, '已触发自动压缩', '已觸發自動壓縮', 'Auto-compressed');
             const compRight = document.createElement('span');
             compRight.style.cssText = `color:${fgColor};flex-shrink:0;white-space:nowrap;`;
             compRight.textContent = `${formatTokenValue(data.compressionBefore)} → ${formatTokenValue(data.compressionAfter)} (-${dropPct}%)`;
@@ -1837,7 +1862,7 @@
             nodes.push(createDivider());
             const warnRow = document.createElement('div');
             warnRow.style.cssText = `padding:1px 0;font-size:12px;font-weight:400;color:${dangerTextColor};line-height:1.4;`;
-            warnRow.textContent = isEn ? 'Approaching auto-compaction limit — send /compact soon' : '接近自动压缩线，建议尽快发 /compact 压缩前文';
+            warnRow.textContent = capTr(lang, '接近自动压缩线，建议尽快发 /compact 压缩前文', '接近自動壓縮上限，建議盡快傳送 /compact 壓縮前文', 'Approaching auto-compaction limit — send /compact soon');
             nodes.push(warnRow);
         }
 
@@ -1847,27 +1872,36 @@
             const dropRow = document.createElement('div');
             dropRow.setAttribute('data-cache-alert-row', 'drop');
             dropRow.style.cssText = `padding:1px 0;font-size:12px;font-weight:500;color:${dangerTextColor};line-height:1.4;`;
-            dropRow.textContent = isEn
-                ? `Cache expired: needs to re-read ${formatTokenValue(data.inputTokens)} history, may stall 4-5m. Run /compact now`
-                : `缓存已失效：需要重读 ${formatTokenValue(data.inputTokens)} 前文，可能卡顿 4~5 分钟，建议立即发 /compact 压缩`;
+            dropRow.textContent = capTr(
+                lang,
+                `缓存已失效：需要重读 ${formatTokenValue(data.inputTokens)} 前文，可能卡顿 4~5 分钟，建议立即发 /compact 压缩`,
+                `快取已失效：需要重讀 ${formatTokenValue(data.inputTokens)} 前文，可能卡頓 4~5 分鐘，建議立即傳送 /compact 壓縮`,
+                `Cache expired: needs to re-read ${formatTokenValue(data.inputTokens)} history, may stall 4-5m. Run /compact now`
+            );
             nodes.push(dropRow);
         } else if (alertState.isCliff328k) {
             nodes.push(createDivider());
             const cliffRow = document.createElement('div');
             cliffRow.setAttribute('data-cache-alert-row', 'cliff');
             cliffRow.style.cssText = `padding:1px 0;font-size:12px;font-weight:400;color:${dangerTextColor};line-height:1.4;`;
-            cliffRow.textContent = isEn
-                ? 'Above 328K: pausing >3m risks cache expiration & slowdowns. Run /compact soon'
-                : '已超 328K：停顿超 3 分钟容易缓存失效变慢，建议尽快发 /compact 压缩';
+            cliffRow.textContent = capTr(
+                lang,
+                '已超 328K：停顿超 3 分钟容易缓存失效变慢，建议尽快发 /compact 压缩',
+                '已超過 328K：停頓超過 3 分鐘容易快取失效變慢，建議盡快傳送 /compact 壓縮',
+                'Above 328K: pausing >3m risks cache expiration & slowdowns. Run /compact soon'
+            );
             nodes.push(cliffRow);
         } else if (alertState.isWarn240k && data.usagePercent < 85) {
             nodes.push(createDivider());
             const warn240Row = document.createElement('div');
             warn240Row.setAttribute('data-cache-alert-row', 'recommend-compact');
             warn240Row.style.cssText = `padding:1px 0;font-size:12px;font-weight:400;color:${warnTextColor};line-height:1.4;`;
-            warn240Row.textContent = isEn
-                ? 'Above 240K: consider running /compact between tasks to keep cache active'
-                : '已超 240K：建议适时发 /compact 压缩前文，防止缓存失效变慢';
+            warn240Row.textContent = capTr(
+                lang,
+                '已超 240K：建议适时发 /compact 压缩前文，防止缓存失效变慢',
+                '已超過 240K：建議適時傳送 /compact 壓縮前文，防止快取失效變慢',
+                'Above 240K: consider running /compact between tasks to keep cache active'
+            );
             nodes.push(warn240Row);
         }
 
@@ -1877,7 +1911,7 @@
             const resetText = formatResetText(data.quotaInfo.resetTimeMs || data.quotaInfo.resetTime, lang);
             nodes.push(createDivider());
             nodes.push(createStandardRow(
-                isEn ? '5h Remaining Quota' : '5小时剩余额度',
+                capTr(lang, '5小时剩余额度', '5 小時剩餘額度', '5h Remaining Quota'),
                 `${qPct}%${resetText ? ' · ' + resetText : ''}`
             ));
         }
@@ -1886,7 +1920,7 @@
         const footerRow = document.createElement('div');
         footerRow.style.cssText = `border-top:1px solid ${borderColor};margin-top:6px;padding-top:5px;font-size:12px;color:${mutedColor};font-weight:400;display:flex;justify-content:space-between;gap:12px;min-width:0;`;
         const stepsSpan = document.createElement('span');
-        stepsSpan.textContent = `${isEn ? 'Steps' : '步数'}: ${data.stepCount || 0}`;
+        stepsSpan.textContent = `${capTr(lang, '步数', '步數', 'Steps')}: ${data.stepCount || 0}`;
         footerRow.appendChild(stepsSpan);
         nodes.push(footerRow);
 
@@ -1930,7 +1964,7 @@
     }
 
     function populateCapsuleButtonDom(capsuleBtn) {
-        const isEn = getLangMode() === 'en';
+        const lang = getLangMode();
 
         const speedWrap = document.createElement('span');
         speedWrap.className = 'agy-ctx-speed';
@@ -1971,7 +2005,7 @@
         const occWrap = document.createElement('span');
         occWrap.className = 'agy-ctx-occ';
         occWrap.style.cssText = 'display:inline-flex;align-items:center;gap:4px;opacity:0.92;';
-        occWrap.setAttribute('aria-label', isEn ? 'Context Window Occupancy' : '上下文窗口占用率');
+        occWrap.setAttribute('aria-label', capTr(lang, '上下文窗口占用率', '上下文視窗佔用率', 'Context Window Occupancy'));
 
         const occIcon = createSvgEl('svg', {
             class: 'agy-ctx-occ-icon shrink-0', width: 11, height: 11, viewBox: '0 0 16 16',
@@ -1992,7 +2026,7 @@
         const cacheWrap = document.createElement('span');
         cacheWrap.className = 'agy-ctx-cache';
         cacheWrap.style.cssText = 'display:inline-flex;align-items:center;gap:4px;opacity:0.88;';
-        cacheWrap.setAttribute('aria-label', isEn ? 'Context Cache Hit Rate' : '上下文缓存命中率');
+        cacheWrap.setAttribute('aria-label', capTr(lang, '上下文缓存命中率', '上下文快取命中率', 'Context Cache Hit Rate'));
 
         const cacheIcon = createSvgEl('svg', {
             class: 'agy-ctx-cache-icon shrink-0', width: 11, height: 11, viewBox: '0 0 16 16',
@@ -2083,7 +2117,7 @@
 
         capsuleBtn.__ctxUsageData = usageData;
 
-        const isEn = getLangMode() === 'en';
+        const lang = getLangMode();
         const light = isLightMode(capsuleBtn);
         capsuleBtn.setAttribute('data-ag-theme', light ? 'light' : 'dark');
         const dangerTextColor = light ? '#dc2626' : MORANDI_3A.red;
@@ -2110,7 +2144,7 @@
 
         const occWrap = capsuleBtn.querySelector('.agy-ctx-occ');
         if (occWrap) {
-            occWrap.setAttribute('aria-label', isEn ? 'Context Window Occupancy' : '上下文窗口占用率');
+            occWrap.setAttribute('aria-label', capTr(lang, '上下文窗口占用率', '上下文視窗佔用率', 'Context Window Occupancy'));
             if (occWrap.hasAttribute?.('title')) occWrap.removeAttribute('title');
         }
         const occValSpan = capsuleBtn.querySelector('.agy-ctx-occ-val');
@@ -2126,14 +2160,17 @@
                 cacheWrap.style.color = dangerTextColor;
                 cacheWrap.style.fontWeight = '600';
                 cacheWrap.style.opacity = '1';
-                cacheWrap.setAttribute('aria-label', isEn
-                    ? 'Context cache expired! Re-reading full history causes 4-5m lag & extra quota drain. Run /compact now'
-                    : '上下文缓存已失效！需要重读全部前文，可能卡顿 4~5 分钟并加速消耗额度，建议立即发 /compact 压缩');
+                cacheWrap.setAttribute('aria-label', capTr(
+                    lang,
+                    '上下文缓存已失效！需要重读全部前文，可能卡顿 4~5 分钟并加速消耗额度，建议立即发 /compact 压缩',
+                    '上下文快取已失效！需要重讀全部前文，可能卡頓 4~5 分鐘並加速消耗額度，建議立即傳送 /compact 壓縮',
+                    'Context cache expired! Re-reading full history causes 4-5m lag & extra quota drain. Run /compact now'
+                ));
             } else {
                 cacheWrap.style.color = '';
                 cacheWrap.style.fontWeight = '';
                 cacheWrap.style.opacity = '0.88';
-                cacheWrap.setAttribute('aria-label', isEn ? 'Context Cache Hit Rate' : '上下文缓存命中率');
+                cacheWrap.setAttribute('aria-label', capTr(lang, '上下文缓存命中率', '上下文快取命中率', 'Context Cache Hit Rate'));
             }
         }
         const cacheValSpan = capsuleBtn.querySelector('.agy-ctx-cache-val');
@@ -2142,7 +2179,7 @@
                 usageData && (usageData.hasPreciseSnapshot || usageData.contextUsed > 0 || usageData.cacheReadTokens > 0)
             ) && Number.isFinite(usageData.cacheHitRate);
             const cacheStr = hasCacheMetrics
-                ? Math.max(0, Math.min(100, usageData.cacheHitRate)).toFixed(1).replace(/\.0$/, '') + '%'
+                ? cacheRateFormat.format(Math.max(0, Math.min(100, usageData.cacheHitRate))) + '%'
                 : '--%';
             if (cacheValSpan.textContent !== cacheStr) {
                 cacheValSpan.textContent = cacheStr;

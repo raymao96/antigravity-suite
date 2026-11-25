@@ -13,8 +13,71 @@
     getDailyModelCost,
     calculateIntervalCost,
     convertToCNY,
+    convertCurrency,
     resolveEffectivePlanStatus
   } = (globalThis.__AGContextMeterCore || {});
+
+  const BASE_CURRENCY_STORAGE_KEY = 'ag_suite_base_currency';
+  const BASE_CURRENCY_SYMBOLS = { TWD: 'NT$', USD: '$', CNY: '¥' };
+
+  function getActiveBaseCurrency() {
+    try {
+      const saved = String(localStorage?.getItem?.(BASE_CURRENCY_STORAGE_KEY) || '').trim().toUpperCase();
+      if (saved === 'TWD' || saved === 'USD' || saved === 'CNY') return saved;
+    } catch {}
+    let loc = '';
+    try {
+      loc = (typeof suiteEnhancerPrefs !== 'undefined' && suiteEnhancerPrefs?.locale)
+        ? String(suiteEnhancerPrefs.locale)
+        : String(localStorage?.getItem?.('ag_suite_locale') || 'zh-TW');
+    } catch { loc = 'zh-TW'; }
+    if (loc === 'zh-CN') return 'CNY';
+    if (loc === 'en') return 'USD';
+    return 'TWD';
+  }
+
+  function convertToBaseCurrency(amount, fromCurrency, regionQuery = null, targetCur = null) {
+    const toCur = targetCur || getActiveBaseCurrency();
+    if (typeof convertCurrency === 'function') {
+      return convertCurrency(amount, fromCurrency, toCur, regionQuery);
+    }
+    if (toCur === 'CNY' && typeof convertToCNY === 'function') {
+      return convertToCNY(amount, fromCurrency, regionQuery);
+    }
+    return null;
+  }
+
+  const twoDecimalFormat = new Intl.NumberFormat('en-US', {
+    useGrouping: false,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+
+  function formatUsdEstimate(amount, prefix = '') {
+    return amount > 0 && amount < 0.005 ? '<$0.01' : `${prefix}$${twoDecimalFormat.format(amount)}`;
+  }
+
+  function formatBaseCurrencyParen(amount, fromCurrency, regionQuery = null, decimals = 1) {
+    if (amount === null || amount === undefined || Number.isNaN(Number(amount))) return '';
+    const baseCur = getActiveBaseCurrency();
+    let fromCur = String(fromCurrency || 'USD').toUpperCase();
+    if (fromCur === 'NTD') fromCur = 'TWD';
+    if (fromCur === baseCur) return '';
+    const val = convertToBaseCurrency(amount, fromCur, regionQuery, baseCur);
+    if (val === null || val === undefined || Number.isNaN(Number(val))) return '';
+    const sym = BASE_CURRENCY_SYMBOLS[baseCur] || '';
+    return `(≈ ${sym}${Number(val).toFixed(decimals)} ${baseCur})`;
+  }
+
+  function formatUsdSecondaryParen(usdAmount) {
+    if (usdAmount === null || usdAmount === undefined || Number.isNaN(Number(usdAmount))) return '';
+    const baseCur = getActiveBaseCurrency();
+    if (baseCur === 'USD') return '';
+    const val = convertToBaseCurrency(usdAmount, 'USD', null, baseCur);
+    if (val === null || val === undefined || Number.isNaN(Number(val))) return '';
+    const sym = BASE_CURRENCY_SYMBOLS[baseCur] || '';
+    return ` (${sym}${Number(val).toFixed(2)})`;
+  }
   const host = document.createElement('div');
   host.id = 'ag-context-meter';
   host.setAttribute('data-layout', 'wide');
@@ -2531,6 +2594,37 @@
       gap:6px;
       flex-wrap:wrap;
     }
+    .settings-sub-grid .ag-dropdown-wrapper{
+      width:156px;
+      max-width:100%;
+      flex:0 0 auto;
+    }
+    .settings-sub-grid .ag-dropdown-trigger{
+      height:30px;
+      min-height:30px;
+      padding:0 10px;
+      border-radius:6px;
+      white-space:nowrap;
+    }
+    .settings-sub-grid .ag-dropdown-trigger .ag-dropdown-label{
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .settings-sub-grid .ag-dropdown-menu{
+      left:0;
+      right:auto;
+      min-width:100%;
+      width:max-content;
+      max-width:420px;
+    }
+    .settings-sub-grid .ag-dropdown-item,
+    .settings-sub-grid .ag-dropdown-item-sub{
+      white-space:nowrap;
+    }
+    .settings-sub-grid .ag-dropdown-item-sub{
+      flex-shrink:0;
+    }
     #panel-settings .drawer-body{
       margin-top:0;
       animation:none!important;
@@ -3902,7 +3996,7 @@
               <div id="ref-cost-input-tok" style="font-size:11px;color:var(--ag-text-muted)">0 tok</div>
             </div>
             <div class="t-card" style="padding:6px">
-              <div style="font-size:11px;color:var(--ag-text-muted)">缓存读取 ($0.075/M 优惠)</div>
+              <div style="font-size:11px;color:var(--ag-text-muted)">缓存读取 (约 $0.08/M 优惠)</div>
               <div id="ref-cost-cache-val" style="font-size:12px;font-weight:600;color:var(--ag-text-primary)">$0.00</div>
               <div id="ref-cost-cache-tok" style="font-size:11px;color:var(--ag-text-muted)">0 tok</div>
             </div>
@@ -4293,6 +4387,7 @@
               </div>
               <div class="settings-select-wrap">
                 <select id="set-ui-language-select" class="settings-select" aria-label="插件与客户端语言">
+                  <option value="zh-TW">繁體中文 · Traditional Chinese</option>
                   <option value="zh-CN">简体中文 · Simplified Chinese</option>
                   <option value="en">English · 英文原版</option>
                 </select>
@@ -4667,6 +4762,14 @@
             <dd><div id="settings-slot-region"></div></dd>
             <dt>订阅币种：</dt>
             <dd><div id="settings-slot-currency"></div></dd>
+            <dt>基准换算币种：</dt>
+            <dd>
+              <select id="set-base-currency-select" class="settings-select">
+                <option value="TWD">🇹🇼 TWD</option>
+                <option value="USD">🇺🇸 USD</option>
+                <option value="CNY">🇨🇳 CNY</option>
+              </select>
+            </dd>
             <dt>计价模式：</dt>
             <dd><div id="settings-slot-pricemode"></div></dd>
           </dl>
@@ -6181,10 +6284,10 @@
     const sessTotal = state.sessionCostTotal || 0;
     if (latestCall && latestCall.isPriced) {
       const roundCost = latestCall.costUSD || 0;
-      const roundCostStr = roundCost < 0.01 ? '<$0.01' : `≈$${roundCost.toFixed(4)}`;
+      const roundCostStr = formatUsdEstimate(roundCost, '≈');
       const estLabel = latestCall.status === 'streaming' ? '生成中暂估' : '按已返回用量估算';
       roundCostText.textContent = `最近调用 ${roundCostStr} · ${estLabel}`;
-      roundCostText.title = `模型：${latestCall.model}\n输入：${fmt(latestCall.inputTokens)} tok\n缓存：${fmt(latestCall.cacheTokens)} tok\n输出：${fmt(latestCall.outputTokens)} tok\n参考金额：$${roundCost.toFixed(6)}`;
+      roundCostText.title = `模型：${latestCall.model}\n输入：${fmt(latestCall.inputTokens)} tok\n缓存：${fmt(latestCall.cacheTokens)} tok\n输出：${fmt(latestCall.outputTokens)} tok\n参考金额：${formatUsdEstimate(roundCost)}`;
     } else if (latestCall) {
       roundCostText.textContent = '最近调用：模型费率未收录';
       roundCostText.title = latestCall.model ? `模型：${latestCall.model}（公开费率未收录）` : '缺少模型信息';
@@ -6192,7 +6295,7 @@
       roundCostText.textContent = '最近调用估值：—';
       roundCostText.title = '';
     }
-    sessionCostText.textContent = sessTotal > 0 ? `当前会话合计约 $${sessTotal.toFixed(4)}` : '当前会话合计：—';
+    sessionCostText.textContent = sessTotal > 0 ? `当前会话合计约 ${formatUsdEstimate(sessTotal)}` : '当前会话合计：—';
   }
 
   function applyLayoutMode(nextMode) {
@@ -6613,23 +6716,23 @@
   ];
 
   const CURRENCY_OPTIONS = [
-    { value: 'USD', code: 'USD', symbol: '$', name: '美元', label: 'USD ($ 美元)', aliases: ['美元', 'usd', '$', 'dollar'] },
-    { value: 'KRW', code: 'KRW', symbol: '₩', name: '韩元', label: 'KRW (₩ 韩元)', aliases: ['韩元', 'krw', '₩', 'won'] },
-    { value: 'AUD', code: 'AUD', symbol: 'AU$', name: '澳元', label: 'AUD (AU$ 澳元)', aliases: ['澳元', '澳洲', 'aud', 'au$', 'australian'] },
-    { value: 'JPY', code: 'JPY', symbol: '¥', name: '日元', label: 'JPY (¥ 日元)', aliases: ['日元', '日本', 'jpy', '¥', 'yen'] },
-    { value: 'HKD', code: 'HKD', symbol: 'HK$', name: '港币', label: 'HKD (HK$ 港币)', aliases: ['港币', '香港', 'hkd', 'hk$'] },
-    { value: 'TWD', code: 'TWD', symbol: 'NT$', name: '台币', label: 'TWD (NT$ 台币)', aliases: ['台币', '台湾', 'twd', 'ntd', 'nt$'] },
-    { value: 'TRY', code: 'TRY', symbol: '₺', name: '里拉', label: 'TRY (₺ 里拉)', aliases: ['里拉', '土耳其', 'try', '₺', 'lira'] },
-    { value: 'NGN', code: 'NGN', symbol: '₦', name: '奈拉', label: 'NGN (₦ 奈拉)', aliases: ['奈拉', '尼日利亚', 'ngn', '₦', 'naira'] },
-    { value: 'CNY', code: 'CNY', symbol: '¥', name: '人民币', label: 'CNY (¥ 人民币)', aliases: ['人民币', '中国', 'cny', 'rmb', '¥', 'yuan'] },
-    { value: 'EUR', code: 'EUR', symbol: '€', name: '欧元', label: 'EUR (€ 欧元)', aliases: ['欧元', '欧洲', 'eur', '€', 'euro'] },
-    { value: 'GBP', code: 'GBP', symbol: '£', name: '英镑', label: 'GBP (£ 英镑)', aliases: ['英镑', '英国', 'gbp', '£', 'pound'] },
-    { value: 'SGD', code: 'SGD', symbol: 'S$', name: '新元', label: 'SGD (S$ 新元)', aliases: ['新元', '新加坡', 'sgd', 's$'] },
-    { value: 'CAD', code: 'CAD', symbol: 'CA$', name: '加元', label: 'CAD (CA$ 加元)', aliases: ['加元', '加拿大', 'cad', 'ca$'] },
-    { value: 'PHP', code: 'PHP', symbol: '₱', name: '比索', label: 'PHP (₱ 比索)', aliases: ['比索', '菲律宾', 'php', '₱', 'peso'] },
-    { value: 'INR', code: 'INR', symbol: '₹', name: '卢比', label: 'INR (₹ 卢比)', aliases: ['卢比', '印度', 'inr', '₹', 'rupee'] },
-    { value: 'MYR', code: 'MYR', symbol: 'RM', name: '令吉', label: 'MYR (RM 令吉)', aliases: ['令吉', '马来西亚', 'myr', 'rm', 'ringgit'] },
-    { value: 'BRL', code: 'BRL', symbol: 'R$', name: '雷亚尔', label: 'BRL (R$ 雷亚尔)', aliases: ['雷亚尔', '巴西', 'brl', 'r$', 'real'] }
+    { value: 'USD', code: 'USD', flag: '🇺🇸', symbol: '$', name: '美元', label: '🇺🇸 USD', aliases: ['美元', 'usd', '$', 'dollar'] },
+    { value: 'KRW', code: 'KRW', flag: '🇰🇷', symbol: '₩', name: '韩元', label: '🇰🇷 KRW', aliases: ['韩元', 'krw', '₩', 'won'] },
+    { value: 'AUD', code: 'AUD', flag: '🇦🇺', symbol: 'AU$', name: '澳元', label: '🇦🇺 AUD', aliases: ['澳元', '澳洲', 'aud', 'au$', 'australian'] },
+    { value: 'JPY', code: 'JPY', flag: '🇯🇵', symbol: '¥', name: '日元', label: '🇯🇵 JPY', aliases: ['日元', '日本', 'jpy', '¥', 'yen'] },
+    { value: 'HKD', code: 'HKD', flag: '🇭🇰', symbol: 'HK$', name: '港币', label: '🇭🇰 HKD', aliases: ['港币', '香港', 'hkd', 'hk$'] },
+    { value: 'TWD', code: 'TWD', flag: '🇹🇼', symbol: 'NT$', name: '新台币', label: '🇹🇼 TWD', aliases: ['台币', '新台币', '台湾', 'twd', 'ntd', 'nt$'] },
+    { value: 'TRY', code: 'TRY', flag: '🇹🇷', symbol: '₺', name: '里拉', label: '🇹🇷 TRY', aliases: ['里拉', '土耳其', 'try', '₺', 'lira'] },
+    { value: 'NGN', code: 'NGN', flag: '🇳🇬', symbol: '₦', name: '奈拉', label: '🇳🇬 NGN', aliases: ['奈拉', '尼日利亚', 'ngn', '₦', 'naira'] },
+    { value: 'CNY', code: 'CNY', flag: '🇨🇳', symbol: '¥', name: '人民币', label: '🇨🇳 CNY', aliases: ['人民币', '中国', 'cny', 'rmb', '¥', 'yuan'] },
+    { value: 'EUR', code: 'EUR', flag: '🇪🇺', symbol: '€', name: '欧元', label: '🇪🇺 EUR', aliases: ['欧元', '欧洲', 'eur', '€', 'euro'] },
+    { value: 'GBP', code: 'GBP', flag: '🇬🇧', symbol: '£', name: '英镑', label: '🇬🇧 GBP', aliases: ['英镑', '英国', 'gbp', '£', 'pound'] },
+    { value: 'SGD', code: 'SGD', flag: '🇸🇬', symbol: 'S$', name: '新元', label: '🇸🇬 SGD', aliases: ['新元', '新加坡', 'sgd', 's$'] },
+    { value: 'CAD', code: 'CAD', flag: '🇨🇦', symbol: 'CA$', name: '加元', label: '🇨🇦 CAD', aliases: ['加元', '加拿大', 'cad', 'ca$'] },
+    { value: 'PHP', code: 'PHP', flag: '🇵🇭', symbol: '₱', name: '比索', label: '🇵🇭 PHP', aliases: ['比索', '菲律宾', 'php', '₱', 'peso'] },
+    { value: 'INR', code: 'INR', flag: '🇮🇳', symbol: '₹', name: '卢比', label: '🇮🇳 INR', aliases: ['卢比', '印度', 'inr', '₹', 'rupee'] },
+    { value: 'MYR', code: 'MYR', flag: '🇲🇾', symbol: 'RM', name: '令吉', label: '🇲🇾 MYR', aliases: ['令吉', '马来西亚', 'myr', 'rm', 'ringgit'] },
+    { value: 'BRL', code: 'BRL', flag: '🇧🇷', symbol: 'R$', name: '雷亚尔', label: '🇧🇷 BRL', aliases: ['雷亚尔', '巴西', 'brl', 'r$', 'real'] }
   ];
 
   function hasClass(node, cls) {
@@ -7024,18 +7127,21 @@ function closeAllDropdowns(exceptWrap = null) {
    * 格式化「订阅国家」选择器当前标签：自定义实付或 Ultra 套餐仅展示国家与币种，避免混入 Pro 1x 参考价。
    */
   function formatDirectRegionLabel(matched, core) {
-    const curCode = matched.currency === 'TWD' ? 'NTD' : matched.currency;
+    const curCode = matched.currency === 'NTD' ? 'TWD' : matched.currency;
     const baseText = (matched.flag || '🌏') + ' ' + matched.name + ' (' + curCode + ')';
     const ps = ANTIGRAVITY_TOKEN_DATA.planStatus || {};
     const hideProPresetPrice = ps.priceMode === 'custom' || ps.tierKey === 'ultra' || Boolean(ps.ultraSubTier);
     if (hideProPresetPrice) {
       return baseText;
     }
-    if (matched.currency === 'CNY') {
-      return baseText + ' · ¥' + matched.monthlyPrice + '/月';
+    const baseCur = typeof getActiveBaseCurrency === 'function' ? getActiveBaseCurrency() : 'CNY';
+    if (matched.currency === baseCur) {
+      return baseText + ' · ' + matched.symbol + matched.monthlyPrice + '/月';
     }
-    const cny = core?.convertToCNY ? core.convertToCNY(matched.monthlyPrice, matched.currency, matched.name) : (matched.monthlyPrice * matched.rateToCNY);
-    return baseText + ' · ' + matched.symbol + matched.monthlyPrice + ' (≈ ¥' + Number(cny).toFixed(1) + ' CNY)';
+    const paren = typeof formatBaseCurrencyParen === 'function'
+      ? formatBaseCurrencyParen(matched.monthlyPrice, matched.currency, matched.name, 1)
+      : '';
+    return baseText + ' · ' + matched.symbol + matched.monthlyPrice + (paren ? ' ' + paren : '');
   }
 
   // 刷新订阅地区直接选择器显示
@@ -7475,9 +7581,11 @@ function closeAllDropdowns(exceptWrap = null) {
           paidInput.value = (paid !== null && paid !== undefined) ? paid : '';
         }
         const prevEl = el('region-cny-preview');
-        if (prevEl && paid !== null && regionItem.rateToCNY) {
-          const cny = (paid * regionItem.rateToCNY).toFixed(1);
-          prevEl.textContent = '折合 ≈ ¥' + cny + ' CNY/月';
+        if (prevEl && paid !== null) {
+          const paren = typeof formatBaseCurrencyParen === 'function'
+            ? formatBaseCurrencyParen(paid, regionItem.currency, regionItem.name, 1)
+            : '';
+          prevEl.textContent = paren ? ('折合 ' + paren.replace(/^\(|\)$/g, '') + '/月') : '';
         }
       }
     });
@@ -7683,13 +7791,17 @@ function closeAllDropdowns(exceptWrap = null) {
       searchPlaceholder: '🔍 搜索订阅国家/地区、货币或缩写 (如: 台湾、澳、USD)...',
       getOptions: () => {
         return presets.map(p => {
-          const curCode = p.currency === 'TWD' ? 'NTD' : p.currency;
+          const curCode = p.currency === 'NTD' ? 'TWD' : p.currency;
+          const baseCur = typeof getActiveBaseCurrency === 'function' ? getActiveBaseCurrency() : 'CNY';
           let displayRight = '';
-          if (p.currency === 'CNY') {
+          if (p.currency === baseCur) {
             displayRight = p.symbol + p.monthlyPrice + '/月';
           } else {
-            const cny = core?.convertToCNY ? core.convertToCNY(p.monthlyPrice, p.currency, p.name) : (p.monthlyPrice * p.rateToCNY);
-            displayRight = p.symbol + p.monthlyPrice + '/月 · ≈ ¥' + Number(cny).toFixed(1) + ' CNY';
+            const paren = typeof formatBaseCurrencyParen === 'function'
+              ? formatBaseCurrencyParen(p.monthlyPrice, p.currency, p.name, 1)
+              : '';
+            const convText = paren ? paren.replace(/^\(|\)$/g, '') : '';
+            displayRight = p.symbol + p.monthlyPrice + '/月' + (convText ? ' · ' + convText : '');
           }
           return {
             value: p.id,
@@ -7735,7 +7847,11 @@ function closeAllDropdowns(exceptWrap = null) {
       menuId: 'direct-currency-menu',
       selectId: 'direct-currency-select',
       searchPlaceholder: '🔍 搜索订阅币种、代码或符号 (如: 美元、AUD、¥、$)...',
-      getOptions: () => CURRENCY_OPTIONS,
+      getOptions: () => CURRENCY_OPTIONS.map(it => ({
+        ...it,
+        displayLeft: it.label,
+        displayRight: `${it.symbol} ${it.name}`
+      })),
       getSelectedValue: () => {
         const ps = ANTIGRAVITY_TOKEN_DATA.planStatus || {};
         let cur = ps.currency || 'USD';
@@ -8368,21 +8484,17 @@ function closeAllDropdowns(exceptWrap = null) {
       targetCny = '(随套餐免费)';
     } else if (ps.actualPricePaid !== null && ps.actualPricePaid !== undefined) {
       targetSymbol = curSymbol;
-      targetNum = Number(ps.actualPricePaid);
+      const rawPaid = Number(ps.actualPricePaid);
+      const isAnnual = String(ps.billingCycle || '').includes('年');
+      const monthlyPaid = isAnnual ? Number((rawPaid / 12).toFixed(2)) : rawPaid;
+      targetNum = monthlyPaid;
       targetCycle = '/月';
-      if (ps.currency === 'CNY') {
-        targetCny = '';
-      } else if (ps.cnyFormatted) {
-        targetCny = '(' + ps.cnyFormatted.replace('折合 ', '') + ')';
-      } else {
-        targetCny = '';
-      }
+      targetCny = formatBaseCurrencyParen(monthlyPaid, ps.currency || 'USD', ps.region || ps.subscriptionRegion || null, 1);
     } else if (ps.officialPriceMonthly !== null && ps.officialPriceMonthly !== undefined) {
       targetSymbol = '$';
       targetNum = Number(ps.officialPriceMonthly);
       targetCycle = '/月';
-      const cnyVal = typeof convertToCNY === 'function' ? convertToCNY(targetNum, 'USD') : Number((targetNum * 6.72).toFixed(2));
-      targetCny = cnyVal !== null ? `(≈ ¥${cnyVal.toFixed(1)} CNY)` : '';
+      targetCny = formatBaseCurrencyParen(targetNum, 'USD', null, 1);
     } else if (ps.tierKey === 'ultra') {
       targetSymbol = '$99.99~199.99';
       targetNum = null;
@@ -8392,7 +8504,7 @@ function closeAllDropdowns(exceptWrap = null) {
       targetSymbol = '$';
       targetNum = 19.99;
       targetCycle = '/月';
-      targetCny = '(≈ ¥134.3 CNY)';
+      targetCny = formatBaseCurrencyParen(19.99, 'USD', null, 1);
     }
 
     renderPlanSummaryPriceBadge(targetSymbol, targetNum, targetCycle, targetCny, targetNum === null ? { forceDirect: true } : {});
@@ -8536,7 +8648,8 @@ function closeAllDropdowns(exceptWrap = null) {
       if (ps.actualPricePaid === 0 || ps.isZeroExtraCost) {
         detPrice.textContent = `${curSymbol}0 · ${ps.billingCycle || '随套餐包含'}`;
       } else if (ps.actualPricePaid !== null && ps.actualPricePaid !== undefined) {
-        const cnyPart = (ps.currency !== 'CNY' && ps.cnyFormatted) ? ` (${ps.cnyFormatted})` : '';
+        const baseParen = formatBaseCurrencyParen(ps.actualPricePaid, ps.currency || 'USD', ps.region || ps.subscriptionRegion || null, 1);
+        const cnyPart = baseParen ? ` ${baseParen}` : '';
         const paidFormatted = Number(ps.actualPricePaid) % 1 === 0 ? Number(ps.actualPricePaid) : Number(ps.actualPricePaid).toFixed(2);
         detPrice.textContent = `${curSymbol}${paidFormatted} · ${ps.billingCycle || '月付'}${cnyPart}`;
       } else if (ps.priceRangeNote && ps.priceRangeNote !== '未知') {
@@ -9439,8 +9552,8 @@ function closeAllDropdowns(exceptWrap = null) {
       apiCost = Number(effectiveRef.totalCostUSD || 0);
       if (grandVal) {
         if (apiCost > 0) {
-          grandVal.textContent = `约 $${apiCost.toFixed(2)}`;
-          grandVal.title = `参考费率折算值：$${apiCost.toFixed(4)}`;
+          grandVal.textContent = formatUsdEstimate(apiCost, '约 ');
+          grandVal.title = `参考费率折算值：${formatUsdEstimate(apiCost)}`;
         } else if (curTotal > 0 && curIn === 0 && curCa === 0 && curOut === 0) {
           grandVal.textContent = '数据未就绪';
           grandVal.title = '缺少有效分类统计数据';
@@ -9450,7 +9563,7 @@ function closeAllDropdowns(exceptWrap = null) {
         }
       }
       if (grandSub) {
-        grandSub.textContent = `统一按 ${effectiveRef.modelDisplayName || 'Gemini 3.8 Flash'} 估算 (输入 $${rateIn.toFixed(2)} / 缓存 $${rateCa.toFixed(3)} / 输出 $${rateOut.toFixed(2)} 每百万 Token)`;
+        grandSub.textContent = `统一按 ${effectiveRef.modelDisplayName || 'Gemini 3.8 Flash'} 估算 (输入 ${formatUsdEstimate(rateIn)} / 缓存 ${formatUsdEstimate(rateCa)} / 输出 ${formatUsdEstimate(rateOut)} 每百万 Token)`;
       }
       pillText = '参考模型估算';
       pillClass = 'key-pill pill-muted';
@@ -9465,11 +9578,12 @@ function closeAllDropdowns(exceptWrap = null) {
       const h = curHybrid.hybrid || {};
       apiCost = Number(h.combinedTotalUSD || effectiveRef.totalCostUSD || 0);
       if (grandVal) {
-        grandVal.textContent = `约 $${apiCost.toFixed(2)}`;
-        grandVal.title = `混合模式：已识别 $${h.knownCostUSD || 0} + 未知折算 $${h.unpricedResidualCostUSD || 0}`;
+        grandVal.textContent = formatUsdEstimate(apiCost, '约 ');
       }
-      if (grandSub) {
-        grandSub.textContent = `混合模式：已识别 $${Number(h.knownCostUSD || 0).toFixed(2)} + 未知折算 $${Number(h.unpricedResidualCostUSD || 0).toFixed(2)}`;
+      if (grandVal || grandSub) {
+        const breakdown = `混合模式：已识别 ${formatUsdEstimate(h.knownCostUSD || 0)} + 未知折算 ${formatUsdEstimate(h.unpricedResidualCostUSD || 0)}`;
+        if (grandVal) grandVal.title = breakdown;
+        if (grandSub) grandSub.textContent = breakdown;
       }
       pillText = '混合模式折算';
       pillClass = 'key-pill pill-muted';
@@ -9494,12 +9608,9 @@ function closeAllDropdowns(exceptWrap = null) {
         } else if (pricedCount === 0) {
           grandVal.textContent = '暂无法估值';
           grandVal.title = '当前范围内已扫描请求均缺少模型信息或费率未收录，未记为 $0';
-        } else if (apiCost < 0.01 && apiCost > 0) {
-          grandVal.textContent = '<$0.01';
-          grandVal.title = `已识别模型价值：$${apiCost.toFixed(6)}`;
         } else {
-          grandVal.textContent = `$${apiCost.toFixed(2)}`;
-          grandVal.title = `已识别模型价值：$${apiCost.toFixed(4)}`;
+          grandVal.textContent = formatUsdEstimate(apiCost);
+          grandVal.title = `已识别模型价值：${grandVal.textContent}`;
         }
       }
       if (grandSub) {
@@ -9556,7 +9667,8 @@ function closeAllDropdowns(exceptWrap = null) {
       if (ps.actualPricePaid === 0 || ps.isZeroExtraCost) {
         subLine.textContent = `订阅额外实付：${curSymbol}0 (${ps.acquisitionSourceName || '免费活动'} · 用户确认)`;
       } else if (ps.actualPricePaid !== null && ps.actualPricePaid !== undefined) {
-        const cnyPart = (ps.currency !== 'CNY' && ps.cnyFormatted) ? ` (${ps.cnyFormatted})` : '';
+        const baseParen = formatBaseCurrencyParen(ps.actualPricePaid, ps.currency || 'USD', ps.region || ps.subscriptionRegion || null, 1);
+        const cnyPart = baseParen ? ` ${baseParen}` : '';
         subLine.textContent = `订阅实付：${curSymbol}${Number(ps.actualPricePaid).toFixed(2)}${cnyPart} (${ps.billingCycle || '月付'}${ps.isExpired ? ' · ⚠️ 权益已到期' : ''})`;
       } else {
         subLine.textContent = '订阅实付：未填写';
@@ -10127,18 +10239,13 @@ function closeAllDropdowns(exceptWrap = null) {
     const thisYearPrefix = nowYmd.slice(0, 4);
 
     const todayCostInfo = getDailyModelCost(ANTIGRAVITY_TOKEN_DATA.dailyMap[nowYmd], nowYmd, activeCostModel, { mode: activeCostMode });
-    const todayCostCny = convertToCNY(todayCostInfo.costUSD, 'USD');
-
     const totalCostAgg = calculateIntervalCost(ANTIGRAVITY_TOKEN_DATA.dailyMap, allDateKeys, activeCostModel, { mode: activeCostMode, todayStr: nowYmd });
-    const totalCostCny = convertToCNY(totalCostAgg.totalCostUSD, 'USD');
 
     const monthKeys = allDateKeys.filter(k => k.startsWith(thisMonthPrefix) && k <= nowYmd);
     const monthCostAgg = calculateIntervalCost(ANTIGRAVITY_TOKEN_DATA.dailyMap, monthKeys, activeCostModel, { mode: activeCostMode, todayStr: nowYmd });
-    const monthCostCny = convertToCNY(monthCostAgg.totalCostUSD, 'USD');
 
     const yearKeys = allDateKeys.filter(k => k.startsWith(thisYearPrefix) && k <= nowYmd);
     const yearCostAgg = calculateIntervalCost(ANTIGRAVITY_TOKEN_DATA.dailyMap, yearKeys, activeCostModel, { mode: activeCostMode, todayStr: nowYmd });
-    const yearCostCny = convertToCNY(yearCostAgg.totalCostUSD, 'USD');
 
     const tTotalCost = el('t-total-cost');
     const tTodayCost = el('t-today-cost');
@@ -10146,16 +10253,16 @@ function closeAllDropdowns(exceptWrap = null) {
     const tYearCost = el('t-year-cost');
 
     if (tTotalCost) {
-      tTotalCost.textContent = `≈ $${totalCostAgg.totalCostUSD.toFixed(2)}${totalCostCny !== null ? ` (¥${totalCostCny.toFixed(2)})` : ''} · 日均 $${totalCostAgg.dailyAverageUSD.toFixed(2)}`;
+      tTotalCost.textContent = `≈ $${totalCostAgg.totalCostUSD.toFixed(2)}${formatUsdSecondaryParen(totalCostAgg.totalCostUSD)} · 日均 $${totalCostAgg.dailyAverageUSD.toFixed(2)}`;
     }
     if (tTodayCost) {
-      tTodayCost.textContent = `≈ $${todayCostInfo.costUSD.toFixed(2)}${todayCostCny !== null ? ` (¥${todayCostCny.toFixed(2)})` : ''}`;
+      tTodayCost.textContent = `≈ $${todayCostInfo.costUSD.toFixed(2)}${formatUsdSecondaryParen(todayCostInfo.costUSD)}`;
     }
     if (tMonthCost) {
-      tMonthCost.textContent = `≈ $${monthCostAgg.totalCostUSD.toFixed(2)}${monthCostCny !== null ? ` (¥${monthCostCny.toFixed(2)})` : ''} · 日均 $${monthCostAgg.dailyAverageUSD.toFixed(2)}`;
+      tMonthCost.textContent = `≈ $${monthCostAgg.totalCostUSD.toFixed(2)}${formatUsdSecondaryParen(monthCostAgg.totalCostUSD)} · 日均 $${monthCostAgg.dailyAverageUSD.toFixed(2)}`;
     }
     if (tYearCost) {
-      tYearCost.textContent = `≈ $${yearCostAgg.totalCostUSD.toFixed(2)}${yearCostCny !== null ? ` (¥${yearCostCny.toFixed(2)})` : ''} · 日均 $${yearCostAgg.dailyAverageUSD.toFixed(2)}`;
+      tYearCost.textContent = `≈ $${yearCostAgg.totalCostUSD.toFixed(2)}${formatUsdSecondaryParen(yearCostAgg.totalCostUSD)} · 日均 $${yearCostAgg.dailyAverageUSD.toFixed(2)}`;
     }
 
     // 规范化已完整保留输入/缓存/输出分类，执行费用视图渲染
@@ -10646,8 +10753,7 @@ function positionHeatPopover(anchorX, anchorY) {
           const d = item.date;
           heatPopDate.textContent = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日${item.isToday ? '（今日）' : (item.key === win.firstStr ? '（首次使用）' : '')}`;
           const costInfo = getDailyModelCost(item.rec, item.key, activeCostModel, { mode: activeCostMode });
-          const cny = convertToCNY(costInfo.costUSD, 'USD');
-          const costStr = costInfo.costUSD > 0 ? ` · ≈ $${costInfo.costUSD.toFixed(2)}${cny !== null ? ` (¥${cny.toFixed(2)})` : ''}` : '';
+          const costStr = costInfo.costUSD > 0 ? ` · ≈ $${costInfo.costUSD.toFixed(2)}${formatUsdSecondaryParen(costInfo.costUSD)}` : '';
           heatPopVal.textContent = item.tokens > 0 ? `${fmtYi(item.tokens)} Tokens${costStr}` : (item.isFuture ? '未来日期（待产生记录）' : '0 Tokens');
           if (item.rec) {
             heatPopDet.innerHTML = `
@@ -10729,8 +10835,7 @@ function positionHeatPopover(anchorX, anchorY) {
           mode: activeCostMode,
           todayStr: formatLocalYmd(win.today)
         });
-        const cny = convertToCNY(costAgg.totalCostUSD, 'USD');
-        const costStr = costAgg.totalCostUSD > 0 ? ` · ≈ $${costAgg.totalCostUSD.toFixed(2)}${cny !== null ? ` (¥${cny.toFixed(2)})` : ''}` : '';
+        const costStr = costAgg.totalCostUSD > 0 ? ` · ≈ $${costAgg.totalCostUSD.toFixed(2)}${formatUsdSecondaryParen(costAgg.totalCostUSD)}` : '';
         heatPopDate.textContent = `${w.sDate.getFullYear()}.${w.sDate.getMonth() + 1}.${w.sDate.getDate()} - ${w.eDate.getMonth() + 1}.${w.eDate.getDate()}`;
         heatPopVal.textContent = w.sum > 0 ? `${fmtYi(w.sum)} Tokens${costStr}` : '0 Tokens';
         heatPopDet.innerHTML = `<span>周累计 (折合日均 $${costAgg.dailyAverageUSD.toFixed(2)})</span>`;
@@ -10840,8 +10945,7 @@ function positionHeatPopover(anchorX, anchorY) {
         mode: activeCostMode,
         todayStr: formatLocalYmd(win.today)
       });
-      const cny = convertToCNY(costAgg.totalCostUSD, 'USD');
-      const costStr = costAgg.totalCostUSD > 0 ? ` · ≈ $${costAgg.totalCostUSD.toFixed(2)}${cny !== null ? ` (¥${cny.toFixed(2)})` : ''}` : '';
+      const costStr = costAgg.totalCostUSD > 0 ? ` · ≈ $${costAgg.totalCostUSD.toFixed(2)}${formatUsdSecondaryParen(costAgg.totalCostUSD)}` : '';
       heatPopDate.textContent = `${pt.date.getFullYear()}年${pt.date.getMonth() + 1}月${pt.date.getDate()}日 (累计)`;
       heatPopVal.textContent = `${fmtYi(pt.val)} Tokens${costStr}`;
       heatPopDet.innerHTML = `<span>截至当日累计 (折合日均 $${costAgg.dailyAverageUSD.toFixed(2)})</span>`;
@@ -10871,18 +10975,19 @@ function positionHeatPopover(anchorX, anchorY) {
       todayStr
     });
 
-    const cny = convertToCNY(costAgg.totalCostUSD, 'USD');
     sumTokensEl.textContent = `${fmtYi(costAgg.totalTokens)} Tokens`;
-    sumCostEl.textContent = `≈ $${costAgg.totalCostUSD.toFixed(2)}${cny !== null ? ` (¥${cny.toFixed(2)})` : ''}`;
+    sumCostEl.textContent = `≈ $${costAgg.totalCostUSD.toFixed(2)}${formatUsdSecondaryParen(costAgg.totalCostUSD)}`;
     sumDailyAvgEl.textContent = `$${costAgg.dailyAverageUSD.toFixed(2)}`;
     sumActiveAvgEl.textContent = `$${costAgg.activeDailyAverageUSD.toFixed(2)} (${costAgg.activeDays}天)`;
 
     if ((viewType === 'monthly' || viewType === 'yearly') && subRatioWrapEl && subRatioEl) {
       const plan = resolveEffectivePlanStatus(ANTIGRAVITY_TOKEN_DATA.planStatus, ANTIGRAVITY_TOKEN_DATA.customPlanSettings);
-      const paidVal = plan.actualPricePaid ?? plan.pricePaid ?? plan.officialPriceMonthly ?? null;
+      const rawPaidVal = plan.actualPricePaid ?? plan.pricePaid ?? plan.officialPriceMonthly ?? null;
+      const isAnnualPlan = String(plan.billingCycle || '').includes('年');
+      const paidVal = (rawPaidVal !== null && isAnnualPlan) ? (rawPaidVal / 12) : rawPaidVal;
       const isZeroCost = plan.isZeroExtraCost || paidVal === 0;
       if (!isZeroCost && paidVal > 0 && costAgg.totalCostUSD > 0) {
-        const subMonthlyUSD = plan.currency === 'USD' ? paidVal : (plan.actualPricePaidCNY ? plan.actualPricePaidCNY / 6.72 : paidVal);
+        const subMonthlyUSD = plan.currency === 'USD' ? paidVal : (plan.actualPricePaidCNY ? (isAnnualPlan ? plan.actualPricePaidCNY / 12 : plan.actualPricePaidCNY) / 6.72 : paidVal);
         if (subMonthlyUSD > 0) {
           const ratio = (costAgg.totalCostUSD / (viewType === 'yearly' ? subMonthlyUSD * 12 : subMonthlyUSD)).toFixed(1);
           subRatioEl.textContent = `${ratio}x 回本`;
@@ -10971,8 +11076,7 @@ function positionHeatPopover(anchorX, anchorY) {
 
       const showPop = () => {
         const costInfo = getDailyModelCost(rec, k, activeCostModel, { mode: activeCostMode });
-        const cny = convertToCNY(costInfo.costUSD, 'USD');
-        const costStr = costInfo.costUSD > 0 ? ` · ≈ $${costInfo.costUSD.toFixed(2)}${cny !== null ? ` (¥${cny.toFixed(2)})` : ''}` : '';
+        const costStr = costInfo.costUSD > 0 ? ` · ≈ $${costInfo.costUSD.toFixed(2)}${formatUsdSecondaryParen(costInfo.costUSD)}` : '';
         heatPopDate.textContent = `${targetYear}年${targetMonth + 1}月${day}日${isToday ? '（今日）' : ''}`;
         heatPopVal.textContent = tokens > 0 ? `${fmtYi(tokens)} Tokens${costStr}` : (isFuture ? '未来日期（待产生记录）' : '0 Tokens');
         if (rec) {
@@ -11144,8 +11248,7 @@ function positionHeatPopover(anchorX, anchorY) {
           mode: activeCostMode,
           todayStr: formatLocalYmd(win.today)
         });
-        const cny = convertToCNY(costAgg.totalCostUSD, 'USD');
-        const costStr = costAgg.totalCostUSD > 0 ? ` · ≈ $${costAgg.totalCostUSD.toFixed(2)}${cny !== null ? ` (¥${cny.toFixed(2)})` : ''}` : '';
+        const costStr = costAgg.totalCostUSD > 0 ? ` · ≈ $${costAgg.totalCostUSD.toFixed(2)}${formatUsdSecondaryParen(costAgg.totalCostUSD)}` : '';
         heatPopDate.textContent = `${targetYear}年${item.monthName}${item.isCurrent ? '（进行中）' : (item.monthIndex === peakMonthIndex ? '（年度峰值）' : '')}`;
         heatPopVal.textContent = item.tokens > 0 ? `${fmtYi(item.tokens)} Tokens${costStr}` : (item.isFuture ? '未来月份（尚未产生用量）' : '0 Tokens');
         heatPopDet.innerHTML = `<span>月累计 · 折合日均 $${costAgg.dailyAverageUSD.toFixed(2)} (活跃 ${costAgg.activeDays} 天)</span>`;
@@ -11616,7 +11719,7 @@ function positionHeatPopover(anchorX, anchorY) {
             ? '（已开启 240K 自动压缩，本轮回答结束后将自动执行 /compact；可在套件设置关闭）'
             : '（可在套件设置中开启 240K 自动压缩）';
           if (d.cacheDropDetected) {
-            keyTakeaway.textContent = `⚠ 缓存已脱落（命中率 ${(d.cacheHitRate ?? 0).toFixed(1)}%），本步全量重算 ${short(d.uncachedInput || d.input)} tokens！已使用 ${pct.toFixed(1)}%，极易引发 4~5 分钟卡顿与配额加速消耗，建议立即执行 /compact。${autoCompactHint}`;
+            keyTakeaway.textContent = `⚠ 缓存已脱落（命中率 ${twoDecimalFormat.format(d.cacheHitRate ?? 0)}%），本步全量重算 ${short(d.uncachedInput || d.input)} tokens！已使用 ${pct.toFixed(1)}%，极易引发 4~5 分钟卡顿与配额加速消耗，建议立即执行 /compact。${autoCompactHint}`;
           } else if (pct >= 90) {
             keyTakeaway.textContent = `⚠ 上下文已消耗 ${pct.toFixed(1)}%，仅剩约 ${short(remainVal)} tokens，接近预算上限！建议清理冗余上下文。`;
           } else if (pct >= 75) {
@@ -11847,6 +11950,680 @@ function positionHeatPopover(anchorX, anchorY) {
   }
 
   const timer = setInterval(tick, 500);
+'use strict';
+/**
+ * Simplified Chinese (zh-CN) -> Traditional Chinese (zh-TW, Taiwan terminology) converter.
+ * Zero external dependencies; single-pass longest-match phrase table + character fallback + bounded cache.
+ */
+(function (root) {
+  if (!root) {
+    root = typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : {});
+  }
+
+  const PHRASE_MAP = {
+  "左右并排布局": "左右並排版面設定",
+  "布局": "排版",
+  "多路复用器": "多工器",
+  "正则表达式": "正規表示式",
+  "未检测到": "未偵測到",
+  "自动默认": "自動預設",
+  "配置文件": "設定檔",
+  "命令提示符": "命令提示字元",
+  "每条命令都需要审核": "每條指令都需要核准",
+  "每条命令均需审批": "每條指令都需要核准",
+  "执行敏感操作前先询问": "執行敏感動作前先詢問",
+  "在执行敏感操作前询问": "執行敏感動作前先詢問",
+  "对敏感操作请求授权许可": "執行敏感動作前需取得授權",
+  "自动判断是否运行命令": "自動判斷是否執行指令",
+  "自动决定是否运行命令": "自動判斷是否執行指令",
+  "不受限制地运行所有命令": "不受限制地執行所有指令",
+  "无限制运行所有命令": "不受限制地執行所有指令",
+  "敏感操作": "敏感動作",
+  "执行命令": "執行指令",
+  "运行命令": "執行指令",
+  "命令执行": "指令執行",
+  "命令面板": "指令面板",
+  "命令选择器": "指令選擇器",
+  "命令状态": "指令狀態",
+  "命令访问权限": "指令存取權限",
+  "复制命令": "複製指令",
+  "完整命令": "完整指令",
+  "输入命令": "輸入指令",
+  "搜索命令": "搜尋指令",
+  "斜杠命令": "斜線指令",
+  "由安全智能体决定是否运行命令": "由安全 Agent 決定是否執行指令",
+  "子系统": "子系統",
+  "文件夹": "資料夾",
+  "复选框": "核取方塊",
+  "下拉框": "下拉選單",
+  "工具栏": "工具列",
+  "侧边栏": "側邊欄",
+  "状态栏": "狀態列",
+  "标题栏": "標題列",
+  "地址栏": "網址列",
+  "活动栏": "活動列",
+  "导航栏": "導覽列",
+  "标签页": "分頁",
+  "对话框": "對話方塊",
+  "剪贴板": "剪貼簿",
+  "快捷键": "快速鍵",
+  "命令行": "命令列",
+  "控制台": "主控台",
+  "客户端": "用戶端",
+  "桌面端": "桌面版",
+  "移动端": "行動版",
+  "网页端": "網頁版",
+  "服务器端": "伺服器端",
+  "服务器": "伺服器",
+  "占位符": "預留位置",
+  "通配符": "萬用字元",
+  "分辨率": "解析度",
+  "返回值": "回傳值",
+  "字符串": "字串",
+  "智能体": "Agent",
+  "热力图": "熱度圖",
+  "快捷提示词": "常用提示詞",
+  "快捷操作栏": "常用工具列",
+  "快捷按钮": "指令按鈕",
+  "快捷指令": "常用指令",
+  "快捷口令": "常用指令",
+  "快捷方式": "捷徑",
+  "快捷": "快速",
+  "按点击付费": "按點擊付費",
+  "点击": "點選",
+  "日常高频": "日常常用",
+  "追问对齐": "追問釐清",
+  "全部对齐": "全部釐清",
+  "提炼经验": "歸納經驗",
+  "提炼": "歸納",
+  "深度攻坚": "深度解題",
+  "复杂攻坚": "複雜任務",
+  "攻坚": "突破",
+  "定时任务": "排程任務",
+  "定时计划": "排程計畫",
+  "定时巡检": "排程巡檢",
+  "定时轮询": "排程輪詢",
+  "定时运行": "排程執行",
+  "定时后台": "背景排程",
+  "定时器": "計時器",
+  "5h 滚动窗口": "5 小時限額",
+  "5h 滚动": "5 小時限額",
+  "滚动窗口": "分時段",
+  "滚动条": "捲軸",
+  "滚动": "捲動",
+  "周边": "周邊",
+  "周邊": "周邊",
+  "周围": "周圍",
+  "周圍": "周圍",
+  "周全": "周全",
+  "周密": "周密",
+  "周到": "周到",
+  "圆周": "圓周",
+  "圓周": "圓周",
+  "周长": "周長",
+  "周長": "周長",
+  "周知": "周知",
+  "免审核": "免審核",
+  "待审批": "待審核",
+  "二进制": "二進位",
+  "自定义": "自訂",
+  "只读": "唯讀",
+  "仅限": "僅限",
+  "仅显示": "僅顯示",
+  "仅用于": "僅用於",
+  "默认值": "預設值",
+  "初始化": "初始化",
+  "上下文": "上下文",
+  "响应式": "響應式",
+  "高危": "高風險",
+  "审批": "審核",
+  "菜单": "選單",
+  "弹窗": "彈出視窗",
+  "浮窗": "懸浮視窗",
+  "窗口": "視窗",
+  "屏幕": "螢幕",
+  "鼠标": "滑鼠",
+  "图标": "圖示",
+  "角标": "徽章",
+  "标签": "標籤",
+  "书签": "書籤",
+  "字体": "字型",
+  "内存": "記憶體",
+  "缓存": "快取",
+  "软件": "軟體",
+  "硬件": "硬體",
+  "文档": "文件",
+  "文件": "檔案",
+  "默认": "預設",
+  "设置": "設定",
+  "配置": "設定",
+  "终端": "終端機",
+  "重启": "重新啟動",
+  "刷新": "重新整理",
+  "卸载": "解除安裝",
+  "新建": "新增",
+  "添加": "新增",
+  "保存": "儲存",
+  "加载": "載入",
+  "导入": "匯入",
+  "导出": "匯出",
+  "搜索": "搜尋",
+  "查找": "尋找",
+  "替换": "取代",
+  "撤销": "復原",
+  "重置": "重設",
+  "清空": "清理",
+  "清除": "清理",
+  "过滤": "篩選",
+  "拖拽": "拖曳",
+  "粘贴": "貼上",
+  "拷贝": "複製",
+  "复制": "複製",
+  "重复": "重複",
+  "复杂": "複雜",
+  "复用": "重複使用",
+  "回复": "回覆",
+  "恢复": "恢復",
+  "复原": "復原",
+  "复核": "複核",
+  "复盘": "覆盤",
+  "复现": "重現",
+  "修复": "修復",
+  "支持": "支援",
+  "兼容": "相容",
+  "自定义": "自訂",
+  "数据": "資料",
+  "元数据": "中繼資料",
+  "调用": "呼叫",
+  "连接器": "連接器",
+  "连接": "連線",
+  "创建": "建立",
+  "响应式": "響應式",
+  "响应": "回應",
+  "内置": "內建",
+  "全局": "全域",
+  "本地": "本機",
+  "本机": "本機",
+  "远程": "遠端",
+  "远端": "遠端",
+  "后台": "背景",
+  "前台": "前景",
+  "实时": "即時",
+  "异步": "非同步",
+  "并发送": "並傳送",
+  "并发布": "並發布",
+  "并发现": "並發現",
+  "并发展": "並發展",
+  "并发起": "並發起",
+  "并发": "並行",
+  "合并": "合併",
+  "并行": "平行",
+  "并排": "並排",
+  "通过": "透過",
+  "用户": "使用者",
+  "登录": "登入",
+  "注销": "登出",
+  "账号": "帳號",
+  "账户": "帳戶",
+  "链接": "連結",
+  "视频": "影片",
+  "音频": "音訊",
+  "图像": "影像",
+  "文本": "文字",
+  "字符": "字元",
+  "字节": "位元組",
+  "信息": "資訊",
+  "消息": "訊息",
+  "反馈": "回饋",
+  "交互": "互動",
+  "崩溃": "當機",
+  "卡死": "卡住",
+  "报错": "錯誤",
+  "超时": "逾時",
+  "端口": "連接埠",
+  "域名": "網域",
+  "协议": "通訊協定",
+  "网络": "網路",
+  "带宽": "頻寬",
+  "磁盘": "磁碟",
+  "硬盘": "硬碟",
+  "插件": "外掛",
+  "汉化": "中文化",
+  "代码": "程式碼",
+  "项目": "專案",
+  "仓库": "儲存庫",
+  "归档": "封存",
+  "运行": "執行",
+  "调试": "除錯",
+  "今天想构建什么？": "今天想打造什麼？",
+  "构建": "建置",
+  "组件": "元件",
+  "模块": "模組",
+  "依赖": "相依套件",
+  "变量": "變數",
+  "常量": "常數",
+  "函数": "函式",
+  "接口": "介面",
+  "数组": "陣列",
+  "对象": "物件",
+  "布尔": "布林",
+  "回调": "回呼",
+  "进程": "處理程序",
+  "處理程序": "處理程序",
+  "线程": "執行緒",
+  "队列": "佇列",
+  "缩进": "縮排",
+  "后缀": "副檔名",
+  "查看网站信息": "檢視網站資訊",
+  "查看全部说明": "查閱完整說明",
+  "查看更多结果": "顯示更多結果",
+  "查看更多": "瀏覽更多",
+  "查看全部": "顯示全部",
+  "查看文档": "查閱文件",
+  "查看发行说明": "閱讀發行說明",
+  "查看套餐方案": "瀏覽方案",
+  "查看方案": "瀏覽方案",
+  "查看模型用量": "查詢模型用量",
+  "查看用量": "查詢用量",
+  "查看忙闲状态": "查詢忙閒狀態",
+  "查看": "檢視",
+  "套餐方案": "方案",
+  "套餐": "方案",
+  "概览": "總覽",
+  "积分": "點數",
+  "润色": "潤飾",
+  "剩余": "剩餘",
+  "占用": "佔用",
+  "兜底": "備援",
+  "启用": "啟用",
+  "启动": "啟動",
+  "开启": "開啟",
+  "禁用": "停用",
+  "地址": "位址",
+  "网址": "網址",
+  "打印": "列印",
+  "检测": "偵測",
+  "校验": "驗證",
+  "渲染": "算繪",
+  "高亮": "醒目提示",
+  "折叠": "摺疊",
+  "计划": "計畫",
+  "脚本": "指令碼",
+  "程序": "程式",
+  "内核": "核心",
+  "批注": "註解",
+  "教程": "教學",
+  "联系": "聯絡",
+  "关系": "關係",
+  "体系": "體系",
+  "系统": "系統",
+  "在线": "線上",
+  "离线": "離線",
+  "帮助": "說明",
+  "定制": "客製",
+  "制作": "製作",
+  "录制": "錄製",
+  "绘制": "繪製",
+  "控制": "控制",
+  "限制": "限制",
+  "强制": "強制",
+  "机制": "機制",
+  "干预": "干預",
+  "干預": "干預",
+  "干扰": "干擾",
+  "干擾": "干擾",
+  "干净": "乾淨",
+  "回滚": "還原",
+  "邮箱": "電子郵件",
+  "昵称": "暱稱",
+  "头像": "大頭貼",
+  "令牌": "權杖",
+  "密钥": "金鑰",
+  "汇总": "彙總",
+  "游戏": "遊戲",
+  "下游": "下游",
+  "上游": "上游",
+  "台币": "新台幣",
+  "中国台湾": "台灣",
+  "台湾": "台灣",
+  "占位": "預留位置",
+  "独占": "獨佔",
+  "其余": "其餘",
+  "多余": "多餘",
+  "轻松": "輕鬆",
+  "宽松": "寬鬆",
+  "松开": "放開",
+  "切换": "切換",
+  "刷新并": "重新整理並",
+  "当前": "目前",
+  "里面": "裡面",
+  "界面": "介面",
+  "页面": "頁面",
+  "面板": "面板",
+  "桌面": "桌面",
+  "下面": "下方",
+  "上面": "上方",
+  "后面": "後方",
+  "前面": "前方",
+  "全面": "全面",
+  "方面": "方面",
+  "浏览": "瀏覽",
+  "浏览器": "瀏覽器",
+  "编辑": "編輯",
+  "编辑器": "編輯器",
+  "评论": "留言",
+  "发送": "傳送",
+  "跳过": "略過",
+  "暂停": "暫停",
+  "继续": "繼續",
+  "取消": "取消",
+  "确定": "確定",
+  "确认": "確認",
+  "关闭": "關閉",
+  "打开": "開啟",
+  "删除": "刪除",
+  "移除": "移除",
+  "隐藏": "隱藏",
+  "显示": "顯示",
+  "展开": "展開",
+  "收起": "收合",
+  "收拢": "收合",
+  "折叠态": "摺疊狀態",
+  "同步": "同步",
+  "上传": "上傳",
+  "下载": "下載",
+  "更新": "更新",
+  "升级": "升級",
+  "安装": "安裝",
+  "权限": "權限",
+  "隐私": "隱私",
+  "安全": "安全",
+  "异常": "異常",
+  "失败": "失敗",
+  "成功": "成功",
+  "警告": "警告",
+  "提示": "提示",
+  "通知": "通知",
+  "状态": "狀態",
+  "统计": "統計",
+  "分析": "分析",
+  "历史": "歷史",
+  "日历": "行事曆",
+  "工作区": "工作區",
+  "工作台": "工作台",
+  "工作流": "工作流程",
+  "工作流程": "工作流程",
+  "任务": "任務",
+  "会话": "工作階段",
+  "对话": "對話",
+  "聊天": "聊天",
+  "标题": "標題",
+  "内容": "內容",
+  "详情": "詳細資訊",
+  "列表": "清單",
+  "表单": "表單",
+  "按钮": "按鈕",
+  "开关": "開關",
+  "选项": "選項",
+  "参数": "參數",
+  "属性": "屬性",
+  "格式": "格式",
+  "样式": "樣式",
+  "主题": "佈景主題",
+  "配色": "配色",
+  "强调色": "強調色",
+  "浅色": "淺色",
+  "深色": "深色",
+  "暗色": "深色",
+  "亮色": "淺色",
+  "预览": "預覽",
+  "草稿": "草稿",
+  "快照": "快照",
+  "提交": "提交",
+  "分支": "分支",
+  "差异": "差異",
+  "冲突": "衝突",
+  "拉取": "拉取",
+  "推送": "推送",
+  "克隆": "複製",
+  "模型": "模型",
+  "推理": "推理",
+  "思考": "思考",
+  "额度": "額度",
+  "配额": "配額",
+  "订阅": "訂閱",
+  "费用": "費用",
+  "价格": "價格",
+  "汇率": "匯率",
+  "货币": "貨幣",
+  "国家": "國家",
+  "地区": "地區",
+  "语言": "語言",
+  "简体中文": "簡體中文",
+  "繁体中文": "繁體中文",
+  "英文": "英文",
+  "原文": "原文",
+  "译文": "譯文",
+  "翻译": "翻譯",
+  "词典": "詞典",
+  "词库": "詞庫",
+  "日志": "日誌",
+  "记录": "記錄",
+  "规则": "規則",
+  "策略": "策略",
+  "模式": "模式",
+  "档位": "等級",
+  "级别": "層級",
+  "阈值": "門檻值",
+  "上限": "上限",
+  "下限": "下限",
+  "速率": "速率",
+  "速度": "速度",
+  "延迟": "延遲",
+  "耗时": "耗時",
+  "时长": "時間長度",
+  "分钟": "分鐘",
+  "小时": "小時",
+  "秒": "秒",
+  "毫秒": "毫秒",
+  "自动": "自動",
+  "手动": "手動",
+  "批量": "批次",
+  "单次": "單次",
+  "全局脚本": "全域指令碼",
+  "环境变量": "環境變數",
+  "代理": "代理",
+  "隧道": "通道",
+  "扫码": "掃碼",
+  "二维码": "QR Code",
+  "蓝牙": "藍牙",
+  "触控": "觸控",
+  "辅助功能": "輔助使用",
+  "系统设置": "系統設定",
+  "偏好设置": "偏好設定",
+  "常见": "常見",
+  "推荐": "推薦",
+  "必开": "必開",
+  "可选": "選用",
+  "其他": "其他",
+  "未知": "未知",
+  "暂无": "暫無",
+  "未提供": "未提供",
+  "未填写": "未填寫",
+  "已启用": "已啟用",
+  "已停用": "已停用",
+  "已关闭": "已關閉",
+  "已保存": "已儲存",
+  "已复制": "已複製",
+  "已连接": "已連線",
+  "未连接": "未連線",
+  "正在": "正在",
+  "完成": "完成",
+  "准备": "準備",
+  "知识工作": "日常辦公",
+  "常规": "一般",
+  "编程语言": "程式語言",
+  "编程": "程式開發",
+  "获取": "取得",
+  "流式": "串流",
+  "高级": "進階",
+  "许可证": "授權條款",
+  "凭据": "憑證",
+  "性能": "效能",
+  "全屏": "全螢幕",
+  "激活": "啟用",
+  "质量": "品質",
+  "代码补全": "程式碼自動完成",
+  "自动补全": "自動完成",
+  "补全": "自動完成",
+  "转写": "轉錄",
+  "首选项": "偏好設定",
+  "网关": "閘道",
+  "录屏": "螢幕錄製",
+  "光标": "游標",
+  "剪切": "剪下",
+  "集群": "叢集",
+  "扩展程序": "擴充功能",
+  "扩展市场": "擴充功能市集",
+  "已安装扩展": "已安裝擴充功能",
+  "扩展名": "副檔名",
+  "取消固定": "取消釘選",
+  "已固定": "已釘選",
+  "固定此对话": "釘選此對話",
+  "固定对话": "釘選對話",
+  "仅固定会话": "僅釘選對話",
+  "自动固定": "自動釘選",
+  "排队消息": "佇列訊息",
+  "排队": "佇列",
+  "适用于代理模式": "適用於 Agent 模式",
+  "没有正在运行的代理": "沒有正在執行的 Agent",
+  "个代理正在运行": "個 Agent 正在執行",
+  "将在代理完成后发送": "將在 Agent 完成後傳送",
+  "局域网": "區域網路",
+  "批准": "核准",
+  "核准": "核准",
+  "获准": "獲准",
+  "獲准": "獲准",
+  "准许": "准許",
+  "准許": "准許",
+  "允准": "允准",
+  "准予": "准予",
+  "不准": "不准",
+  "周期": "週期",
+  "新台币": "新台幣",
+  "币种": "幣別",
+  "按已返回用量估算": "依實際用量估算",
+  "已返回用量": "實際回傳用量",
+  "仅返回": "僅回傳",
+  "未返回": "未回傳",
+  "已返回": "已回傳",
+  "模型返回": "模型回傳",
+  "服务端返回": "伺服器回傳",
+  "状态返回": "狀態回傳",
+  "自动跟随当前模型": "自動跟隨目前模型",
+  "侧栏：模型额度卡": "側欄：模型額度卡",
+  "自定义本地字体": "自訂本機字型",
+  "侧边栏模型额度": "側邊欄模型額度",
+  "纯白 / 炭黑": "純白／炭黑",
+  "顶栏配额胶囊": "頂欄配額膠囊",
+  "当前模型组": "目前模型群組",
+  "其他模型组": "其他模型群組",
+  "固定仅显示": "固定僅顯示",
+  "连续进度条": "連續進度條",
+  "精简刻度": "精簡刻度",
+  "进度细线": "進度細線",
+  "迷你五段": "迷你五段",
+  "迷你圆环": "迷你圓環",
+  "双列横条": "雙列橫條",
+  "路由死锁": "路由死鎖",
+  "开启完整": "開啟完整",
+  "额度全满": "額度全滿",
+  "取消置顶": "取消釘選",
+  "五段格": "五段格",
+  "双圆环": "雙圓環",
+  "仪表盘": "儀表板",
+  "纯文字": "純文字",
+  "后重置": "後重設",
+  "点阵": "點陣",
+  "炭黑": "炭黑",
+  "置顶": "釘選",
+  "“": "「",
+  "”": "」",
+  "‘": "『",
+  "’": "』"
+};
+
+  const CHAR_MAP = {"周":"週","万":"萬","与":"與","丑":"醜","专":"專","业":"業","丛":"叢","东":"東","丝":"絲","丢":"丟","两":"兩","严":"嚴","丧":"喪","个":"個","丰":"豐","临":"臨","为":"為","丽":"麗","举":"舉","么":"麼","义":"義","乌":"烏","乐":"樂","乔":"喬","习":"習","乡":"鄉","书":"書","买":"買","乱":"亂","争":"爭","于":"於","亏":"虧","云":"雲","亘":"亙","亚":"亞","产":"產","亩":"畝","亲":"親","亵":"褻","亸":"嚲","亿":"億","仅":"僅","仆":"僕","从":"從","仑":"侖","仓":"倉","仪":"儀","们":"們","价":"價","众":"眾","优":"優","会":"會","伛":"傴","伞":"傘","伟":"偉","传":"傳","伣":"俔","伤":"傷","伥":"倀","伦":"倫","伧":"傖","伪":"偽","伫":"佇","体":"體","余":"餘","佣":"傭","佥":"僉","侠":"俠","侣":"侶","侥":"僥","侦":"偵","侧":"側","侨":"僑","侩":"儈","侪":"儕","侬":"儂","俣":"俁","俦":"儔","俨":"儼","俩":"倆","俪":"儷","俫":"倈","俭":"儉","债":"債","倾":"傾","偬":"傯","偻":"僂","偾":"僨","偿":"償","傥":"儻","傧":"儐","储":"儲","傩":"儺","儿":"兒","兑":"兌","兖":"兗","党":"黨","兰":"蘭","关":"關","兴":"興","兹":"茲","养":"養","兽":"獸","冁":"囅","内":"內","冈":"岡","册":"冊","写":"寫","军":"軍","农":"農","冯":"馮","冲":"衝","决":"決","况":"況","冻":"凍","净":"淨","凄":"淒","准":"準","凉":"涼","减":"減","凑":"湊","凛":"凜","几":"幾","凤":"鳳","凫":"鳧","凭":"憑","凯":"凱","击":"擊","凿":"鑿","刍":"芻","划":"劃","刘":"劉","则":"則","刚":"剛","创":"創","删":"刪","别":"別","刬":"剗","刭":"剄","刹":"剎","刽":"劊","刿":"劌","剀":"剴","剂":"劑","剐":"剮","剑":"劍","剥":"剝","剧":"劇","劝":"勸","办":"辦","务":"務","劢":"勱","动":"動","励":"勵","劲":"勁","劳":"勞","势":"勢","勋":"勳","勚":"勩","匀":"勻","匦":"匭","匮":"匱","区":"區","医":"醫","华":"華","协":"協","单":"單","卖":"賣","占":"佔","卢":"盧","卤":"鹵","卧":"臥","卫":"衛","却":"卻","厂":"廠","厅":"廳","历":"歷","厉":"厲","压":"壓","厌":"厭","厍":"厙","厐":"龎","厕":"廁","厘":"釐","厢":"廂","厣":"厴","厦":"廈","厨":"廚","厩":"廄","厮":"廝","县":"縣","叁":"叄","参":"參","叆":"靉","叇":"靆","双":"雙","发":"發","变":"變","叙":"敘","叠":"疊","叶":"葉","号":"號","叹":"嘆","叽":"嘰","后":"後","吓":"嚇","吕":"呂","吗":"嗎","吣":"唚","吨":"噸","听":"聽","启":"啟","吴":"吳","呐":"吶","呒":"嘸","呓":"囈","呕":"嘔","呖":"嚦","呗":"唄","员":"員","呙":"咼","呛":"嗆","呜":"嗚","咏":"詠","咙":"嚨","咛":"嚀","咝":"噝","咤":"吒","响":"響","哑":"啞","哒":"噠","哓":"嘵","哔":"嗶","哕":"噦","哗":"嘩","哙":"噲","哜":"嚌","哝":"噥","哟":"喲","唛":"嘜","唝":"嗊","唠":"嘮","唡":"啢","唢":"嗩","唤":"喚","啧":"嘖","啬":"嗇","啭":"囀","啮":"嚙","啰":"囉","啴":"嘽","啸":"嘯","喂":"餵","喷":"噴","喽":"嘍","喾":"嚳","嗫":"囁","嗳":"噯","嘘":"噓","嘤":"嚶","嘱":"囑","噜":"嚕","嚣":"囂","团":"團","园":"園","囱":"囪","围":"圍","囵":"圇","国":"國","图":"圖","圆":"圓","圣":"聖","圹":"壙","场":"場","坂":"阪","坏":"壞","块":"塊","坚":"堅","坛":"壇","坜":"壢","坝":"壩","坞":"塢","坟":"墳","坠":"墜","垄":"壟","垅":"壠","垆":"壚","垒":"壘","垦":"墾","垩":"堊","垫":"墊","垭":"埡","垯":"墶","垱":"壋","垲":"塏","垴":"堖","埘":"塒","埙":"塤","埚":"堝","埯":"垵","堑":"塹","堕":"墮","塆":"壪","墙":"牆","壮":"壯","声":"聲","壳":"殼","壶":"壺","壸":"壼","处":"處","备":"備","复":"復","够":"夠","头":"頭","夸":"誇","夹":"夾","夺":"奪","奁":"奩","奂":"奐","奋":"奮","奖":"獎","奥":"奧","妆":"妝","妇":"婦","妈":"媽","妩":"嫵","妪":"嫗","妫":"媯","姗":"姍","姹":"奼","娄":"婁","娅":"婭","娆":"嬈","娇":"嬌","娈":"孌","娱":"娛","娲":"媧","娴":"嫻","婳":"嫿","婴":"嬰","婵":"嬋","婶":"嬸","媪":"媼","媭":"嬃","嫒":"嬡","嫔":"嬪","嫱":"嬙","嬷":"嬤","孙":"孫","学":"學","孪":"孿","宁":"寧","宝":"寶","实":"實","宠":"寵","审":"審","宪":"憲","宫":"宮","宽":"寬","宾":"賓","寝":"寢","对":"對","寻":"尋","导":"導","寿":"壽","将":"將","尔":"爾","尘":"塵","尝":"嘗","尧":"堯","尴":"尷","尸":"屍","尽":"盡","层":"層","屃":"屓","屉":"屜","届":"屆","属":"屬","屡":"屢","屦":"屨","屿":"嶼","岁":"歲","岂":"豈","岖":"嶇","岗":"崗","岘":"峴","岙":"嶴","岚":"嵐","岛":"島","岭":"嶺","岽":"崬","岿":"巋","峃":"嶨","峄":"嶧","峡":"峽","峣":"嶢","峤":"嶠","峥":"崢","峦":"巒","崂":"嶗","崃":"崍","崄":"嶮","崭":"嶄","嵘":"嶸","嵚":"嶔","嵝":"嶁","巅":"巔","巩":"鞏","巯":"巰","币":"幣","帅":"帥","师":"師","帏":"幃","帐":"帳","帘":"簾","帜":"幟","带":"帶","帧":"幀","帮":"幫","帱":"幬","帻":"幘","帼":"幗","幂":"冪","干":"乾","并":"並","广":"廣","庄":"莊","庆":"慶","庐":"廬","庑":"廡","库":"庫","应":"應","庙":"廟","庞":"龐","废":"廢","庼":"廎","廪":"廩","开":"開","异":"異","弃":"棄","弑":"弒","张":"張","弥":"彌","弪":"弳","弯":"彎","弹":"彈","强":"強","归":"歸","当":"當","录":"錄","彟":"彠","彦":"彥","彷":"徬","彻":"徹","征":"徵","径":"徑","徕":"徠","忆":"憶","忏":"懺","忧":"憂","忾":"愾","怀":"懷","态":"態","怂":"慫","怃":"憮","怄":"慪","怅":"悵","怆":"愴","怜":"憐","总":"總","怼":"懟","怿":"懌","恋":"戀","恒":"恆","恳":"懇","恶":"惡","恸":"慟","恹":"懨","恺":"愷","恻":"惻","恼":"惱","恽":"惲","悦":"悅","悫":"愨","悬":"懸","悭":"慳","悮":"悞","悯":"憫","惊":"驚","惧":"懼","惨":"慘","惩":"懲","惫":"憊","惬":"愜","惭":"慚","惮":"憚","惯":"慣","愠":"慍","愤":"憤","愦":"憒","愿":"願","慑":"懾","慭":"憖","懑":"懣","懒":"懶","懔":"懍","戆":"戇","戋":"戔","戏":"戲","戗":"戧","战":"戰","戬":"戩","戯":"戱","户":"戶","扑":"撲","执":"執","扩":"擴","扪":"捫","扫":"掃","扬":"揚","扰":"擾","抚":"撫","抛":"拋","抟":"摶","抠":"摳","抡":"掄","抢":"搶","护":"護","报":"報","担":"擔","拟":"擬","拢":"攏","拣":"揀","拥":"擁","拦":"攔","拧":"擰","拨":"撥","择":"擇","挂":"掛","挚":"摯","挛":"攣","挜":"掗","挝":"撾","挞":"撻","挟":"挾","挠":"撓","挡":"擋","挢":"撟","挣":"掙","挤":"擠","挥":"揮","挦":"撏","挽":"輓","捝":"挩","捞":"撈","损":"損","捡":"撿","换":"換","捣":"搗","据":"據","掳":"擄","掴":"摑","掷":"擲","掸":"撣","掺":"摻","掼":"摜","揽":"攬","揾":"搵","揿":"撳","搀":"攙","搁":"擱","搂":"摟","搅":"攪","携":"攜","摄":"攝","摅":"攄","摆":"擺","摇":"搖","摈":"擯","摊":"攤","撄":"攖","撑":"撐","撵":"攆","撷":"擷","撸":"擼","撺":"攛","擞":"擻","攒":"攢","敌":"敵","敛":"斂","敩":"斆","数":"數","斋":"齋","斓":"斕","斗":"鬥","斩":"斬","断":"斷","无":"無","旧":"舊","时":"時","旷":"曠","旸":"暘","昙":"曇","昵":"暱","昼":"晝","昽":"曨","显":"顯","晋":"晉","晒":"曬","晓":"曉","晔":"曄","晕":"暈","晖":"暉","暂":"暫","暧":"曖","术":"術","朴":"樸","机":"機","杀":"殺","杂":"雜","权":"權","杆":"桿","杠":"槓","条":"條","来":"來","杨":"楊","杩":"榪","杰":"傑","松":"鬆","极":"極","构":"構","枞":"樅","枢":"樞","枣":"棗","枥":"櫪","枧":"梘","枨":"棖","枪":"槍","枫":"楓","枭":"梟","柜":"櫃","柠":"檸","柽":"檉","栀":"梔","栅":"柵","标":"標","栈":"棧","栉":"櫛","栊":"櫳","栋":"棟","栌":"櫨","栎":"櫟","栏":"欄","树":"樹","栖":"棲","样":"樣","栾":"欒","桠":"椏","桡":"橈","桢":"楨","档":"檔","桤":"榿","桥":"橋","桦":"樺","桧":"檜","桨":"槳","桩":"樁","梦":"夢","梼":"檮","梾":"棶","梿":"槤","检":"檢","棁":"梲","棂":"櫺","棱":"稜","椁":"槨","椟":"櫝","椠":"槧","椤":"欏","椭":"橢","楼":"樓","榄":"欖","榅":"榲","榇":"櫬","榈":"櫚","榉":"櫸","槚":"檟","槛":"檻","槟":"檳","槠":"櫧","横":"橫","樯":"檣","樱":"櫻","橥":"櫫","橱":"櫥","橹":"櫓","橼":"櫞","檩":"檁","欢":"歡","欤":"歟","欧":"歐","歼":"殲","殁":"歿","殇":"殤","残":"殘","殒":"殞","殓":"殮","殚":"殫","殡":"殯","殴":"毆","毁":"毀","毂":"轂","毕":"畢","毙":"斃","毡":"氈","毵":"毿","氇":"氌","气":"氣","氢":"氫","氩":"氬","氲":"氳","汇":"匯","汉":"漢","汤":"湯","汹":"洶","沉":"沈","沟":"溝","没":"沒","沣":"灃","沤":"漚","沥":"瀝","沦":"淪","沧":"滄","沨":"渢","沩":"溈","沪":"滬","泄":"洩","泞":"濘","泪":"淚","泶":"澩","泷":"瀧","泸":"瀘","泺":"濼","泻":"瀉","泼":"潑","泽":"澤","泾":"涇","洁":"潔","洒":"灑","洼":"窪","浃":"浹","浅":"淺","浆":"漿","浇":"澆","浈":"湞","浉":"溮","浊":"濁","测":"測","浍":"澮","济":"濟","浏":"瀏","浐":"滻","浑":"渾","浒":"滸","浓":"濃","浔":"潯","浕":"濜","涂":"塗","涌":"湧","涛":"濤","涝":"澇","涞":"淶","涟":"漣","涠":"潿","涡":"渦","涢":"溳","涣":"渙","涤":"滌","润":"潤","涧":"澗","涨":"漲","涩":"澀","淀":"澱","渊":"淵","渌":"淥","渍":"漬","渎":"瀆","渐":"漸","渑":"澠","渔":"漁","渖":"瀋","渗":"滲","温":"溫","湾":"灣","湿":"濕","溁":"濚","溃":"潰","溅":"濺","溆":"漵","溇":"漊","滗":"潷","滚":"滾","滞":"滯","滟":"灧","滠":"灄","满":"滿","滢":"瀅","滤":"濾","滥":"濫","滦":"灤","滨":"濱","滩":"灘","滪":"澦","漓":"灕","漤":"灠","潆":"瀠","潇":"瀟","潋":"瀲","潍":"濰","潜":"潛","潴":"瀦","澛":"瀂","澜":"瀾","濑":"瀨","濒":"瀕","灏":"灝","灭":"滅","灯":"燈","灵":"靈","灾":"災","灿":"燦","炀":"煬","炉":"爐","炖":"燉","炜":"煒","炝":"熗","点":"點","炼":"煉","炽":"熾","烁":"爍","烂":"爛","烃":"烴","烛":"燭","烟":"煙","烦":"煩","烧":"燒","烨":"燁","烩":"燴","烫":"燙","烬":"燼","热":"熱","焕":"煥","焖":"燜","焘":"燾","煴":"熅","爱":"愛","爷":"爺","牍":"牘","牦":"氂","牵":"牽","牺":"犧","犊":"犢","状":"狀","犷":"獷","犸":"獁","犹":"猶","狈":"狽","狝":"獮","狞":"獰","独":"獨","狭":"狹","狮":"獅","狯":"獪","狰":"猙","狱":"獄","狲":"猻","猃":"獫","猎":"獵","猕":"獼","猡":"玀","猪":"豬","猫":"貓","猬":"蝟","献":"獻","獭":"獺","玑":"璣","玙":"璵","玚":"瑒","玛":"瑪","玮":"瑋","环":"環","现":"現","玱":"瑲","玺":"璽","珐":"琺","珑":"瓏","珰":"璫","珲":"琿","琎":"璡","琏":"璉","琐":"瑣","琼":"瓊","瑶":"瑤","瑷":"璦","璎":"瓔","瓒":"瓚","瓮":"甕","瓯":"甌","电":"電","画":"畫","畅":"暢","畴":"疇","疖":"癤","疗":"療","疟":"瘧","疠":"癘","疡":"瘍","疬":"癧","疭":"瘲","疮":"瘡","疯":"瘋","疱":"皰","疴":"痾","痈":"癰","痉":"痙","痒":"癢","痖":"瘂","痨":"癆","痪":"瘓","痫":"癇","瘅":"癉","瘆":"瘮","瘗":"瘞","瘘":"瘻","瘪":"癟","瘫":"癱","瘾":"癮","瘿":"癭","癞":"癩","癣":"癬","癫":"癲","皑":"皚","皱":"皺","皲":"皸","盏":"盞","盐":"鹽","监":"監","盖":"蓋","盗":"盜","盘":"盤","眍":"瞘","眦":"眥","眬":"矓","着":"著","睁":"睜","睐":"睞","睑":"瞼","睾":"睪","瞆":"瞶","瞒":"瞞","瞩":"矚","矫":"矯","矶":"磯","矾":"礬","矿":"礦","砀":"碭","码":"碼","砖":"磚","砗":"硨","砚":"硯","砜":"碸","砺":"礪","砻":"礱","砾":"礫","础":"礎","硁":"硜","硕":"碩","硖":"硤","硗":"磽","硙":"磑","硚":"礄","确":"確","硷":"礆","碍":"礙","碛":"磧","碜":"磣","碱":"鹼","礴":"礡","礼":"禮","祃":"禡","祎":"禕","祢":"禰","祯":"禎","祷":"禱","祸":"禍","禀":"稟","禄":"祿","禅":"禪","离":"離","秃":"禿","秆":"稈","种":"種","积":"積","称":"稱","秽":"穢","秾":"穠","稆":"穭","税":"稅","稣":"穌","稳":"穩","穑":"穡","穷":"窮","窃":"竊","窍":"竅","窎":"窵","窑":"窯","窜":"竄","窝":"窩","窥":"窺","窦":"竇","窭":"窶","竖":"竪","竞":"競","笃":"篤","笋":"筍","笔":"筆","笕":"筧","笺":"箋","笼":"籠","笾":"籩","筑":"築","筚":"篳","筛":"篩","筜":"簹","筝":"箏","筹":"籌","筼":"篔","签":"簽","简":"簡","箓":"籙","箦":"簀","箧":"篋","箨":"籜","箩":"籮","箪":"簞","箫":"簫","篑":"簣","篓":"簍","篮":"籃","篯":"籛","篱":"籬","簖":"籪","籁":"籟","籴":"糴","类":"類","籼":"秈","粜":"糶","粝":"糲","粤":"粵","粪":"糞","粮":"糧","糁":"糝","糇":"餱","紧":"緊","絷":"縶","纟":"糹","纠":"糾","纡":"紆","红":"紅","纣":"紂","纤":"纖","纥":"紇","约":"約","级":"級","纨":"紈","纩":"纊","纪":"紀","纫":"紉","纬":"緯","纭":"紜","纮":"紘","纯":"純","纰":"紕","纱":"紗","纲":"綱","纳":"納","纴":"紝","纵":"縱","纶":"綸","纷":"紛","纸":"紙","纹":"紋","纺":"紡","纻":"紵","纼":"紖","纽":"紐","纾":"紓","线":"線","绀":"紺","绁":"紲","绂":"紱","练":"練","组":"組","绅":"紳","细":"細","织":"織","终":"終","绉":"縐","绊":"絆","绋":"紼","绌":"絀","绍":"紹","绎":"繹","经":"經","绐":"紿","绑":"綁","绒":"絨","结":"結","绔":"絝","绕":"繞","绖":"絰","绗":"絎","绘":"繪","给":"給","绚":"絢","绛":"絳","络":"絡","绝":"絕","绞":"絞","统":"統","绠":"綆","绡":"綃","绢":"絹","绣":"繡","绤":"綌","绥":"綏","绦":"縧","继":"繼","绨":"綈","绩":"績","绪":"緒","绫":"綾","绬":"緓","续":"續","绮":"綺","绯":"緋","绰":"綽","绱":"緔","绲":"緄","绳":"繩","维":"維","绵":"綿","绶":"綬","绷":"繃","绸":"綢","绹":"綯","绺":"綹","绻":"綣","综":"綜","绽":"綻","绾":"綰","绿":"綠","缀":"綴","缁":"緇","缂":"緙","缃":"緗","缄":"緘","缅":"緬","缆":"纜","缇":"緹","缈":"緲","缉":"緝","缊":"縕","缋":"繢","缌":"緦","缍":"綞","缎":"緞","缏":"緶","缐":"線","缑":"緱","缒":"縋","缓":"緩","缔":"締","缕":"縷","编":"編","缗":"緡","缘":"緣","缙":"縉","缚":"縛","缛":"縟","缜":"縝","缝":"縫","缞":"縗","缟":"縞","缠":"纏","缡":"縭","缢":"縊","缣":"縑","缤":"繽","缥":"縹","缦":"縵","缧":"縲","缨":"纓","缩":"縮","缪":"繆","缫":"繅","缬":"纈","缭":"繚","缮":"繕","缯":"繒","缰":"繮","缱":"繾","缲":"繰","缳":"繯","缴":"繳","缵":"纘","罂":"罌","网":"網","罗":"羅","罚":"罰","罢":"罷","罴":"羆","羁":"羈","羟":"羥","羡":"羨","翘":"翹","翙":"翽","翚":"翬","耢":"耮","耧":"耬","耸":"聳","耻":"恥","聂":"聶","聋":"聾","职":"職","聍":"聹","联":"聯","聩":"聵","聪":"聰","肃":"肅","肠":"腸","肤":"膚","肮":"骯","肾":"腎","肿":"腫","胀":"脹","胁":"脅","胆":"膽","胜":"勝","胧":"朧","胨":"腖","胪":"臚","胫":"脛","胶":"膠","脉":"脈","脍":"膾","脏":"髒","脐":"臍","脑":"腦","脓":"膿","脔":"臠","脚":"腳","脱":"脫","脶":"腡","脸":"臉","腊":"臘","腌":"醃","腘":"膕","腭":"齶","腻":"膩","腽":"膃","腾":"騰","膑":"臏","膻":"羶","臜":"臢","舆":"輿","舍":"捨","舣":"艤","舰":"艦","舱":"艙","舻":"艫","艰":"艱","艳":"艷","艺":"藝","节":"節","芈":"羋","芗":"薌","芜":"蕪","芦":"蘆","苁":"蓯","苇":"葦","苈":"藶","苋":"莧","苌":"萇","苍":"蒼","苎":"苧","苏":"蘇","苧":"薴","苹":"蘋","范":"範","茎":"莖","茏":"蘢","茑":"蔦","茔":"塋","茕":"煢","茧":"繭","荆":"荊","荐":"薦","荙":"薘","荚":"莢","荛":"蕘","荜":"蓽","荞":"蕎","荟":"薈","荠":"薺","荡":"蕩","荣":"榮","荤":"葷","荥":"滎","荦":"犖","荧":"熒","荨":"蕁","荩":"藎","荪":"蓀","荫":"蔭","荬":"蕒","荭":"葒","荮":"葤","药":"藥","莅":"蒞","莱":"萊","莲":"蓮","莳":"蒔","莴":"萵","莶":"薟","获":"獲","莸":"蕕","莹":"瑩","莺":"鶯","莼":"蒓","萚":"蘀","萝":"蘿","萤":"螢","营":"營","萦":"縈","萧":"蕭","萨":"薩","葱":"蔥","蒇":"蕆","蒉":"蕢","蒋":"蔣","蒌":"蔞","蓝":"藍","蓟":"薊","蓠":"蘺","蓣":"蕷","蓥":"鎣","蓦":"驀","蔂":"虆","蔷":"薔","蔹":"蘞","蔺":"藺","蔼":"藹","蕰":"薀","蕲":"蘄","蕴":"蘊","薮":"藪","藓":"蘚","蘖":"櫱","虏":"虜","虑":"慮","虚":"虛","虫":"蟲","虬":"虯","虮":"蟣","虱":"蝨","虽":"雖","虾":"蝦","虿":"蠆","蚀":"蝕","蚁":"蟻","蚂":"螞","蚕":"蠶","蚝":"蠔","蚬":"蜆","蛊":"蠱","蛎":"蠣","蛏":"蟶","蛮":"蠻","蛰":"蟄","蛱":"蛺","蛲":"蟯","蛳":"螄","蛴":"蠐","蜕":"蛻","蜗":"蝸","蜡":"蠟","蝇":"蠅","蝈":"蟈","蝉":"蟬","蝎":"蠍","蝼":"螻","蝾":"蠑","螀":"螿","螨":"蟎","蟏":"蠨","衅":"釁","衔":"銜","补":"補","衬":"襯","衮":"袞","袄":"襖","袅":"裊","袆":"褘","袜":"襪","袭":"襲","袯":"襏","装":"裝","裆":"襠","裈":"褌","裢":"褳","裣":"襝","裤":"褲","裥":"襇","褛":"褸","褴":"襤","襕":"襴","见":"見","观":"觀","觃":"覎","规":"規","觅":"覓","视":"視","觇":"覘","览":"覽","觉":"覺","觊":"覬","觋":"覡","觌":"覿","觍":"覥","觎":"覦","觏":"覯","觐":"覲","觑":"覷","觞":"觴","触":"觸","觯":"觶","訚":"誾","詟":"讋","誉":"譽","誊":"謄","讠":"訁","计":"計","订":"訂","讣":"訃","认":"認","讥":"譏","讦":"訐","讧":"訌","讨":"討","让":"讓","讪":"訕","讫":"訖","讬":"託","训":"訓","议":"議","讯":"訊","记":"記","讱":"訒","讲":"講","讳":"諱","讴":"謳","讵":"詎","讶":"訝","讷":"訥","许":"許","讹":"訛","论":"論","讻":"訩","讼":"訟","讽":"諷","设":"設","访":"訪","诀":"訣","证":"證","诂":"詁","诃":"訶","评":"評","诅":"詛","识":"識","诇":"詗","诈":"詐","诉":"訴","诊":"診","诋":"詆","诌":"謅","词":"詞","诎":"詘","诏":"詔","诐":"詖","译":"譯","诒":"詒","诓":"誆","诔":"誄","试":"試","诖":"詿","诗":"詩","诘":"詰","诙":"詼","诚":"誠","诛":"誅","诜":"詵","话":"話","诞":"誕","诟":"詬","诠":"詮","诡":"詭","询":"詢","诣":"詣","诤":"諍","该":"該","详":"詳","诧":"詫","诨":"諢","诩":"詡","诪":"譸","诫":"誡","诬":"誣","语":"語","诮":"誚","误":"誤","诰":"誥","诱":"誘","诲":"誨","诳":"誑","说":"說","诵":"誦","诶":"誒","请":"請","诸":"諸","诹":"諏","诺":"諾","读":"讀","诼":"諑","诽":"誹","课":"課","诿":"諉","谀":"諛","谁":"誰","谂":"諗","调":"調","谄":"諂","谅":"諒","谆":"諄","谇":"誶","谈":"談","谊":"誼","谋":"謀","谌":"諶","谍":"諜","谎":"謊","谏":"諫","谐":"諧","谑":"謔","谒":"謁","谓":"謂","谔":"諤","谕":"諭","谖":"諼","谗":"讒","谘":"諮","谙":"諳","谚":"諺","谛":"諦","谜":"謎","谝":"諞","谞":"諝","谟":"謨","谠":"讜","谡":"謖","谢":"謝","谣":"謠","谤":"謗","谥":"謚","谦":"謙","谧":"謐","谨":"謹","谩":"謾","谪":"謫","谫":"謭","谬":"謬","谭":"譚","谮":"譖","谯":"譙","谰":"讕","谱":"譜","谲":"譎","谳":"讞","谴":"譴","谵":"譫","谶":"讖","豮":"豶","贝":"貝","贞":"貞","负":"負","贠":"貟","贡":"貢","财":"財","责":"責","贤":"賢","败":"敗","账":"帳","货":"貨","质":"質","贩":"販","贪":"貪","贫":"貧","贬":"貶","购":"購","贮":"貯","贯":"貫","贰":"貳","贱":"賤","贲":"賁","贳":"貰","贴":"貼","贵":"貴","贶":"貺","贷":"貸","贸":"貿","费":"費","贺":"賀","贻":"貽","贼":"賊","贽":"贄","贾":"賈","贿":"賄","赀":"貲","赁":"賃","赂":"賂","赃":"贓","资":"資","赅":"賅","赆":"贐","赇":"賕","赈":"賑","赉":"賚","赊":"賒","赋":"賦","赌":"賭","赍":"賫","赎":"贖","赏":"賞","赐":"賜","赑":"贔","赒":"賙","赓":"賡","赔":"賠","赕":"賧","赖":"賴","赗":"賵","赘":"贅","赙":"賻","赚":"賺","赛":"賽","赜":"賾","赝":"贋","赞":"贊","赟":"贇","赠":"贈","赡":"贍","赢":"贏","赣":"贛","赪":"赬","赵":"趙","赶":"趕","趋":"趨","趱":"趲","趸":"躉","跃":"躍","跄":"蹌","跞":"躒","践":"踐","跶":"躂","跷":"蹺","跸":"蹕","跹":"躚","跻":"躋","踊":"踴","踌":"躊","踪":"蹤","踬":"躓","踯":"躑","蹑":"躡","蹒":"蹣","蹰":"躕","蹿":"躥","躏":"躪","躜":"躦","躯":"軀","车":"車","轧":"軋","轨":"軌","轩":"軒","轪":"軑","轫":"軔","转":"轉","轭":"軛","轮":"輪","软":"軟","轰":"轟","轱":"軲","轲":"軻","轳":"轤","轴":"軸","轵":"軹","轶":"軼","轷":"軤","轸":"軫","轹":"轢","轺":"軺","轻":"輕","轼":"軾","载":"載","轾":"輊","轿":"轎","辀":"輈","辁":"輇","辂":"輅","较":"較","辄":"輒","辅":"輔","辆":"輛","辇":"輦","辈":"輩","辉":"輝","辊":"輥","辋":"輞","辌":"輬","辍":"輟","辎":"輜","辏":"輳","辐":"輻","辑":"輯","辒":"轀","输":"輸","辔":"轡","辕":"轅","辖":"轄","辗":"輾","辘":"轆","辙":"轍","辚":"轔","辞":"辭","辩":"辯","辫":"辮","边":"邊","辽":"遼","达":"達","迁":"遷","过":"過","迈":"邁","运":"運","还":"還","这":"這","进":"進","远":"遠","违":"違","连":"連","迟":"遲","迩":"邇","迳":"逕","迹":"跡","适":"適","选":"選","逊":"遜","递":"遞","逦":"邐","逻":"邏","遗":"遺","遥":"遙","邓":"鄧","邝":"鄺","邬":"鄔","邮":"郵","邹":"鄒","邺":"鄴","邻":"鄰","郏":"郟","郐":"鄶","郑":"鄭","郓":"鄆","郦":"酈","郧":"鄖","郸":"鄲","酂":"酇","酝":"醖","酦":"醱","酱":"醬","酽":"釅","酾":"釃","酿":"釀","采":"採","释":"釋","鉴":"鑒","銮":"鑾","錾":"鏨","钅":"釒","钆":"釓","钇":"釔","针":"針","钉":"釘","钊":"釗","钋":"釙","钌":"釕","钍":"釷","钎":"釺","钏":"釧","钐":"釤","钑":"鈒","钒":"釩","钓":"釣","钔":"鍆","钕":"釹","钖":"鍚","钗":"釵","钘":"鈃","钙":"鈣","钚":"鈈","钛":"鈦","钜":"鉅","钝":"鈍","钞":"鈔","钟":"鐘","钠":"鈉","钡":"鋇","钢":"鋼","钣":"鈑","钤":"鈐","钥":"鑰","钦":"欽","钧":"鈞","钨":"鎢","钩":"鈎","钪":"鈧","钫":"鈁","钬":"鈥","钭":"鈄","钮":"鈕","钯":"鈀","钰":"鈺","钱":"錢","钲":"鉦","钳":"鉗","钴":"鈷","钵":"鉢","钶":"鈳","钷":"鉕","钸":"鈽","钹":"鈸","钺":"鉞","钻":"鑽","钼":"鉬","钽":"鉭","钾":"鉀","钿":"鈿","铀":"鈾","铁":"鐵","铂":"鉑","铃":"鈴","铄":"鑠","铅":"鉛","铆":"鉚","铇":"鉋","铈":"鈰","铉":"鉉","铊":"鉈","铋":"鉍","铌":"鈮","铍":"鈹","铎":"鐸","铏":"鉶","铐":"銬","铑":"銠","铒":"鉺","铓":"鋩","铔":"錏","铕":"銪","铖":"鋮","铗":"鋏","铘":"鋣","铙":"鐃","铚":"銍","铛":"鐺","铜":"銅","铝":"鋁","铞":"銱","铟":"銦","铠":"鎧","铡":"鍘","铢":"銖","铣":"銑","铤":"鋌","铥":"銩","铦":"銛","铧":"鏵","铨":"銓","铩":"鎩","铪":"鉿","铫":"銚","铬":"鉻","铭":"銘","铮":"錚","铯":"銫","铰":"鉸","铱":"銥","铲":"鏟","铳":"銃","铴":"鐋","铵":"銨","银":"銀","铷":"銣","铸":"鑄","铹":"鐒","铺":"鋪","铻":"鋙","铼":"錸","铽":"鋱","链":"鏈","铿":"鏗","销":"銷","锁":"鎖","锂":"鋰","锃":"鋥","锄":"鋤","锅":"鍋","锆":"鋯","锇":"鋨","锈":"鏽","锉":"銼","锊":"鋝","锋":"鋒","锌":"鋅","锍":"鋶","锎":"鐦","锏":"鐧","锐":"銳","锑":"銻","锒":"鋃","锓":"鋟","锔":"鋦","锕":"錒","锖":"錆","锗":"鍺","锘":"鍩","错":"錯","锚":"錨","锛":"錛","锜":"錡","锝":"鍀","锞":"錁","锟":"錕","锠":"錩","锡":"錫","锢":"錮","锣":"鑼","锤":"錘","锥":"錐","锦":"錦","锧":"鑕","锨":"鍁","锩":"錈","锪":"鍃","锫":"錇","锬":"錟","锭":"錠","键":"鍵","锯":"鋸","锰":"錳","锱":"錙","锲":"鍥","锳":"鍈","锴":"鍇","锵":"鏘","锶":"鍶","锷":"鍔","锸":"鍤","锹":"鍬","锺":"鍾","锻":"鍛","锼":"鎪","锽":"鍠","锾":"鍰","锿":"鎄","镀":"鍍","镁":"鎂","镂":"鏤","镃":"鎡","镄":"鐨","镅":"鎇","镆":"鏌","镇":"鎮","镈":"鎛","镉":"鎘","镊":"鑷","镋":"鎲","镌":"鐫","镍":"鎳","镎":"鎿","镏":"鎦","镐":"鎬","镑":"鎊","镒":"鎰","镓":"鎵","镔":"鑌","镕":"鎔","镖":"鏢","镗":"鏜","镘":"鏝","镙":"鏍","镚":"鏰","镛":"鏞","镜":"鏡","镝":"鏑","镞":"鏃","镟":"鏇","镠":"鏐","镡":"鐔","镢":"鐝","镣":"鐐","镤":"鏷","镥":"鑥","镦":"鐓","镧":"鑭","镨":"鐠","镩":"鑹","镪":"鏹","镫":"鐙","镬":"鑊","镭":"鐳","镮":"鐶","镯":"鐲","镰":"鐮","镱":"鐿","镲":"鑔","镳":"鑣","镴":"鑞","镵":"鑱","镶":"鑲","长":"長","门":"門","闩":"閂","闪":"閃","闫":"閆","闬":"閈","闭":"閉","问":"問","闯":"闖","闰":"閏","闱":"闈","闲":"閒","闳":"閎","间":"間","闵":"閔","闶":"閌","闷":"悶","闸":"閘","闹":"鬧","闺":"閨","闻":"聞","闼":"闥","闽":"閩","闾":"閭","闿":"闓","阀":"閥","阁":"閣","阂":"閡","阃":"閫","阄":"鬮","阅":"閱","阆":"閬","阇":"闍","阈":"閾","阉":"閹","阊":"閶","阋":"鬩","阌":"閿","阍":"閽","阎":"閻","阏":"閼","阐":"闡","阑":"闌","阒":"闃","阓":"闠","阔":"闊","阕":"闋","阖":"闔","阗":"闐","阘":"闒","阙":"闕","阚":"闞","阛":"闤","队":"隊","阳":"陽","阴":"陰","阵":"陣","阶":"階","际":"際","陆":"陸","陇":"隴","陈":"陳","陉":"陘","陕":"陝","陧":"隉","陨":"隕","险":"險","随":"隨","隐":"隱","隶":"隸","隽":"雋","难":"難","雏":"雛","雠":"讎","雳":"靂","雾":"霧","霁":"霽","霡":"霢","霭":"靄","靓":"靚","静":"靜","靥":"靨","鞑":"韃","鞒":"鞽","鞯":"韉","韦":"韋","韧":"韌","韨":"韍","韩":"韓","韪":"韙","韫":"韞","韬":"韜","韵":"韻","页":"頁","顶":"頂","顷":"頃","顸":"頇","项":"項","顺":"順","须":"須","顼":"頊","顽":"頑","顾":"顧","顿":"頓","颀":"頎","颁":"頒","颂":"頌","颃":"頏","预":"預","颅":"顱","领":"領","颇":"頗","颈":"頸","颉":"頡","颊":"頰","颋":"頲","颌":"頜","颍":"潁","颎":"熲","颏":"頦","颐":"頤","频":"頻","颒":"頮","颓":"頹","颔":"頷","颕":"頴","颖":"穎","颗":"顆","题":"題","颙":"顒","颚":"顎","颛":"顓","颜":"顏","额":"額","颞":"顳","颟":"顢","颠":"顛","颡":"顙","颢":"顥","颤":"顫","颥":"顬","颦":"顰","颧":"顴","风":"風","飏":"颺","飐":"颭","飑":"颮","飒":"颯","飓":"颶","飔":"颸","飕":"颼","飖":"颻","飗":"飀","飘":"飄","飙":"飆","飚":"飈","飞":"飛","飨":"饗","餍":"饜","饣":"飠","饤":"飣","饥":"飢","饦":"飥","饧":"餳","饨":"飩","饩":"餼","饪":"飪","饫":"飫","饬":"飭","饭":"飯","饮":"飲","饯":"餞","饰":"飾","饱":"飽","饲":"飼","饳":"飿","饴":"飴","饵":"餌","饶":"饒","饷":"餉","饸":"餄","饹":"餎","饺":"餃","饻":"餏","饼":"餅","饽":"餑","饾":"餖","饿":"餓","馀":"餘","馁":"餒","馂":"餕","馃":"餜","馄":"餛","馅":"餡","馆":"館","馇":"餷","馈":"饋","馉":"餶","馊":"餿","馋":"饞","馌":"饁","馍":"饃","馎":"餺","馏":"餾","馐":"饈","馑":"饉","馒":"饅","馓":"饊","馔":"饌","馕":"饢","马":"馬","驭":"馭","驮":"馱","驯":"馴","驰":"馳","驱":"驅","驲":"馹","驳":"駁","驴":"驢","驵":"駔","驶":"駛","驷":"駟","驸":"駙","驹":"駒","驺":"騶","驻":"駐","驼":"駝","驽":"駑","驾":"駕","驿":"驛","骀":"駘","骁":"驍","骂":"罵","骃":"駰","骄":"驕","骅":"驊","骆":"駱","骇":"駭","骈":"駢","骉":"驫","骊":"驪","骋":"騁","验":"驗","骍":"騂","骎":"駸","骏":"駿","骐":"騏","骑":"騎","骒":"騍","骓":"騅","骔":"騌","骕":"驌","骖":"驂","骗":"騙","骘":"騭","骙":"騤","骚":"騷","骛":"騖","骜":"驁","骝":"騮","骞":"騫","骟":"騸","骠":"驃","骡":"騾","骢":"驄","骣":"驏","骤":"驟","骥":"驥","骦":"驦","骧":"驤","髅":"髏","髋":"髖","髌":"髕","鬓":"鬢","鬶":"鬹","魇":"魘","魉":"魎","鱼":"魚","鱽":"魛","鱾":"魢","鱿":"魷","鲀":"魨","鲁":"魯","鲂":"魴","鲃":"䰾","鲄":"魺","鲅":"鮁","鲆":"鮃","鲇":"鮎","鲈":"鱸","鲉":"鮋","鲊":"鮓","鲋":"鮒","鲌":"鮊","鲍":"鮑","鲎":"鱟","鲏":"鮍","鲐":"鮐","鲑":"鮭","鲒":"鮚","鲓":"鮳","鲔":"鮪","鲕":"鮞","鲖":"鮦","鲗":"鰂","鲘":"鮜","鲙":"鱠","鲚":"鱭","鲛":"鮫","鲜":"鮮","鲝":"鮺","鲞":"鮝","鲟":"鱘","鲠":"鯁","鲡":"鱺","鲢":"鰱","鲣":"鰹","鲤":"鯉","鲥":"鰣","鲦":"鰷","鲧":"鯀","鲨":"鯊","鲩":"鯇","鲪":"鮶","鲫":"鯽","鲬":"鯒","鲭":"鯖","鲮":"鯪","鲯":"鯕","鲰":"鯫","鲱":"鯡","鲲":"鯤","鲳":"鯧","鲴":"鯝","鲵":"鯢","鲶":"鯰","鲷":"鯛","鲸":"鯨","鲹":"鰺","鲺":"鯴","鲻":"鯔","鲼":"鱝","鲽":"鰈","鲾":"鰏","鲿":"鱨","鳀":"鯷","鳁":"鰮","鳂":"鰃","鳃":"鰓","鳄":"鰐","鳅":"鰍","鳆":"鰒","鳇":"鰉","鳈":"鰁","鳉":"鱂","鳊":"鯿","鳋":"鰠","鳌":"鰲","鳍":"鰭","鳎":"鰨","鳏":"鰥","鳐":"鰩","鳑":"鰟","鳒":"鰜","鳓":"鰳","鳔":"鰾","鳕":"鱈","鳖":"鱉","鳗":"鰻","鳘":"鰵","鳙":"鱅","鳚":"䲁","鳛":"鰼","鳜":"鱖","鳝":"鱔","鳞":"鱗","鳟":"鱒","鳠":"鱯","鳡":"鱤","鳢":"鱧","鳣":"鱣","鳤":"䲘","鸟":"鳥","鸠":"鳩","鸡":"雞","鸢":"鳶","鸣":"鳴","鸤":"鳲","鸥":"鷗","鸦":"鴉","鸧":"鶬","鸨":"鴇","鸩":"鴆","鸪":"鴣","鸫":"鶇","鸬":"鸕","鸭":"鴨","鸮":"鴞","鸯":"鴦","鸰":"鴒","鸱":"鴟","鸲":"鴝","鸳":"鴛","鸴":"鷽","鸵":"鴕","鸶":"鷥","鸷":"鷙","鸸":"鴯","鸹":"鴰","鸺":"鵂","鸻":"鴴","鸼":"鵃","鸽":"鴿","鸾":"鸞","鸿":"鴻","鹀":"鵐","鹁":"鵓","鹂":"鸝","鹃":"鵑","鹄":"鵠","鹅":"鵝","鹆":"鵒","鹇":"鷳","鹈":"鵜","鹉":"鵡","鹊":"鵲","鹋":"鶓","鹌":"鵪","鹍":"鵾","鹎":"鵯","鹏":"鵬","鹐":"鵮","鹑":"鶉","鹒":"鶊","鹓":"鵷","鹔":"鷫","鹕":"鶘","鹖":"鶡","鹗":"鶚","鹘":"鶻","鹙":"鶖","鹚":"鷀","鹛":"鶥","鹜":"鶩","鹝":"鷊","鹞":"鷂","鹟":"鶲","鹠":"鶹","鹡":"鶺","鹢":"鷁","鹣":"鶼","鹤":"鶴","鹥":"鷖","鹦":"鸚","鹧":"鷓","鹨":"鷚","鹩":"鷯","鹪":"鷦","鹫":"鷲","鹬":"鷸","鹭":"鷺","鹮":"䴉","鹯":"鸇","鹰":"鷹","鹱":"鸌","鹲":"鸏","鹳":"鸛","鹴":"鸘","鹾":"鹺","麦":"麥","麸":"麩","麹":"麴","黄":"黃","黉":"黌","黡":"黶","黩":"黷","黪":"黲","黾":"黽","鼋":"黿","鼍":"鼉","鼗":"鞀","鼹":"鼴","齐":"齊","齑":"齏","齿":"齒","龀":"齔","龁":"齕","龂":"齗","龃":"齟","龄":"齡","龅":"齙","龆":"齠","龇":"齜","龈":"齦","龉":"齬","龊":"齪","龋":"齲","龌":"齷","龙":"龍","龚":"龔","龛":"龕","龟":"龜","鿎":"䃮","鿏":"䥑","鿔":"鎶","鿭":"鉨"};
+
+  const PHRASE_KEYS = Object.keys(PHRASE_MAP).sort((a, b) => b.length - a.length);
+  const PHRASE_RE = new RegExp(
+    PHRASE_KEYS.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'),
+    'g'
+  );
+  const HAS_CONVERTIBLE_RE = /[\u4e00-\u9fff“”‘’]/;
+  const CACHE_MAX = 8000;
+  const convertCache = typeof Map !== 'undefined' ? new Map() : null;
+
+  function convertChars(segment) {
+    let out = '';
+    let changed = false;
+    for (let i = 0; i < segment.length; i++) {
+      const ch = segment[i];
+      const mapped = CHAR_MAP[ch];
+      if (mapped !== undefined) {
+        out += mapped;
+        changed = true;
+      } else {
+        out += ch;
+      }
+    }
+    return changed ? out : segment;
+  }
+
+  function convertZhCNToZhTW(input) {
+    if (typeof input !== 'string' || !input) return input;
+    if (!HAS_CONVERTIBLE_RE.test(input)) return input;
+    if (convertCache && convertCache.has(input)) {
+      return convertCache.get(input);
+    }
+
+    let result = '';
+    let lastIndex = 0;
+    PHRASE_RE.lastIndex = 0;
+    let match;
+    while ((match = PHRASE_RE.exec(input)) !== null) {
+      if (match.index > lastIndex) {
+        result += convertChars(input.slice(lastIndex, match.index));
+      }
+      result += PHRASE_MAP[match[0]];
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < input.length) {
+      result += convertChars(input.slice(lastIndex));
+    }
+    if (result.includes('Agent')) {
+      result = result
+        .replace(/([\u4e00-\u9fff])Agent/g, '$1 Agent')
+        .replace(/Agent([\u4e00-\u9fff])/g, 'Agent $1');
+    }
+
+    if (convertCache) {
+      if (convertCache.size >= CACHE_MAX) {
+        const firstKey = convertCache.keys().next().value;
+        if (firstKey !== undefined) convertCache.delete(firstKey);
+      }
+      convertCache.set(input, result);
+    }
+    return result;
+  }
+
+  if (root) {
+    root.__AG_ZH_TW_CONVERT__ = convertZhCNToZhTW;
+  }
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { convertZhCNToZhTW, PHRASE_MAP, CHAR_MAP };
+  }
+})(typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : null));
 // =========================================================================
   // 模块 5: 统一设置面板、配置项无损迁移、终端与 CLI 启动、多语言注册表
   // =========================================================================
@@ -11858,6 +12635,7 @@ function positionHeatPopover(anchorX, anchorY) {
   let uiLangDropdown = null;
   let uiCliModelDropdown = null;
   let uiCliMuxHostDropdown = null;
+  let uiBaseCurrencyDropdown = null;
 
   const SUITE_EN_UI_DICT = {
     'Antigravity Suite 统一设置': 'Antigravity Suite Settings',
@@ -11869,6 +12647,7 @@ function positionHeatPopover(anchorX, anchorY) {
     '⚡ 对话与效率': '⚡ Chat & Efficiency',
     '🧰 终端与网络': '🧰 Terminal & Network',
     '📊 套餐与订阅': '📊 Plan & Subscription',
+    '基准换算币种：': 'Reference Currency:',
     '语言与明暗外观': 'Language & Appearance',
     '桌面功能显示开关': 'Desktop Feature Toggles',
     '对话自动化与安全策略': 'Chat Automation & Safety',
@@ -12315,9 +13094,49 @@ function positionHeatPopover(anchorX, anchorY) {
     [/^检测代理设置(?:失败|异常):\s*([\s\S]+)$/, (_, d) => `Failed to inspect proxy settings: ${d}`]
   ];
 
+  const convertSuiteToZhTW = (raw) => {
+    const fn = (typeof globalThis !== 'undefined' && typeof globalThis.__AG_ZH_TW_CONVERT__ === 'function')
+      ? globalThis.__AG_ZH_TW_CONVERT__
+      : ((typeof window !== 'undefined' && typeof window.__AG_ZH_TW_CONVERT__ === 'function') ? window.__AG_ZH_TW_CONVERT__ : null);
+    return fn ? fn(raw) : raw;
+  };
+
+  const SUITE_ZH_TW_UI_DICT = {
+    'Antigravity Suite 统一设置': 'Antigravity Suite 統一設定',
+    '套件统一设置': '套件統一設定',
+    '关闭设置': '關閉設定',
+    '设置分类': '設定分類',
+    '🌐 语言与外观': '🌐 語言與外觀',
+    '📱 远程设置': '📱 遠端設定',
+    '⚡ 对话与效率': '⚡ 對話與效率',
+    '🧰 终端与网络': '🧰 終端機與網路',
+    '📊 套餐与订阅': '📊 方案與訂閱',
+    '语言与明暗外观': '語言與明暗外觀',
+    '面板深浅外观': '面板深淺外觀',
+    '跟随客户端': '跟隨用戶端',
+    '桌面功能显示开关': '桌面功能顯示開關',
+    '对话自动化与安全策略': '對話自動化與安全策略',
+    '自定义强调色与顶栏分项配色': '自訂強調色與頂部列分項配色',
+    'macOS Dock 未读与状态提醒': 'macOS Dock 未讀與狀態提醒',
+    '选项名保留英文': '選項名保留英文',
+    '模式与档位名保留英文': '模式與等級名保留英文',
+    '5 档色阶预设：': '5 級色階預設：',
+    '恢复 5 档预设': '恢復 5 級預設',
+    '累计处理 Token': '累計處理 Token',
+    '总计': '總計',
+    '今日使用': '今日使用',
+    '今日': '今日',
+    '本月使用': '本月使用',
+    '本月': '本月',
+    '年度使用': '年度使用',
+    '本年': '本年',
+    '无限': '無限'
+  };
+
   const SUITE_SUPPORTED_LOCALES = [
-    { code: 'zh-CN', hansCode: 'zh', capsuleLang: 'zh', label: '简体中文 · Simplified Chinese', uiDict: null, uiPatterns: null },
-    { code: 'en', hansCode: 'en', capsuleLang: 'en', label: 'English · 英文原版', uiDict: SUITE_EN_UI_DICT, uiPatterns: SUITE_EN_UI_PATTERNS }
+    { code: 'zh-TW', hansCode: 'zh-TW', capsuleLang: 'zh-TW', label: '繁體中文 · Traditional Chinese', uiDict: SUITE_ZH_TW_UI_DICT, uiPatterns: null, uiTransform: convertSuiteToZhTW },
+    { code: 'zh-CN', hansCode: 'zh', capsuleLang: 'zh', label: '简体中文 · Simplified Chinese', uiDict: null, uiPatterns: null, uiTransform: null },
+    { code: 'en', hansCode: 'en', capsuleLang: 'en', label: 'English · 英文原版', uiDict: SUITE_EN_UI_DICT, uiPatterns: SUITE_EN_UI_PATTERNS, uiTransform: null }
   ];
 
   let suiteTerminalState = {
@@ -12339,8 +13158,8 @@ function positionHeatPopover(anchorX, anchorY) {
     dockBadgeStyle: 'capsule',
     dockBadgeColorTier: true,
     dockBadgeAutoClear: true,
-    locale: 'zh-CN',
-    capsuleLang: 'zh',
+    locale: 'zh-TW',
+    capsuleLang: 'zh-TW',
     englishLabels: false
   };
   const DEFAULT_SUITE_FEATURE_FLAGS = {
@@ -12949,7 +13768,9 @@ function positionHeatPopover(anchorX, anchorY) {
 
   function suiteTr(zh, en) {
     const entry = findSupportedLocaleEntry(suiteEnhancerPrefs.locale);
-    return entry.hansCode === 'en' ? en : zh;
+    if (entry.hansCode === 'en') return en;
+    if (entry.code === 'zh-TW') return convertSuiteToZhTW(zh);
+    return zh;
   }
 
   function onSuiteSettingsClosed() {
@@ -12972,6 +13793,9 @@ function positionHeatPopover(anchorX, anchorY) {
     const lower = clean.toLowerCase();
     const exact = SUITE_SUPPORTED_LOCALES.find(item => item.code.toLowerCase() === lower);
     if (exact) return exact;
+    if (lower === 'zh-tw' || lower === 'zh-hant' || lower === 'zh-hk' || lower === 'tw' || lower.startsWith('zh-tw-') || lower.startsWith('zh-hant-')) {
+      return SUITE_SUPPORTED_LOCALES.find(item => item.code === 'zh-TW') || SUITE_SUPPORTED_LOCALES[0];
+    }
     if (lower === 'zh' || lower === 'zh-hans' || lower === 'cn') {
       return SUITE_SUPPORTED_LOCALES.find(item => item.code === 'zh-CN') || SUITE_SUPPORTED_LOCALES[0];
     }
@@ -13058,6 +13882,7 @@ function positionHeatPopover(anchorX, anchorY) {
     try { uiCliModelDropdown = enhanceCustomSelect('set-cli-model-select'); } catch {}
     try { uiCliMuxHostDropdown = enhanceCustomSelect('set-cli-mux-host-select'); } catch {}
     try { uiLangDropdown = enhanceCustomSelect('set-ui-language-select'); } catch {}
+    try { uiBaseCurrencyDropdown = enhanceCustomSelect('set-base-currency-select'); } catch {}
   }
 
   function transplantConfigControlsOnce() {
@@ -13148,9 +13973,18 @@ function positionHeatPopover(anchorX, anchorY) {
       poolsEl.textContent = qpd ? `${qpd.promptPoolText} · ${qpd.flowPoolText}` : '按当前套餐配额执行';
     }
     if (priceEl) {
-      const valText = el('plan-summary-price-val')?.textContent || '';
-      const cnyText = el('plan-summary-price-cny')?.textContent || '';
-      priceEl.textContent = valText ? `${valText} ${cnyText}`.trim() : '--';
+      if (typeof lastBadgePriceState !== 'undefined' && lastBadgePriceState && lastBadgePriceState.symbol !== undefined) {
+        const numStr = (lastBadgePriceState.num !== null && lastBadgePriceState.num !== undefined && lastBadgePriceState.symbol !== '$99.99~199.99')
+          ? (Number(lastBadgePriceState.num) % 1 === 0 ? String(Number(lastBadgePriceState.num)) : Number(lastBadgePriceState.num).toFixed(2))
+          : '';
+        const valText = `${lastBadgePriceState.symbol}${numStr}${lastBadgePriceState.cycle || ''}`;
+        const cnyText = lastBadgePriceState.cnyText || '';
+        priceEl.textContent = valText ? `${valText} ${cnyText}`.trim() : '--';
+      } else {
+        const valText = el('plan-summary-price-val')?.textContent || '';
+        const cnyText = el('plan-summary-price-cny')?.textContent || '';
+        priceEl.textContent = valText ? `${valText} ${cnyText}`.trim() : '--';
+      }
     }
     const isUltraPlan = ps.tierKey === 'ultra' || Boolean(ps.ultraSubTier);
     const subDt = el('settings-subtier-dt');
@@ -13158,6 +13992,12 @@ function positionHeatPopover(anchorX, anchorY) {
     if (subDt && subDd) {
       subDt.style.display = isUltraPlan ? 'block' : 'none';
       subDd.style.display = isUltraPlan ? 'flex' : 'none';
+    }
+    const baseCurSel = el('set-base-currency-select');
+    if (baseCurSel && typeof getActiveBaseCurrency === 'function') {
+      const activeBase = getActiveBaseCurrency();
+      if (baseCurSel.value !== activeBase) baseCurSel.value = activeBase;
+      try { uiBaseCurrencyDropdown?.refresh?.(); } catch {}
     }
     syncCliOptionControls();
   }
@@ -13170,8 +14010,9 @@ function positionHeatPopover(anchorX, anchorY) {
 
   function dispatchSuitePrefsChanged() {
     const curEntry = findSupportedLocaleEntry(suiteEnhancerPrefs.locale);
-    const activeLocale = suiteEnhancerPrefs.locale || 'zh-CN';
-    const hansLangVal = curEntry.hansCode === 'en' ? 'en' : 'zh';
+    const activeLocale = suiteEnhancerPrefs.locale || 'zh-TW';
+    const hansLangVal = curEntry.hansCode === 'en' ? 'en' : (curEntry.hansCode === 'zh-TW' ? 'zh-TW' : 'zh');
+    const capsuleLangVal = curEntry.capsuleLang === 'en' ? 'en' : (curEntry.capsuleLang === 'zh-TW' ? 'zh-TW' : 'zh');
     try {
       if (typeof document !== 'undefined' && document.documentElement?.setAttribute) {
         document.documentElement.setAttribute('data-ag-suite-locale', activeLocale);
@@ -13193,7 +14034,7 @@ function positionHeatPopover(anchorX, anchorY) {
       localStorage?.setItem?.('ag_suite_dock_badge_color_tier', suiteEnhancerPrefs.dockBadgeColorTier !== false ? 'true' : 'false');
       localStorage?.setItem?.('ag_suite_dock_badge_autoclear', suiteEnhancerPrefs.dockBadgeAutoClear !== false ? 'true' : 'false');
       localStorage?.setItem?.('ag_suite_locale', activeLocale);
-      localStorage?.setItem?.('__agy_ctx_lang__', curEntry.capsuleLang === 'en' ? 'en' : 'zh');
+      localStorage?.setItem?.('__agy_ctx_lang__', capsuleLangVal);
       localStorage?.setItem?.('antigravityHansLang', hansLangVal);
       localStorage?.setItem?.('antigravityHansEnglishLabels', suiteEnhancerPrefs.englishLabels ? '1' : '0');
       localStorage?.setItem?.('ag_suite_feature_flags', JSON.stringify(suiteFeatureFlags));
@@ -13242,7 +14083,7 @@ function positionHeatPopover(anchorX, anchorY) {
   let suiteTranslateApplying = false;
   let suiteTranslatePending = false;
 
-  function translateSuiteString(raw, dict, patternsList) {
+  function translateSuiteString(raw, dict, patternsList, transformFn) {
     if (!raw || typeof raw !== 'string') return raw;
     const trimmed = raw.trim();
     if (!trimmed) return raw;
@@ -13258,6 +14099,10 @@ function positionHeatPopover(anchorX, anchorY) {
           if (next !== trimmed) return lead + next + tail;
         }
       }
+    }
+    if (typeof transformFn === 'function') {
+      const next = transformFn(trimmed);
+      if (next && next !== trimmed) return lead + next + tail;
     }
     return raw;
   }
@@ -13308,13 +14153,13 @@ function positionHeatPopover(anchorX, anchorY) {
     visit(root);
   }
 
-  function translateShadowSubtreeLocale(root, dict, patternsList) {
+  function translateShadowSubtreeLocale(root, dict, patternsList, transformFn) {
     const visit = (node) => {
       if (!node || node.nodeType === 8) return;
       if (node.nodeType === 3) {
         if (isProtectedSuiteLocaleSubtree(node)) return;
         const cur = node.nodeValue !== undefined ? node.nodeValue : node.textContent;
-        const next = translateSuiteString(cur, dict, patternsList);
+        const next = translateSuiteString(cur, dict, patternsList, transformFn);
         if (next && next !== cur) {
           const prevRec = suiteTextOriginals.get(node);
           const orig = prevRec ? prevRec.orig : cur;
@@ -13329,7 +14174,7 @@ function positionHeatPopover(anchorX, anchorY) {
         const tag = String(node.tagName || '').toUpperCase();
         if ((!node.childNodes || node.childNodes.length === 0) && tag !== 'INPUT' && tag !== 'TEXTAREA' && node.textContent) {
           const curLeaf = node.textContent;
-          const nextLeaf = translateSuiteString(curLeaf, dict, patternsList);
+          const nextLeaf = translateSuiteString(curLeaf, dict, patternsList, transformFn);
           if (nextLeaf && nextLeaf !== curLeaf) {
             const prevLeaf = suiteLeafOriginals.get(node);
             suiteLeafOriginals.set(node, { orig: prevLeaf ? prevLeaf.orig : curLeaf, translated: nextLeaf });
@@ -13339,7 +14184,7 @@ function positionHeatPopover(anchorX, anchorY) {
         for (const attrName of ['title', 'placeholder', 'aria-label']) {
           const attrVal = node.getAttribute?.(attrName);
           if (!attrVal) continue;
-          const nextAttr = translateSuiteString(attrVal, dict, patternsList);
+          const nextAttr = translateSuiteString(attrVal, dict, patternsList, transformFn);
           if (nextAttr && nextAttr !== attrVal) {
             let map = suiteAttrOriginals.get(node);
             if (!map) suiteAttrOriginals.set(node, (map = new Map()));
@@ -13354,22 +14199,51 @@ function positionHeatPopover(anchorX, anchorY) {
     visit(root);
   }
 
+  let suiteShadowPendingRoots = new Set();
   function ensureSuiteShadowObserver(active) {
     if (!active) {
       if (suiteShadowObserver) {
         try { suiteShadowObserver.disconnect(); } catch {}
       }
+      suiteShadowPendingRoots.clear();
       return;
     }
     if (typeof MutationObserver !== 'function') return;
     if (!suiteShadowObserver) {
-      suiteShadowObserver = new MutationObserver(() => {
-        if (suiteTranslateApplying || suiteTranslatePending) return;
-        suiteTranslatePending = true;
-        setTimeout(() => {
-          suiteTranslatePending = false;
-          applySuiteShadowLocale();
-        }, 0);
+      suiteShadowObserver = new MutationObserver((mutations) => {
+        if (suiteTranslateApplying) return;
+        for (const m of mutations) {
+          if (m.type === 'characterData' && m.target) {
+            suiteShadowPendingRoots.add(m.target);
+          } else if (m.type === 'childList') {
+            if (m.addedNodes && m.addedNodes.length) {
+              for (const n of m.addedNodes) suiteShadowPendingRoots.add(n);
+            } else if (m.target) {
+              suiteShadowPendingRoots.add(m.target);
+            }
+          }
+        }
+        if (suiteShadowPendingRoots.size === 0) return;
+        const entry = findSupportedLocaleEntry(suiteEnhancerPrefs.locale);
+        const isZhBase = /^(?:zh|cn)/i.test(entry.code) && !entry.uiDict && !entry.uiTransform;
+        if (isZhBase || (!entry.uiDict && !entry.uiTransform)) {
+          suiteShadowPendingRoots.clear();
+          return;
+        }
+        const roots = Array.from(suiteShadowPendingRoots);
+        suiteShadowPendingRoots.clear();
+        suiteTranslateApplying = true;
+        try {
+          ensureSuiteShadowObserver(false);
+          for (const r of roots) {
+            if (r && r.isConnected !== false) {
+              translateShadowSubtreeLocale(r, entry.uiDict, entry.uiPatterns, entry.uiTransform);
+            }
+          }
+          ensureSuiteShadowObserver(true);
+        } finally {
+          suiteTranslateApplying = false;
+        }
       });
     }
     try {
@@ -13380,18 +14254,19 @@ function positionHeatPopover(anchorX, anchorY) {
   function applySuiteShadowLocale() {
     if (!shadow || suiteTranslateApplying) return;
     const entry = findSupportedLocaleEntry(suiteEnhancerPrefs.locale);
-    const isZh = /^(?:zh|cn)/i.test(entry.code) && !entry.uiDict;
+    const isZhBase = /^(?:zh|cn)/i.test(entry.code) && !entry.uiDict && !entry.uiTransform;
     suiteTranslateApplying = true;
     try {
       ensureSuiteShadowObserver(false);
       restoreShadowNodeLocale(shadow);
-      if (!isZh && entry.uiDict) {
-        translateShadowSubtreeLocale(shadow, entry.uiDict, entry.uiPatterns);
+      if (!isZhBase && (entry.uiDict || entry.uiTransform)) {
+        translateShadowSubtreeLocale(shadow, entry.uiDict, entry.uiPatterns, entry.uiTransform);
       }
       try { uiCliModelDropdown?.refresh?.(); } catch {}
       try { uiCliMuxHostDropdown?.refresh?.(); } catch {}
       try { uiLangDropdown?.refresh?.(); } catch {}
-      if (!isZh) ensureSuiteShadowObserver(true);
+      try { uiBaseCurrencyDropdown?.refresh?.(); } catch {}
+      if (!isZhBase) ensureSuiteShadowObserver(true);
     } finally {
       suiteTranslateApplying = false;
     }
@@ -13417,7 +14292,7 @@ function positionHeatPopover(anchorX, anchorY) {
         sel.appendChild?.(newOpt);
       }
     }
-    sel.value = suiteEnhancerPrefs.locale || 'zh-CN';
+    sel.value = suiteEnhancerPrefs.locale || 'zh-TW';
     uiLangDropdown?.refresh?.();
   }
 
@@ -13898,17 +14773,23 @@ function positionHeatPopover(anchorX, anchorY) {
     const code = String(def.code || '').trim();
     if (!code) return false;
     const label = String(def.label || code).trim();
+    const isZhTwLike = /^(?:zh-tw|zh-hant|zh-hk|tw)\b/i.test(code);
     const isZhLike = /^(?:zh|cn)/i.test(code);
-    const capsuleLang = def.capsuleLang === 'zh' || def.capsuleLang === 'en' ? def.capsuleLang : (isZhLike ? 'zh' : 'en');
-    const hansCode = def.hansCode === 'zh' || def.hansCode === 'en' ? def.hansCode : (isZhLike ? 'zh' : 'en');
+    const capsuleLang = def.capsuleLang === 'zh' || def.capsuleLang === 'zh-TW' || def.capsuleLang === 'en'
+      ? def.capsuleLang
+      : (isZhTwLike ? 'zh-TW' : (isZhLike ? 'zh' : 'en'));
+    const hansCode = def.hansCode === 'zh' || def.hansCode === 'zh-TW' || def.hansCode === 'en'
+      ? def.hansCode
+      : (isZhTwLike ? 'zh-TW' : (isZhLike ? 'zh' : 'en'));
     const uiDict = (def.uiDict && typeof def.uiDict === 'object')
       ? def.uiDict
       : (!isZhLike && def.fallbackEn !== false ? SUITE_EN_UI_DICT : null);
     const uiPatterns = Array.isArray(def.uiPatterns)
       ? def.uiPatterns
       : (!isZhLike && def.fallbackEn !== false ? SUITE_EN_UI_PATTERNS : null);
+    const uiTransform = typeof def.uiTransform === 'function' ? def.uiTransform : null;
     const idx = SUITE_SUPPORTED_LOCALES.findIndex(item => item.code.toLowerCase() === code.toLowerCase());
-    const nextEntry = { code, hansCode, capsuleLang, label, uiDict, uiPatterns };
+    const nextEntry = { code, hansCode, capsuleLang, label, uiDict, uiPatterns, uiTransform };
     if (idx >= 0) SUITE_SUPPORTED_LOCALES[idx] = nextEntry;
     else SUITE_SUPPORTED_LOCALES.push(nextEntry);
     syncLanguageDropdownOptions();
@@ -13916,7 +14797,7 @@ function positionHeatPopover(anchorX, anchorY) {
   }
 
   function getSuiteLocale() {
-    return suiteEnhancerPrefs.locale || 'zh-CN';
+    return suiteEnhancerPrefs.locale || 'zh-TW';
   }
 
   async function setSuiteLocale(localeCode, opts = {}) {
@@ -15930,7 +16811,19 @@ function positionHeatPopover(anchorX, anchorY) {
   });
 
   el('set-ui-language-select')?.addEventListener('change', e => {
-    void setSuiteLocale(e?.target?.value || 'zh-CN');
+    void setSuiteLocale(e?.target?.value || 'zh-TW');
+  });
+
+  el('set-base-currency-select')?.addEventListener('change', e => {
+    const nextCur = String(e?.target?.value || 'TWD').trim().toUpperCase();
+    if (nextCur !== 'TWD' && nextCur !== 'USD' && nextCur !== 'CNY') return;
+    try { localStorage?.setItem?.(BASE_CURRENCY_STORAGE_KEY, nextCur); } catch {}
+    try { uiBaseCurrencyDropdown?.refresh?.(); } catch {}
+    try { renderPlanDetail?.(ANTIGRAVITY_TOKEN_DATA.planStatus); } catch {}
+    try { refreshDirectRegionDisplay?.(); } catch {}
+    try { renderActiveCostEstimateView?.(); } catch {}
+    try { renderActiveHeatView?.(true); } catch {}
+    try { syncSettingsSubPreview?.(); } catch {}
   });
 
   el('set-english-labels')?.addEventListener('change', e => {
@@ -15998,7 +16891,7 @@ function positionHeatPopover(anchorX, anchorY) {
       const res = await invokeHostBridge('/dock-badge-test', {
         style: normalizeDockBadgeStyle(suiteEnhancerPrefs.dockBadgeStyle),
         colorTier: suiteEnhancerPrefs.dockBadgeColorTier !== false,
-        locale: suiteEnhancerPrefs.locale || 'zh-CN'
+        locale: suiteEnhancerPrefs.locale || 'zh-TW'
       }, 'dockBadgeTest');
       if (res && res.ok) {
         if (res.status?.axTrusted === false) {

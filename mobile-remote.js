@@ -12,6 +12,7 @@ const { execFile, execFileSync, spawn } = require('child_process');
 const { getStateDir, resolveActiveCdpTarget } = require('./asar-engine');
 const { safeReadJsonSync, safeWriteJsonSync } = require('./meter-storage');
 const { detectProxyConfig } = require('./meter-proxy');
+const { convertZhCNToZhTW } = require('./src/i18n/zh-tw-converter');
 const {
   computeCompletedUnreadCount,
   createWebPushManager,
@@ -22,7 +23,7 @@ const DEFAULT_REMOTE_PORT = 18765;
 const MAX_ACTION_BODY_BYTES = 15 * 1024 * 1024;
 const CONFIG_FILE_NAME = 'remote-config.json';
 const TUNNEL_STATE_FILE_NAME = '.cloudflared-tunnel-state.json';
-const MOBILE_UI_VERSION = '2.1.0';
+const MOBILE_UI_VERSION = '2.1.7';
 const PING_GIF_BUFFER = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
 const DEFAULT_REMOTE_DISPLAY_CONFIG = {
   showContextPanel: true,
@@ -6940,6 +6941,427 @@ async function performActionInTarget(payload, options = {}) {
 
 // ==================== 移动端极速 PWA HTML & 资源 ====================
 
+function normalizeRemoteChineseLocale(locale) {
+  const lang = String(locale || '').trim().toLowerCase().replace(/_/g, '-');
+  if (/^zh-(?:tw|hk|mo|hant)(?:-|$)/.test(lang)) return 'zh-TW';
+  if (/^zh-(?:cn|sg|hans)(?:-|$)/.test(lang)) return 'zh-CN';
+  return '';
+}
+
+function preferredRemoteChineseLocale(req) {
+  const languages = String(req.headers?.['accept-language'] || '').split(',')
+    .map((entry) => {
+      const [language, ...params] = entry.split(';');
+      const quality = params.find((param) => /^q=/i.test(param.trim()));
+      return { locale: normalizeRemoteChineseLocale(language), quality: quality ? Number(quality.trim().slice(2)) : 1 };
+    })
+    .filter(({ locale, quality }) => locale && quality > 0 && quality <= 1)
+    .sort((a, b) => b.quality - a.quality);
+  return languages[0]?.locale || '';
+}
+
+function resolveRemoteLocale(req) {
+  const preferred = preferredRemoteChineseLocale(req);
+  if (preferred) return preferred;
+  try {
+    const prefs = require('./meter-collector').getPluginSettings().uiPreferences;
+    return normalizeRemoteChineseLocale(prefs?.locale || prefs?.panelLanguage) || 'zh-TW';
+  } catch {
+    return 'zh-TW';
+  }
+}
+
+const REMOTE_TW_COPY = new Map([
+  ["会话与窗口", "對話與視窗"],
+  ["当前会话", "目前對話"],
+  ["本会话变更与产物", "本次對話的變更與產物"],
+  ["读取会话变更失败", "無法讀取這則對話的變更"],
+  ["当前会话暂无代码改动或产物", "這則對話尚無變更或產物"],
+  ["若有 AI 改动和产物会显示在这里", "若有 AI 改動和產物會顯示在這裡"],
+  ["浏览历史会话", "瀏覽歷史對話"],
+  ["该项目暂无可切换会话", "此專案目前沒有可切換的對話"],
+  ["切换会话失败，请检查电脑端连接或刷新重试", "無法切換對話，請確認電腦端連線或重新整理後再試。"],
+  ["同步桌面当前会话", "同步桌面目前的對話"],
+  ["已同步桌面当前会话", "已同步桌面對話"],
+  ["独立视图", "獨立檢視"],
+  ["读取失败", "讀取失敗"],
+  ["无法独立读取该会话", "無法以獨立檢視讀取這則對話"],
+  ["电脑端增强组件尚未就绪，请在 Antigravity 窗口中重新开启套件或稍等 2 秒重试", "電腦端套件尚未就緒。請重新開啟 Antigravity 套件，或等 2 秒再試。"],
+  ["电脑端远程控制暂未就绪，请确认 Antigravity 窗口已打开并重新加载套件", "電腦端的遠端功能尚未就緒。請確認 Antigravity 視窗已開啟，再重新載入套件。"],
+  ["桌面端未能进入该项目新对话", "桌面端無法在這個專案開啟新對話。"],
+  ["桌面端路由正忙", "桌面端路由正忙"],
+  ["思考过程", "思考過程"],
+  ["未归属项目", "未歸屬專案"],
+  ["未命名项目", "未命名專案"],
+  ["默认项目", "預設專案"],
+  ["独立对话", "獨立對話"],
+  ["局域网", "區域網路"],
+  ["Cloudflare 隧道", "Cloudflare 隧道"],
+  ["步骤异常", "步驟異常"],
+  ["图片", "圖片"],
+  ["[图片附件]", "[圖片附件]"],
+  ["待确认", "待確認"],
+  ["待审批", "待核准"],
+  ["运行中", "執行中"],
+  ["异常", "異常"],
+  ["允许", "允許"],
+  ["拒绝", "拒絕"],
+  ["确认", "確認"],
+  ["继续", "繼續"],
+  ["重试", "重試"],
+  ["提交", "送出"],
+  ["始终允许", "一律允許"],
+  ["仅允许一次", "僅允許這次"],
+  ["需要你的确认", "請確認"],
+  ["无限", "無限"],
+  ["自动", "自動"],
+  ["默认", "預設"],
+  ["请求审核", "請求核准"],
+  ["局域网 连接方式已停用", "區域網路連線已停用"],
+  ["Cloudflare 隧道 连接方式已停用", "Cloudflare 隧道連線已停用"],
+  ["对话已完成", "對話已完成"],
+  ["Antigravity 对话", "Antigravity 對話"],
+  ["有新的会话状态更新", "對話狀態已更新"],
+  ["Antigravity 远程通知测试", "Antigravity 遠端通知測試"],
+  ["推送通道正常，桌面应用未读角标将随已完成未读数自动同步。", "推播連線正常。桌面應用程式的未讀徽章會同步顯示已完成的未讀對話數。"],
+  ["无效的本地文件路径", "本機檔案路徑無效"],
+  ["文件不存在或无法读取", "檔案不存在或無法讀取"],
+  ["禁止访问受限目录之外的文件", "無法存取允許的資料夾以外的檔案"],
+  ["禁止访问敏感密钥或凭证目录", "無法存取存放敏感金鑰或憑證的目錄"],
+  ["禁止访问敏感环境或私钥文件", "無法存取敏感環境設定或私密金鑰檔案"],
+  ["文件不存在", "檔案不存在"],
+  ["目标不是常规文件", "請選擇一般檔案"],
+  ["文件体积超过限制 (‹數值›MB)", "檔案大小超過 ‹數值› MB 上限"],
+  ["当前暂无已注册项目工作区，已禁止默认浏览系统主目录", "目前沒有已登錄的專案工作區，無法瀏覽系統家目錄"],
+  ["无效的目录路径", "資料夾路徑無效"],
+  ["目录不存在或无法访问", "資料夾不存在或無法存取"],
+  ["禁止浏览受限目录之外的路径", "無法瀏覽允許的資料夾以外的路徑"],
+  ["禁止浏览敏感密钥或凭证目录", "無法瀏覽存放敏感金鑰或憑證的目錄"],
+  ["目录不存在", "資料夾不存在"],
+  ["目标不是目录", "請選擇資料夾"],
+  ["读取目录失败", "無法讀取資料夾"],
+  ["文件较大 (‹數值› KB)，超过文本预览上限 (‹數值› KB)", "檔案大小為 ‹數值› KB，超過 ‹數值› KB 的文字預覽上限"],
+  ["读取文件失败", "無法讀取檔案"],
+  ["‹值› 调用超时", "‹值› 呼叫逾時"],
+  ["‹值› 已确认未执行", "已確認 ‹值› 未執行"],
+  ["‹值› 调用失败", "呼叫 ‹值› 失敗"],
+  ["‹值› 响应超时，结果未知", "‹值› 回應逾時，結果未知"],
+  ["‹值› 返回空结果，状态未知", "‹值› 回傳空結果，狀態未知"],
+  ["LanguageServer 未连接", "尚未連線至 LanguageServer"],
+  ["未能获取排队消息的原始附件来源", "無法取得佇列訊息的原始附件來源"],
+  ["排队媒体仅含缩略图且原始本地文件不可访问，已取消撤回以避免丢失原图", "佇列中的附件只有縮圖，無法讀取原始檔案。為避免遺失原圖，已取消撤回。"],
+  ["无法读取原始排队附件内容，已取消撤回以避免丢失附件", "無法讀取佇列訊息的原始附件。為避免遺失附件，已取消撤回。"],
+  ["缺少 sessionId 参数", "缺少 sessionId 參數"],
+  ["未能读取电脑端会话画面，请确认 Antigravity 已打开", "無法讀取電腦端的對話畫面，請確認 Antigravity 已開啟。"],
+  ["当前会话待重发暂存附件将超过上限（‹值› 个），已取消撤回以避免丢失早期附件；请先发送或移除部分附件", "待重新傳送的附件將超過 ‹值› 個上限。為保留先前的附件，已取消撤回。請先傳送或移除部分附件。"],
+  ["消息已立即发送，但移除原排队项失败；再次点击将仅重试移除而不重复发送", "訊息已立即傳送，但無法移除原佇列項目。再點一次可重試移除，訊息只會傳送一次。"],
+  ["未找到可用的桌面端导航控制接口", "找不到可用的桌面導覽介面"],
+  ["缺少语言服务凭证 (csrfToken)", "缺少語言服務憑證（csrfToken）"],
+  ["未取得目标会话历史", "無法取得這則對話的歷史紀錄"],
+  ["缺少会话 ID", "缺少對話 ID"],
+  ["未找到新建对话按钮", "找不到「新增對話」按鈕"],
+  ["未在侧边栏找到该会话", "側邊欄找不到這則對話"],
+  ["发送内容不能为空", "請先輸入要傳送的內容"],
+  ["恢复附件注入桌面输入框失败，已回滚本次已注入附件并取消发送", "無法將附件還原至桌面輸入框。已移除這次加入的附件並取消傳送。"],
+  ["未能填入输入框", "無法填入輸入框"],
+  ["当前未在执行中", "目前沒有執行中的操作"],
+  ["当前没有待审批操作", "目前沒有待核准的操作"],
+  ["目标审批按钮已消失或已处理", "核准按鈕已消失，或該操作已處理"],
+  ["当前没有待确认选择框", "目前沒有待確認的選擇框"],
+  ["目标确认选择框已消失或已变更", "確認選擇框已消失或內容已變更"],
+  ["目标确认选择框已消失或索引失效", "確認選擇框已消失或位置已失效"],
+  ["目标确认按钮已消失或不可用", "確認按鈕已消失或無法使用"],
+  ["目标确认按钮当前仍处于禁用状态，请先完成必选项", "請先完成必選項目，再按確認。"],
+  ["请先填写必填项后再提交", "請填寫必填欄位後再送出。"],
+  ["输入内容未通过校验，请修改后重试", "輸入內容未通過驗證，請修改後再試。"],
+  ["表单存在未通过校验的必填项，请完善后重试", "表單有必填欄位未通過驗證，請修正後再送出。"],
+  ["新建对话导航失败", "無法前往新增對話畫面"],
+  ["桌面端未进入新建对话状态", "桌面端未進入新增對話畫面"],
+  ["桌面端未进入目标项目新建对话状态: ‹值›", "桌面端未進入「‹值›」的新增對話畫面"],
+  ["未找到该会话的跳转入口", "找不到開啟這則對話的入口"],
+  ["桌面端未切换至目标会话状态: ‹值›", "桌面端未切換至對話「‹值›」"],
+  ["未找到桌面端模型选择器", "找不到桌面端的模型選單"],
+  ["未找到目标模型: ‹值›", "找不到模型「‹值›」"],
+  ["缺少权限预设名称", "缺少權限預設名稱"],
+  ["未找到桌面端权限选择器", "找不到桌面端的權限選單"],
+  ["当前会话不允许切换权限预设", "這則對話無法切換權限預設"],
+  ["权限选项不可用: ‹值›", "權限選項「‹值›」無法使用"],
+  ["该权限预设当前被锁定: ‹值›", "權限預設「‹值›」目前已鎖定"],
+  ["缺少附件数据", "缺少附件資料"],
+  ["图片数据解析失败，请重新选择图片", "無法解析圖片，請重新選擇。"],
+  ["未找到桌面端文件上传控件", "找不到桌面端的檔案上傳元件"],
+  ["缺少图片数据", "缺少圖片資料"],
+  ["未找到桌面端输入区域，已取消删除以防误删", "找不到桌面輸入區。為避免誤刪，已取消刪除。"],
+  ["桌面端当前未找到可移除的附件", "桌面端沒有可移除的附件"],
+  ["未在桌面端找到匹配的附件，已取消删除以防误删", "桌面端找不到相符的附件。為避免誤刪，已取消刪除。"],
+  ["目标附件索引已失效，已取消删除以防误删", "附件位置已失效。為避免誤刪，已取消刪除。"],
+  ["移除桌面端附件失败", "無法移除桌面端的附件"],
+  ["当前没有排队中的消息", "目前沒有佇列中的訊息"],
+  ["目标排队消息已变化或不存在，已取消‹動作›以防误操作", "佇列訊息已變更或已移除。為避免誤操作，已取消‹動作›。"],
+  ["桌面排队数量已变化，已取消‹動作›以防索引移位误操作", "佇列訊息數量已變更，原位置可能已移動。為避免誤操作，已取消‹動作›。"],
+  ["目标排队索引越界，已取消‹動作›以防误操作", "佇列訊息的位置超出範圍。為避免誤操作，已取消‹動作›。"],
+  ["目标排队消息文本已变化，已取消‹動作›以防误操作", "佇列訊息的內容已變更。為避免誤操作，已取消‹動作›。"],
+  ["存在多条相同文本排队消息，无法确认唯一目标，已取消", "多則佇列訊息的內容相同，無法確認操作對象，已取消操作。"],
+  ["目标排队消息文本未匹配，已取消‹動作›以防误操作", "找不到內容相符的佇列訊息。為避免誤操作，已取消‹動作›。"],
+  ["多条排队消息缺少唯一目标标识，已取消‹動作›以防误操作", "多則佇列訊息缺少可辨識的唯一 ID。為避免誤操作，已取消‹動作›。"],
+  ["未找到桌面端排队消息发送按钮", "找不到桌面端佇列訊息的傳送按鈕"],
+  ["未找到桌面端排队消息编辑/删除按钮", "找不到桌面端佇列訊息的編輯或刪除按鈕"],
+  ["后台会话切回桌面原会话会清空临时输入区附件，当前无法无损提取完整附件数据，已取消撤回以避免丢失附件", "切回原本的桌面對話會清除暫存附件，目前無法完整取回附件。為避免遺失，已取消撤回。"],
+  ["该排队消息包含媒体附件，但未能获取可恢复的附件元数据，已取消撤回以避免丢失附件", "無法取得還原佇列訊息附件所需的資料。為避免遺失附件，已取消撤回。"],
+  ["该排队消息包含媒体附件且无原生编辑按钮，无法完整恢复附件数据，已取消撤回以避免丢失附件", "佇列訊息含媒體附件，且缺少原生編輯按鈕，無法完整還原附件。為避免遺失附件，已取消撤回。"],
+  ["恢复附件至桌面端输入框失败，已取消删除原排队消息", "無法將附件還原至桌面輸入框，已取消刪除原佇列訊息。"],
+  ["未找到桌面端排队消息删除按钮", "找不到桌面端佇列訊息的刪除按鈕"],
+  ["未知操作: ‹值›", "無法辨識操作「‹值›」"],
+  ["缺少 action 参数", "缺少 action 參數"],
+  ["新建对话失败", "無法新增對話"],
+  ["草稿附件上传失败，请重试", "草稿附件上傳失敗，請再試一次。"],
+  ["发送消息失败", "無法傳送訊息"],
+  ["发送消息异常", "傳送訊息時發生錯誤"],
+  ["未知错误", "發生未知錯誤"],
+  ["新对话", "新增對話"],
+  ["新建对话", "新增對話"],
+  ["正在等待确认或审批", "等待確認或核准"],
+  ["发送", "傳送"],
+  ["编辑", "編輯"],
+  ["删除", "刪除"],
+  ["桌面端队列操作未能生效，请重试", "桌面端未完成佇列操作，請再試一次。"],
+  ["电脑端后台队列服务暂时无响应或超时，请稍后重试", "電腦端暫時無法處理佇列訊息，請稍後再試。"],
+  ["草稿最多可附带 10 个待发附件", "草稿最多可附加 10 個檔案。"],
+  ["草稿中未找到指定附件", "草稿中找不到指定的附件。"],
+  ["首条消息正在发送或等待新会话 ID 确认，请稍候或切换会话后再试，避免重复发送", "正在傳送第一則訊息或確認新對話。請稍候，或切換對話後再試。"],
+  ["通知通道正常，桌面应用未读角标将随已完成未读数自动同步。", "通知正常。桌面未讀徽章會同步顯示已完成的未讀對話數。"],
+  ["删除原排队消息被服务端拒绝，已保留原排队项", "伺服器拒絕刪除，原佇列訊息已保留。"],
+  ["删除原排队消息响应超时，经核验原项仍在队列中，请重试", "刪除逾時，原訊息仍在佇列中，請再試一次。"],
+  ["删除原排队消息响应超时且无法确认原项状态，已保留恢复的文本与附件以避免丢失", "刪除逾時，無法確認原訊息狀態。已保留還原的文字與附件。"],
+  ["删除原排队消息响应超时且无法确认原项状态，已保留恢复的文本以避免丢失", "刪除逾時，無法確認原訊息狀態。已保留還原的文字。"],
+  ["立即发送排队消息失败", "無法立即傳送佇列訊息。"],
+  ["立即发送请求超时或结果未知，已阻止自动补发以避免重复发送，请核对后再试", "無法確認訊息是否已傳送。系統已暫停自動重送，請先確認結果再試。"],
+  ["当前会话存在同内容未确认撤回的暂存批次，无法确认本次编辑是否为原项重试，已取消删除以防覆盖已保留内容", "相同內容的上一筆撤回尚未確認。為保留已還原的內容，已取消刪除。"],
+  ["消息此前已发送，重试移除原排队项仍失败；请稍后再试，不会重复发送", "訊息已傳送，仍無法移除原佇列項目。稍後可重試移除，訊息只會傳送一次。"],
+  ["无法确认目标媒体排队项的桌面映射，已取消发送以防误发", "無法確認桌面端的附件屬於這則佇列訊息，已取消傳送。"],
+  ["无法确认当前排队项与此前已发送待删项为同一消息（可能存在同内容新消息或并发变更），已停止操作以防误删或重复发送", "無法確認這是先前已傳送的訊息，已停止操作以避免誤刪或重複傳送。"],
+  ["目标排队步骤内容或媒体形态已变化（索引已被其他消息占用），已取消操作以防误删", "佇列訊息或附件已變更。為避免誤操作，已取消操作。"],
+  ["目标排队步骤的媒体附件签名已变化（索引已被同文异附件消息占用），已取消操作以防误删", "佇列訊息的附件已變更。為避免誤操作，已取消操作。"],
+  ["纯媒体排队项缺少匹配的媒体身份标识（索引可能已被其他媒体项占用），已取消操作以防误删", "無法確認佇列訊息中的附件。為避免誤操作，已取消操作。"],
+  ["该排队消息包含媒体附件，当前无法完整恢复附件数据，已取消撤回以避免丢失附件", "無法完整還原附件。為避免遺失，已取消撤回。"],
+  ["缺少有效的排队标识 messageId 或 stepIndex", "缺少有效的佇列識別碼 messageId 或 stepIndex。"],
+  ["未找到指定排队步骤或内容为空", "找不到指定的佇列訊息，或訊息內容為空。"],
+  ["✓ 上下文已完成压缩", "✓ 已壓縮上下文"],
+  ["读取上下文窗口失败", "無法讀取上下文，請再試一次。"],
+  ["读取会话消息失败", "無法讀取對話，請再試一次。"],
+  ["读取会话列表失败", "無法讀取對話，請再試一次。"],
+  ["操作失败", "操作失敗，請確認電腦端狀態後再試。"],
+  ["读取 Antigravity 状态失败", "無法讀取對話，請再試一次。"],
+  ["‹連線方式› 连接方式已停用", "‹連線方式›連線已停用"],
+  ["无法验证目标排队步骤状态，已取消撤回以防误删", "無法確認訊息仍在佇列中，已取消撤回。"],
+  ["无法验证目标排队步骤状态，已取消编辑以防误删", "無法確認訊息仍在佇列中，已取消編輯。"],
+  ["无法验证目标排队步骤状态，已取消操作以防误删或重复发送", "無法確認訊息仍在佇列中，已取消操作。"],
+  ["目标步骤已不在排队中，已取消撤回", "訊息已離開佇列，已取消撤回。"],
+  ["目标步骤已不在排队中，已取消编辑", "訊息已離開佇列，已取消編輯。"],
+  ["目标步骤已不在排队中，已取消发送以防重复发送", "訊息已離開佇列，已取消傳送。"],
+  ["存在多条相同文本排队消息，无法确认唯一目标，已取消‹動作›", "多則佇列訊息的內容相同，無法確認操作對象，已取消‹動作›。"],
+]);
+
+const REMOTE_TW_PHRASES = {
+  '配對口令': '配對碼',
+  '未發訊息': '尚未傳送的訊息',
+  '發訊息': '傳送訊息',
+  '已直發': '已傳送',
+  '直發': '直接傳送',
+  '推送服務不可達': '無法連線至推播服務',
+  '不可達': '無法連線',
+  '訊息推送設定': '推播通知設定',
+  '高優推送': '優先推播通知',
+  '推送偏好': '推播設定',
+  '推送': '推播',
+  '通道': '連線',
+  '已關聯專案': '已連結專案',
+  '已關聯': '已配對',
+  '會話': '對話',
+  '排隊': '佇列',
+  '審核': '核准',
+  '伺服端': '伺服器端',
+  '服務端': '伺服器端',
+  '超時': '逾時'
+};
+const REMOTE_TW_PHRASE_RE = new RegExp(Object.keys(REMOTE_TW_PHRASES).join('|'), 'g');
+
+const REMOTE_TW_PLACEHOLDER = /‹(?:值|動作|數值|連線方式)›/g;
+const REMOTE_TW_TEMPLATES = [...REMOTE_TW_COPY]
+  .filter(([source]) => source.includes('‹'))
+  .map(([source, copy]) => ({
+    match: new RegExp('^' + source.split(REMOTE_TW_PLACEHOLDER)
+      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('(.+?)') + '$'),
+    copy
+  }));
+
+function localizeRemoteText(text) {
+  return REMOTE_TW_COPY.get(text) || convertZhCNToZhTW(text.replace(/会话/g, '會話'))
+    .replace(REMOTE_TW_PHRASE_RE, (phrase) => REMOTE_TW_PHRASES[phrase]);
+}
+
+function localizeRemoteErrorText(text, fallback) {
+  if (typeof text !== 'string' || !text) return text;
+  if (REMOTE_TW_COPY.has(text)) return REMOTE_TW_COPY.get(text);
+  for (const { match, copy } of REMOTE_TW_TEMPLATES) {
+    const values = match.exec(text);
+    if (!values) continue;
+    let index = 0;
+    return copy.replace(REMOTE_TW_PLACEHOLDER, (placeholder) => {
+      const value = values[++index];
+      return placeholder === '‹動作›' || placeholder === '‹連線方式›' ? localizeRemoteText(value) : value;
+    });
+  }
+  const converted = localizeRemoteText(text);
+  return fallback && converted !== text ? fallback : converted;
+}
+
+function localizeRemoteProjectName(name, id) {
+  if (typeof name !== 'string') return name;
+  if (/^(?:未归属项目|未歸屬項目)$/.test(name) && (!id || id === 'ungrouped')) return '未歸屬專案';
+  if (/^(?:未命名项目|默认项目)$/.test(name) && (!id || id === 'default' || String(id).startsWith('dom:'))) {
+    return localizeRemoteText(name);
+  }
+  if (name === '独立对话' && id === 'outside-of-project') return '獨立對話';
+  return name;
+}
+
+function localizeRemoteConversationTitle(title, id, isNewConversation, projectId) {
+  if (typeof title !== 'string') return title;
+  const prefix = id ? String(id).slice(0, 8) : '';
+  if (prefix && ['会话', '會話', '对话'].some((label) => title === label + ' ' + prefix)) {
+    return '對話 ' + prefix;
+  }
+  if (!isNewConversation) return title;
+  const separator = title.indexOf(' · ');
+  const heading = separator < 0 ? title : title.slice(0, separator);
+  if (!/^新[建增]?(?:对话|對話)$/.test(heading)) return title;
+  return '新增對話' + (separator < 0 ? '' : ' · ' + localizeRemoteProjectName(title.slice(separator + 3), projectId));
+}
+
+function localizeRemoteConversation(item) {
+  return {
+    ...item,
+    title: localizeRemoteConversationTitle(item.title, item.id),
+    projectName: localizeRemoteProjectName(item.projectName, item.projectId),
+    ...(item.statusLabel && {
+      statusLabel: REMOTE_TW_COPY.get(item.statusLabel)
+        || (statusToLabel(item.status) ? localizeRemoteText(statusToLabel(item.status)) : '狀態未知')
+    })
+  };
+}
+
+function formatTraditionalCatalogNotification(item, type) {
+  const conversation = localizeRemoteConversation(item);
+  const title = String(conversation.title || 'Antigravity 對話').slice(0, 60);
+  const project = String(conversation.projectName || '').trim();
+  return type === 'waiting'
+    ? { titleTw: '請確認', bodyTw: title + (project ? '（' + project + '）' : '') + ' 等待確認或核准' }
+    : { titleTw: '對話已完成', bodyTw: title + (project ? ' · ' + project : '') };
+}
+
+function localizeRemoteAttachmentSummary(text) {
+  return text === '[图片附件]' ? '[圖片附件]' : text.replace(/\n\[附带 (\d+) 张图片\]$/, '\n[附加 $1 張圖片]');
+}
+
+function localizeRemoteMessage(message) {
+  if (!message) return message;
+  const result = { ...message };
+  if (message.role === 'system-notice' && REMOTE_TW_COPY.has(message.text)) {
+    result.text = localizeRemoteText(message.text);
+  }
+  if (message.thoughtLabel === '思考过程') result.thoughtLabel = '思考過程';
+  if (REMOTE_TW_COPY.has(message.riskText)) result.riskText = localizeRemoteText(message.riskText);
+  if (message.role === 'user' && /^t-u-\d+$/.test(message.id || '') && message.attachments?.length
+      && typeof message.text === 'string') {
+    const displayText = localizeRemoteAttachmentSummary(message.text);
+    if (displayText !== message.text) result.displayText = displayText;
+  }
+  if (String(message.id || '').startsWith('rpc-e-') && typeof message.text === 'string' && !message.html) {
+    result.text = localizeRemoteErrorText(message.text, '模型暫時無法回應，請再試一次。');
+  }
+  return result;
+}
+
+function localizeRemoteResponse(payload, localizeError) {
+  if (!payload || typeof payload !== 'object') return payload;
+  const result = { ...payload };
+  for (const field of ['error', 'navError', 'isolationWarning']) {
+    if (typeof payload[field] === 'string' && payload[field]) result[field] = localizeError(payload[field]);
+  }
+  for (const field of ['snapshot', 'actionResult', 'navResult']) {
+    if (payload[field]) result[field] = localizeRemoteResponse(payload[field], localizeError);
+  }
+  if (Array.isArray(payload.results)) {
+    result.results = payload.results.map((item) => item?.res
+      ? { ...item, res: localizeRemoteResponse(item.res, localizeError) } : item);
+  }
+  if (typeof payload.title === 'string') {
+    result.title = localizeRemoteConversationTitle(payload.title, payload.activeConversationId || payload.sessionId
+      || payload.conversationId, payload.isNewConversation, payload.currentProjectId);
+  }
+  if (typeof payload.currentProjectName === 'string') {
+    result.currentProjectName = localizeRemoteProjectName(payload.currentProjectName, payload.currentProjectId);
+  }
+  if (Array.isArray(payload.conversations)) {
+    result.conversations = payload.conversations.map((item) => item && localizeRemoteConversation(item));
+  }
+  if (Array.isArray(payload.projects)) {
+    result.projects = payload.projects.map((item) => item && { ...item, name: localizeRemoteProjectName(item.name, item.id) });
+  }
+  if (Array.isArray(payload.projectGroups)) {
+    result.projectGroups = payload.projectGroups.map((group) => group && {
+      ...localizeRemoteResponse(group, localizeError), name: localizeRemoteProjectName(group.name, group.id)
+    });
+  }
+  if (Array.isArray(payload.messages)) result.messages = payload.messages.map(localizeRemoteMessage);
+  if (Array.isArray(payload.queuedMessages)) {
+    result.queuedMessages = payload.queuedMessages.map((item) => {
+      if (!item?.hasMedia || item.source === 'dom' || typeof item.text !== 'string') return item;
+      const displayText = localizeRemoteAttachmentSummary(item.text);
+      return displayText === item.text ? item : { ...item, displayText };
+    });
+  }
+  if (Array.isArray(payload.pendingApprovals)) {
+    result.pendingApprovals = payload.pendingApprovals.map((item) => item?.label
+      ? { ...item, displayLabel: localizeRemoteText(item.label) } : item);
+  }
+  if (Array.isArray(payload.pendingPrompts)) {
+    result.pendingPrompts = payload.pendingPrompts.map((prompt) => prompt && {
+      ...prompt,
+      ...(typeof prompt.title === 'string' && { displayTitle: localizeRemoteText(prompt.title) }),
+      ...(typeof prompt.otherPlaceholder === 'string' && { displayPlaceholder: localizeRemoteText(prompt.otherPlaceholder) }),
+      ...(Array.isArray(prompt.actions) && {
+        actions: prompt.actions.map((item) => item?.label
+          ? { ...item, displayLabel: localizeRemoteText(item.label) } : item)
+      }),
+      ...(Array.isArray(prompt.options) && {
+        options: prompt.options.map((item) => typeof item?.label === 'string' && REMOTE_TW_COPY.has(item.label)
+          ? { ...item, displayLabel: localizeRemoteText(item.label) } : item)
+      })
+    });
+  }
+  for (const field of ['contextBadge', 'pulseText']) {
+    if (typeof payload[field] === 'string' && payload[field]) result[field] = localizeRemoteText(payload[field]);
+  }
+  if (payload.contextPanel && typeof payload.contextPanel.contextBadge === 'string') {
+    result.contextPanel = { ...payload.contextPanel, contextBadge: localizeRemoteText(payload.contextPanel.contextBadge) };
+  }
+  return result;
+}
+
+function localizeRemoteSource(source, locale) {
+  if (locale !== 'zh-TW') return source;
+  // Localize owned template text without touching script syntax, markup or runtime payloads.
+  return source.replaceAll('lang="zh-CN"', 'lang="zh-TW"').replaceAll('PingFang SC', 'PingFang TC')
+    .replace(/\p{Script=Han}+/gu, localizeRemoteText);
+}
+
+function serializeRemoteTemplateData(value) {
+  return JSON.stringify(value).replace(/[<\u4e00-\u9fff]/g, (character) =>
+    '\\u' + character.charCodeAt(0).toString(16).padStart(4, '0'));
+}
+
 function buildMobileIconSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
@@ -6954,9 +7376,10 @@ function buildMobileIconSvg() {
 </svg>`;
 }
 
-function buildManifestJson() {
+function buildManifestJson(locale = 'zh-CN') {
   return JSON.stringify({
-    name: 'Antigravity 远程操作',
+    lang: locale,
+    name: locale === 'zh-TW' ? 'Antigravity 遠端操作' : 'Antigravity 远程操作',
     short_name: 'AG Remote',
     start_url: '/',
     display: 'standalone',
@@ -6970,9 +7393,10 @@ function buildManifestJson() {
   });
 }
 
-function buildServiceWorkerJs() {
-  return `'use strict';
+function buildServiceWorkerJs(locale = 'zh-CN') {
+  return localizeRemoteSource(`'use strict';
 const RECOVERY_CACHE = 'ag-remote-recovery-v1';
+// Mobile UI version: ${MOBILE_UI_VERSION}
 const RECOVERY_META_KEY = '/__ag_recovery_meta__';
 
 self.addEventListener('install', () => self.skipWaiting());
@@ -7186,8 +7610,37 @@ self.addEventListener('push', (event) => {
       } catch {}
     }
     if (data.silent) return;
-    const title = String(data.title || 'Antigravity 远程通知');
-    const body = String(data.body || '有新的会话状态更新');
+    const traditional = ${locale === 'zh-TW'};
+    const suppliedTitle = String(data.title || '');
+    const isTestPush = data.type === 'test' || data.tag === 'ag-push-test';
+    const isWaitingPush = data.type === 'waiting' || suppliedTitle === ${serializeRemoteTemplateData('需要你的确认')};
+    const isCompletedPush = data.type === 'completed' || suppliedTitle === ${serializeRemoteTemplateData('对话已完成')};
+    const title = isTestPush ? 'Antigravity 远程通知测试'
+      : traditional && data.titleTw ? String(data.titleTw)
+      : isWaitingPush ? '需要你的确认'
+      : isCompletedPush ? '对话已完成'
+      : traditional ? '有新的会话状态更新' : suppliedTitle || 'Antigravity 远程通知';
+    const waitingSuffix = ${serializeRemoteTemplateData(' 正在等待确认或审批')};
+    const suppliedBody = String(data.body || '');
+    const legacyHeading = suppliedBody.endsWith(waitingSuffix) ? suppliedBody.slice(0, -waitingSuffix.length) : suppliedBody;
+    const legacyTitle = ${serializeRemoteTemplateData('Antigravity 对话')};
+    const legacyProject = ${serializeRemoteTemplateData('未归属项目')};
+    let localHeading = legacyHeading;
+    if (traditional) {
+      localHeading = localHeading.replace(new RegExp('^' + legacyTitle + '(?=$| [·(])'), 'Antigravity 对话');
+      const projectSuffix = localHeading.endsWith(' (' + legacyProject + ')') ? ' (' + legacyProject + ')'
+        : localHeading.endsWith(' · ' + legacyProject) ? ' · ' + legacyProject : '';
+      if (projectSuffix) {
+        localHeading = localHeading.slice(0, -projectSuffix.length)
+          + (projectSuffix.startsWith(' (') ? '（未归属项目）' : ' · 未归属项目');
+      }
+    }
+    const body = isTestPush ? ${serializeRemoteTemplateData(locale === 'zh-TW' ? localizeRemoteText('推送通道正常，桌面应用未读角标将随已完成未读数自动同步。') : '推送通道正常，桌面应用未读角标将随已完成未读数自动同步。')}
+      : traditional && data.bodyTw ? String(data.bodyTw)
+      : traditional && !isWaitingPush && !isCompletedPush ? '有新的会话状态更新'
+      : suppliedBody.endsWith(waitingSuffix)
+      ? localHeading + ' 正在等待确认或审批'
+      : localHeading || '有新的会话状态更新';
     const tag = String(data.tag || ('ag-push-' + Date.now()));
     const url = String(data.url || '/');
     const conversationId = String(data.conversationId || '');
@@ -7225,11 +7678,11 @@ self.addEventListener('notificationclick', (event) => {
     }
   })());
 });
-`;
+`, locale);
 }
 
-function buildUnauthorizedHtml() {
-  return `<!DOCTYPE html>
+function buildUnauthorizedHtml(locale = 'zh-CN') {
+  return localizeRemoteSource(`<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
@@ -7353,19 +7806,86 @@ function buildUnauthorizedHtml() {
   })();
   </script>
 </body>
-</html>`;
+</html>`, locale);
 }
 
-function buildMobileAppHtml() {
-  return `<!DOCTYPE html>
+function buildMobileAppHtml(locale = 'zh-CN') {
+  const chromeLabels = [
+    ...['waiting', 'running', 'error', 'unknown'].map(statusToLabel),
+    '主目录 (~)', '允许', '拒绝', '取消', '确认', '继续', '重试', '提交',
+    '始终允许', '仅允许一次', '需要你的确认', '步骤异常'
+  ];
+  const localizedChromeLabels = locale === 'zh-TW'
+    ? Object.fromEntries(chromeLabels.map((label) => [label, localizeRemoteText(label)]))
+    : {};
+  const shortLabels = {
+    'tpl-run': '執行一下',
+    'tpl-implement': '直接實作',
+    'tpl-req': '照需求做',
+    'tpl-no-explain': '不用說明',
+    'tpl-why': '為什麼無法執行',
+    btw: '/btw 延伸提問',
+    learn: '/learn 歸納',
+    goal: '/goal 做到完',
+    boost: '/boost 解題',
+    teamwork: '/teamwork 團隊',
+    schedule: '/schedule 排程'
+  };
+  const builtInPrompts = locale === 'zh-TW'
+    ? Object.fromEntries([
+        ...DEFAULT_REMOTE_QUICK_PROMPTS,
+        ...REMOTE_BUILTIN_POOL_DEFS,
+        { id: 'tpl-req', label: '按这个需求做', text: '按这个需求做：\n' },
+        { id: 'tpl-no-explain', label: '不要解释', text: '不要解释' },
+        { id: 'tpl-why', label: '为什么不行', text: '为什么不行' },
+        { id: 'tpl-revise', label: '再改一版', text: '再改一版' }
+      ].map(({ id, label, text }) => [
+        id, {
+          label,
+          text,
+          labelTw: shortLabels[id] || localizeRemoteText(label),
+          textTw: id === 'tpl-req' ? '依這項需求實作：\n'
+            : shortLabels[id] && text.startsWith(label) ? shortLabels[id] + text.slice(label.length) : localizeRemoteText(text)
+        }
+      ]))
+    : {};
+  const suggestionLabels = {
+    '先帮我梳理下当前任务并给出方案': '先幫我整理目前的任務並提出方案',
+    '按这个需求做：': '依這項需求實作：',
+    '直接实现': '直接實作',
+    '确认，按推荐方案执行': '確認，依建議方案執行',
+    '再改一版': '再改一版',
+    '继续': '繼續',
+    '修复这个报错': '修正這個錯誤',
+    '为什么不行': '為什麼無法執行',
+    '跑一下': '執行一下',
+    '优化一下': '優化一下',
+    '不要解释': '不用說明'
+  };
+  const shortSuggestionLabels = locale === 'zh-TW' ? {
+    [suggestionLabels['先帮我梳理下当前任务并给出方案']]: '整理任務',
+    [suggestionLabels['按这个需求做：']]: '照需求做'
+  } : {};
+  const localizedSuggestions = locale === 'zh-TW' ? Object.fromEntries(
+    Object.entries(suggestionLabels).flatMap(([source, label]) => [[source, label], [localizeRemoteText(source), label]])
+  ) : {};
+  const permissionLabels = locale === 'zh-TW' ? {
+    turbo: '無限 (Turbo)',
+    auto: '自動 (Auto)',
+    default: '預設 (Default)',
+    request_review: '請求核准 (Review)'
+  } : {};
+  const sourceProjectLabels = ['未归属项目', '未歸屬項目', '未歸屬專案'];
+  const sourceNewChatLabels = ['新对话', '新對話', '新建对话', '新建對話', '新增對話'];
+  return localizeRemoteSource(`<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta id="meta-theme-color" name="theme-color" content="#09090b">
-  <title>Antigravity Remote</title>
-  <link rel="manifest" href="/manifest.json">
+  <title>Antigravity 远程操作</title>
+  <link rel="manifest" href="/manifest.json?lang=${locale}">
   <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png">
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
   <script id="ag-theme-boot">(function(){try{var p=localStorage.getItem('ag_remote_theme_v1');if(p!=='light'&&p!=='dark'&&p!=='system')p='system';var l=p==='light'||(p==='system'&&typeof window.matchMedia==='function'&&window.matchMedia('(prefers-color-scheme: light)').matches);var t=l?'light':'dark';var d=document.documentElement;d.setAttribute('data-theme',t);d.setAttribute('data-theme-pref',p);d.style.colorScheme=t;var m=document.getElementById('meta-theme-color');if(m)m.setAttribute('content',l?'#f8fafc':'#09090b');}catch{}})();</script>
@@ -9016,7 +9536,7 @@ function buildMobileAppHtml() {
       try { history.replaceState(null, '', location.pathname); } catch {}
     }
     if (isTrustedSecureOrigin(location.origin) && 'serviceWorker' in navigator) {
-      swRegistrationPromise = navigator.serviceWorker.register('/sw.js', { scope: '/' }).then((reg) => {
+      swRegistrationPromise = navigator.serviceWorker.register('/sw.js?lang=${locale}', { scope: '/' }).then((reg) => {
         if (reg) syncEndpointsToServiceWorker(pairState);
         return reg;
       }).catch((err) => {
@@ -9157,7 +9677,7 @@ function buildMobileAppHtml() {
         }
         if (allowRegister && isTrustedSecureOrigin(location.origin)) {
           swLastError = '';
-          swRegistrationPromise = navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((err) => {
+          swRegistrationPromise = navigator.serviceWorker.register('/sw.js?lang=${locale}', { scope: '/' }).catch((err) => {
             swLastError = err?.message || String(err || 'register failed');
             return null;
           });
@@ -9365,7 +9885,7 @@ function buildMobileAppHtml() {
               return;
             }
           }
-          const popped = showLocalSystemNotification('Antigravity 远程通知测试', '通知通道正常，桌面应用未读角标将随已完成未读数自动同步。', '');
+          const popped = showLocalSystemNotification('Antigravity 远程通知测试', ${serializeRemoteTemplateData(locale === 'zh-TW' ? localizeRemoteText('通知通道正常，桌面应用未读角标将随已完成未读数自动同步。') : '通知通道正常，桌面应用未读角标将随已完成未读数自动同步。')}, '');
           showToast(popped ? '已弹出本地系统测试通知' : '测试通知未送达，请检查系统通知权限');
         }
       });
@@ -9394,7 +9914,7 @@ function buildMobileAppHtml() {
     let latestDisplayConfig = null;
     let latestSnap = null;
     const QUICK_DIRECT_MODE_KEY = 'ag_remote_quick_direct_v1';
-    const DEFAULT_CLIENT_QUICK_PROMPTS = ${JSON.stringify(DEFAULT_REMOTE_QUICK_PROMPTS).replace(/</g, '\\u003c')};
+    const DEFAULT_CLIENT_QUICK_PROMPTS = ${serializeRemoteTemplateData(DEFAULT_REMOTE_QUICK_PROMPTS)};
     let quickDirectMode = (() => {
       try { return localStorage.getItem(QUICK_DIRECT_MODE_KEY) !== '0'; } catch { return true; }
     })();
@@ -9422,7 +9942,7 @@ function buildMobileAppHtml() {
       }
     })();
     function authHeaders(extra) {
-      const h = Object.assign({}, extra || {});
+      const h = Object.assign({ 'Accept-Language': document.documentElement.lang }, extra || {});
       if (pairState.token) h['X-AG-Remote-Token'] = pairState.token;
       if (clientId) h['X-AG-Client-Id'] = clientId;
       if (deviceId) h['X-AG-Device-Id'] = deviceId;
@@ -10975,6 +11495,12 @@ function buildMobileAppHtml() {
       syncTopbarDrawerButtons();
     }
 
+    const contextMetricFormat = new Intl.NumberFormat('en-US', {
+      useGrouping: false,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+
     function renderContextDrawer(snap, ctxRes) {
       const box = $('context-drawer');
       if (!box || box.hidden) return;
@@ -10983,9 +11509,9 @@ function buildMobileAppHtml() {
       const usedStr = cp.usedText || (cp.usedTokens ? fmtNumShort(cp.usedTokens) : '—');
       const limitStr = cp.limitText || (cp.limitTokens ? fmtNumShort(cp.limitTokens) : '—');
       const remainStr = cp.remainingText || (cp.limitTokens && cp.usedTokens != null ? fmtNumShort(Math.max(0, cp.limitTokens - cp.usedTokens)) : '—');
-      const speedStr = cp.speedText || (cp.tokPerSec != null ? cp.tokPerSec + ' tok/s' : '—');
-      const cacheStr = cp.cacheHitRate != null ? cp.cacheHitRate + '%' : '—';
-      const durStr = cp.durationText || (cp.lastDurationSec != null ? cp.lastDurationSec + 's' : '—');
+      const speedStr = cp.speedText || (Number.isFinite(cp.tokPerSec) ? contextMetricFormat.format(cp.tokPerSec) + ' tok/s' : '—');
+      const cacheStr = Number.isFinite(cp.cacheHitRate) ? contextMetricFormat.format(cp.cacheHitRate) + '%' : '—';
+      const durStr = cp.durationText || (Number.isFinite(cp.lastDurationSec) ? contextMetricFormat.format(cp.lastDurationSec) + 's' : '—');
       const modelStr = cp.modelDisplayName || ctxRes?.model || snap?.model || '—';
       const barCol = pct == null ? 'var(--accent)' : (pct >= 85 ? 'var(--red)' : (pct >= 65 ? 'var(--amber)' : 'var(--green)'));
       const isolatedTag = snap?.isolated ? '<span class="isolated-badge" title="当前仅在本页浏览其他会话，不会改变电脑端屏幕">仅本页</span>' : '';
@@ -10996,7 +11522,7 @@ function buildMobileAppHtml() {
           '<button id="btn-refresh-context" class="icon-btn drawer-refresh-btn' + (contextRefreshing ? ' is-spinning' : '') + '" type="button"' + (contextRefreshing ? ' disabled' : '') + '>' + REFRESH_ICON_SVG + '<span>' + (contextRefreshing ? '刷新中' : '刷新') + '</span></button>' +
         '</div>' +
         '<div class="qcard">' +
-          '<div class="qhead"><span>' + esc(ctxRes?.title || snap?.title || '当前会话') + '</span><span style="color:' + barCol + '">' + (pct != null ? pct.toFixed(1) + '%' : '--%') + '</span></div>' +
+          '<div class="qhead"><span>' + esc(remoteConversationDisplayTitle(ctxRes?.title || snap?.title, snap?.isNewConversation) || '当前会话') + '</span><span style="color:' + barCol + '">' + (pct != null ? pct.toFixed(1) + '%' : '--%') + '</span></div>' +
           '<div class="qbar"><div class="qfill" style="width:' + (pct != null ? pct.toFixed(1) : 0) + '%;background:' + barCol + '"></div></div>' +
           '<div class="qreset" style="margin-top:5px">模型：' + esc(modelStr) + '</div>' +
         '</div>' +
@@ -11178,6 +11704,24 @@ function buildMobileAppHtml() {
       return { id: pid, name };
     }
 
+    const localizedChromeLabels = ${serializeRemoteTemplateData(localizedChromeLabels)};
+
+    function remoteChromeLabel(label) {
+      return typeof label === 'string' && Object.hasOwn(localizedChromeLabels, label)
+        ? localizedChromeLabels[label] : label;
+    }
+
+    const sourceProjectLabels = ${serializeRemoteTemplateData(sourceProjectLabels)};
+    const sourceNewChatLabels = ${serializeRemoteTemplateData(sourceNewChatLabels)};
+
+    function remoteConversationDisplayTitle(title, isNewConversation) {
+      if (!isNewConversation || typeof title !== 'string') return title;
+      const separator = title.indexOf(' · ');
+      const heading = separator < 0 ? title : title.slice(0, separator);
+      if (!sourceNewChatLabels.includes(heading)) return title;
+      return '新建对话' + (separator < 0 ? '' : ' · ' + remoteProjectDisplayName(title.slice(separator + 3)));
+    }
+
     function resolveConversationProjectName(snap) {
       if (!snap || snap.ok === false) return '';
       if (snap.isNewConversation) {
@@ -11186,7 +11730,7 @@ function buildMobileAppHtml() {
       const projects = Array.isArray(snap.projects) ? snap.projects : [];
       const curPid = normalizeProjectId(snap.currentProjectId);
       const directName = String(snap.currentProjectName || '').trim();
-      if (directName && directName !== '未归属项目') return directName;
+      if (directName && !sourceProjectLabels.includes(directName)) return directName;
       if (curPid) {
         const matchedProj = projects.find((p) => p && p.id === curPid && p.name);
         if (matchedProj?.name) return String(matchedProj.name).trim();
@@ -11196,7 +11740,7 @@ function buildMobileAppHtml() {
         const matchedConv = snap.conversations.find((c) => c && c.id === activeCid);
         if (matchedConv) {
           const convProjName = String(matchedConv.projectName || '').trim();
-          if (convProjName && convProjName !== '未归属项目') return convProjName;
+          if (convProjName && !sourceProjectLabels.includes(convProjName)) return convProjName;
           const convPid = normalizeProjectId(matchedConv.projectId);
           if (convPid) {
             const pByConv = projects.find((p) => p && p.id === convPid && p.name);
@@ -11207,10 +11751,10 @@ function buildMobileAppHtml() {
       return directName;
     }
 
-    function syncTopbarProjectBadge(projectName) {
+    function syncTopbarProjectBadge(projectName, projectId) {
       const el = $('conv-project-badge');
       if (!el) return;
-      const clean = String(projectName || '').trim();
+      const clean = remoteProjectDisplayName(String(projectName || '').trim(), projectId);
       el.textContent = clean;
       el.title = clean ? ('所属项目：' + clean) : '';
       el.hidden = !clean;
@@ -11222,12 +11766,12 @@ function buildMobileAppHtml() {
       const eff = getEffectiveSelectedProject(snap);
       const newChatSubEl = $('new-chat-sub');
       if (newChatSubEl) {
-        newChatSubEl.textContent = eff.name;
+        newChatSubEl.textContent = remoteProjectDisplayName(eff.name, eff.id);
         newChatSubEl.hidden = !eff.name;
       }
       const newChatBtnEl = $('btn-new-chat');
       if (newChatBtnEl) {
-        newChatBtnEl.title = eff.name ? ('在「' + eff.name + '」中新建对话') : '新建对话';
+        newChatBtnEl.title = eff.name ? ('在「' + remoteProjectDisplayName(eff.name, eff.id) + '」中新建对话') : '新建对话';
       }
     }
 
@@ -11315,8 +11859,8 @@ function buildMobileAppHtml() {
 
       const displayCfg = applyRemoteDisplayConfig(snap);
       $('status-dot').className = snap.busy ? 'dot busy' : 'dot';
-      $('conv-title').textContent = snap.title || 'Antigravity';
-      syncTopbarProjectBadge(resolveConversationProjectName(snap));
+      $('conv-title').textContent = remoteConversationDisplayTitle(snap.title, snap.isNewConversation) || 'Antigravity';
+      syncTopbarProjectBadge(resolveConversationProjectName(snap), snap.currentProjectId);
       $('sub-meta').textContent = snap.pulseText || (snap.busy ? '正在生成内容…' : (snap.contextBadge || '已就绪'));
 
       const gStr = fmtPct(snap.quota?.gemini?.remainingFraction);
@@ -11473,12 +12017,12 @@ function buildMobileAppHtml() {
                 const mark = activePrompt.multiSelect ? (isSel ? '☑' : '☐') : (isSel ? '●' : '○');
                 return '<button class="prompt-opt' + (isSel ? ' selected' : '') + '" data-opt-idx="' + opt.index + '" type="button">'
                   + '<span class="prompt-opt-mark">' + mark + '</span>'
-                  + '<span class="prompt-opt-label">' + esc(opt.label) + '</span>'
+                  + '<span class="prompt-opt-label">' + esc(opt.displayLabel || opt.label) + '</span>'
                   + '</button>';
               }).join('') + '</div>')
             : '';
           const otherHtml = activePrompt.hasOtherInput
-            ? '<input class="prompt-other-input" type="text" placeholder="' + esc(activePrompt.otherPlaceholder || '输入自定义说明或选项…') + '" value="' + esc(draft.otherText) + '" />'
+            ? '<input class="prompt-other-input" type="text" placeholder="' + esc(activePrompt.displayPlaceholder || activePrompt.otherPlaceholder || '输入自定义说明或选项…') + '" value="' + esc(draft.otherText) + '" />'
             : '';
           const actionsList = Array.isArray(activePrompt.actions) ? activePrompt.actions : [];
           const actsHtml = actionsList.length
@@ -11487,7 +12031,7 @@ function buildMobileAppHtml() {
                 const cls = (act.kind === 'reject' ? 'reject' : (act.kind === 'primary' ? 'approve' : 'secondary')) + (isPersistRisk ? ' is-persistent-risk' : '');
                 return '<button class="ap-btn ' + cls + ' prompt-act-btn" data-act-idx="' + act.index + '" data-act-label="' + esc(act.label) + '"'
                   + (isPersistRisk ? ' data-persistent-risk="1"' : '') + ' type="button">'
-                  + esc(act.label) + '</button>';
+                  + esc(act.displayLabel || remoteChromeLabel(act.label)) + '</button>';
               }).join('') + '</div>')
             : '';
           const riskTagHtml = isPromptRisk
@@ -11498,12 +12042,12 @@ function buildMobileAppHtml() {
               + '<div style="font-size:12px;font-weight:700;color:var(--risk-fg)">' + esc(highRiskApprovals[0].riskText || '🛡️ 高危操作确认') + '</div>'
               + '<div class="approval-ctx">' + esc(highRiskApprovals[0].contextText || '桌面端存在高危操作等待你的确认') + '</div>'
               + '<div class="approval-btns">' + approvals.map((a) =>
-                  '<button class="ap-btn ' + (a.kind === 'reject' ? 'reject' : 'approve') + ' ap-coexist-btn" data-idx="' + a.index + '" data-label="' + esc(a.label) + '" type="button">'
-                  + (a.kind === 'reject' ? '❌ ' : '✅ ') + esc(a.label) + '</button>'
+                  '<button class="ap-btn ' + (a.kind === 'reject' ? 'reject' : 'approve') + ' ap-coexist-btn" data-idx="' + a.index + '" data-label="' + esc(a.label) + '" data-display-label="' + esc(a.displayLabel || remoteChromeLabel(a.label)) + '" type="button">'
+                  + (a.kind === 'reject' ? '❌ ' : '✅ ') + esc(a.displayLabel || remoteChromeLabel(a.label)) + '</button>'
                 ).join('') + '</div></div>')
             : '';
           dock.innerHTML = (isPromptRisk ? '<div class="prompt-card is-risk">' : '<div class="prompt-card">')
-            + '<div class="prompt-head"><span class="prompt-title">' + esc(activePrompt.title || '需要你的确认') + '</span>'
+            + '<div class="prompt-head"><span class="prompt-title">' + esc(activePrompt.displayTitle || remoteChromeLabel(activePrompt.title) || '需要你的确认') + '</span>'
             + '<span class="prompt-badge">' + esc(modeLabel) + '</span></div>'
             + riskTagHtml
             + (activePrompt.description ? '<div class="prompt-desc">' + esc(activePrompt.description) + '</div>' : '')
@@ -11597,7 +12141,8 @@ function buildMobileAppHtml() {
               btn.disabled = true;
               try {
                 const res = await apiAction({ action: 'click-approval', index: Number(btn.dataset.idx), label: btn.dataset.label });
-                if (res?.ok) showToast('已触发: ' + btn.dataset.label);
+                if (res?.ok) showToast(${locale === 'zh-TW' ? true : false}
+                  ? '已選擇「' + btn.dataset.displayLabel + '」' : '已触发: ' + btn.dataset.label);
                 else {
                   btn.disabled = false;
                   showToast(res?.error || res?.actionResult?.error || '操作未生效，请检查电脑端状态后重试');
@@ -11619,15 +12164,16 @@ function buildMobileAppHtml() {
           (firstRisk ? '<div style="font-size:12px;font-weight:700;color:var(--risk-fg)">' + esc(approvals[0].riskText || '🛡️ 高危操作确认') + '</div>' : '') +
           '<div class="approval-ctx">' + esc(ctx) + '</div>' +
           '<div class="approval-btns">' + approvals.map((a) =>
-            '<button class="ap-btn ' + (a.kind === 'reject' ? 'reject' : 'approve') + '" data-idx="' + a.index + '" data-label="' + esc(a.label) + '" type="button">' +
-            (a.kind === 'reject' ? '❌ ' : '✅ ') + esc(a.label) + '</button>'
+            '<button class="ap-btn ' + (a.kind === 'reject' ? 'reject' : 'approve') + '" data-idx="' + a.index + '" data-label="' + esc(a.label) + '" data-display-label="' + esc(a.displayLabel || remoteChromeLabel(a.label)) + '" type="button">' +
+            (a.kind === 'reject' ? '❌ ' : '✅ ') + esc(a.displayLabel || remoteChromeLabel(a.label)) + '</button>'
           ).join('') + '</div></div>';
         dock.querySelectorAll('.ap-btn').forEach((btn) => {
           btn.onclick = async () => {
             btn.disabled = true;
             try {
               const res = await apiAction({ action: 'click-approval', index: Number(btn.dataset.idx), label: btn.dataset.label });
-              if (res?.ok) showToast('已触发: ' + btn.dataset.label);
+              if (res?.ok) showToast(${locale === 'zh-TW' ? true : false}
+                  ? '已選擇「' + btn.dataset.displayLabel + '」' : '已触发: ' + btn.dataset.label);
               else {
                 btn.disabled = false;
                 showToast(res?.error || res?.actionResult?.error || '操作未生效，请检查电脑端状态后重试');
@@ -11683,7 +12229,7 @@ function buildMobileAppHtml() {
                 const dataAttrs = 'data-step-idx="' + esc(String(stepAttr)) + '" data-dom-idx="' + esc(String(domAttr)) + '" data-queue-source="' + esc(srcAttr) + '" data-msg-id="' + esc(msgIdAttr) + '" data-queue-text="' + esc(String(q.text || '')) + '" data-has-media="' + esc(hasMediaAttr) + '" data-media-sig="' + esc(mediaSigAttr) + '"';
                 return '<div class="queue-item" ' + dataAttrs + '>'
                   + imgsHtml
-                  + '<span class="queue-item-text">' + esc(q.text || '') + '</span>'
+                  + '<span class="queue-item-text">' + esc(q.displayText ?? q.text ?? '') + '</span>'
                   + '<span class="queue-actions">'
                   + '<button class="queue-op-btn send queue-item-send" type="button" title="立即发送" aria-label="立即发送" ' + dataAttrs + itemBtnDisabled + '>→</button>'
                   + '<button class="queue-op-btn edit queue-item-edit" type="button" title="编辑此条排队消息" aria-label="编辑此条排队消息" ' + dataAttrs + itemBtnDisabled + '>✎</button>'
@@ -11939,18 +12485,24 @@ function buildMobileAppHtml() {
         : DEFAULT_CLIENT_QUICK_PROMPTS;
       const quickItems = [];
       const quickNormSet = new Set();
+      const builtInPrompts = ${serializeRemoteTemplateData(builtInPrompts)};
       for (const qp of quickList) {
         if (!qp || !qp.label || !qp.text) continue;
+        const builtIn = Object.hasOwn(builtInPrompts, qp.id) ? builtInPrompts[qp.id] : null;
+        const isBuiltIn = builtIn?.label === qp.label && builtIn?.text === qp.text;
+        const label = isBuiltIn ? builtIn.labelTw : qp.label;
+        const text = isBuiltIn ? builtIn.textTw : qp.text;
         const normText = String(qp.text).trim().toLowerCase();
         const normLabel = String(qp.label).trim().toLowerCase();
         if (normText) quickNormSet.add(normText);
+        quickNormSet.add(String(text).trim().toLowerCase());
         if (normLabel) quickNormSet.add(normLabel);
         const isDirect = Boolean(quickDirectMode && qp.autoSend);
         quickItems.push({
           cls: isDirect ? 'chip quick-prompt direct' : 'chip quick-prompt',
-          text: (isDirect ? '⚡ ' : '✎ ') + qp.label,
-          raw: qp.text,
-          qpLabel: qp.label,
+          text: (isDirect ? '⚡ ' : '✎ ') + label,
+          raw: text,
+          qpLabel: label,
           qpAutoSend: Boolean(qp.autoSend),
           isQuickPrompt: true
         });
@@ -11958,13 +12510,17 @@ function buildMobileAppHtml() {
 
       if (!snap?.busy) {
         const seenSuggest = new Set();
+        const localizedSuggestions = ${serializeRemoteTemplateData(localizedSuggestions)};
+        const shortSuggestionLabels = ${serializeRemoteTemplateData(shortSuggestionLabels)};
         for (const s of (snap?.suggestions || [])) {
-          const clean = String(s || '').trim();
+          const source = String(s || '').trim();
+          const clean = Object.hasOwn(localizedSuggestions, source) ? localizedSuggestions[source] : source;
           if (!clean) continue;
           const norm = clean.toLowerCase();
           if (seenSuggest.has(norm) || quickNormSet.has(norm)) continue;
           seenSuggest.add(norm);
-          items.push({ cls: 'chip suggest', text: '✦ ' + clean, raw: clean, isSuggest: true });
+          const label = Object.hasOwn(shortSuggestionLabels, clean) ? shortSuggestionLabels[clean] : clean;
+          items.push({ cls: 'chip suggest', text: '✦ ' + label, raw: clean, qpLabel: label, isSuggest: true });
         }
       }
 
@@ -12286,13 +12842,13 @@ function buildMobileAppHtml() {
       const titleText = (c.pinned ? '📌 ' : '') + String(c.title || c.id || '');
       let badgeHtml = '';
       if (c.status === 'waiting') {
-        badgeHtml = '<span class="conv-bell-indicator" title="' + esc(c.statusLabel || '待确认 / 待审批') + '" aria-label="待用户确认或审批">' + BELL_ICON_SVG + '<i class="conv-bell-dot"></i></span>';
+        badgeHtml = '<span class="conv-bell-indicator" title="' + esc(remoteChromeLabel(c.statusLabel) || '待确认 / 待审批') + '" aria-label="待用户确认或审批">' + BELL_ICON_SVG + '<i class="conv-bell-dot"></i></span>';
       } else if (c.status === 'running') {
-        badgeHtml = '<span class="c-badge running">' + esc(c.statusLabel || '运行中') + '</span>';
+        badgeHtml = '<span class="c-badge running">' + esc(remoteChromeLabel(c.statusLabel) || '运行中') + '</span>';
       } else if (c.status === 'error') {
-        badgeHtml = '<span class="c-badge error">' + esc(c.statusLabel || '异常') + '</span>';
+        badgeHtml = '<span class="c-badge error">' + esc(remoteChromeLabel(c.statusLabel) || '异常') + '</span>';
       } else if (c.status === 'unknown') {
-        badgeHtml = '<span class="c-badge unknown">' + esc(c.statusLabel || '未知') + '</span>';
+        badgeHtml = '<span class="c-badge unknown">' + esc(remoteChromeLabel(c.statusLabel) || (${locale === 'zh-TW'} ? '狀態未知' : '未知')) + '</span>';
       } else if (isUnreadCompleted) {
         badgeHtml = '<span class="conv-unread-dot" title="已完成 · 有新产出" aria-label="未读新产出"></span>';
       }
@@ -12301,7 +12857,7 @@ function buildMobileAppHtml() {
       let subHtml = '';
       if (showProjectName || (badgeHtml && rel)) {
         const subParts = [];
-        if (showProjectName && c.projectName) subParts.push(c.projectName);
+        if (showProjectName && c.projectName) subParts.push(remoteProjectDisplayName(c.projectName, c.projectId));
         if (rel) subParts.push(rel);
         if (subParts.length) subHtml = '<div class="c-sub">' + esc(subParts.join(' · ')) + '</div>';
       }
@@ -12332,9 +12888,11 @@ function buildMobileAppHtml() {
         clientPrevConvStatus.set(c.id, cur);
         if (!canPop || !prev) continue;
         if (prev === 'running' && cur === 'idle' && c.completedUnread === true) {
-          showLocalSystemNotification('对话已完成', (c.title || 'Antigravity 对话') + (c.projectName ? (' · ' + c.projectName) : ''), c.id);
+          showLocalSystemNotification('对话已完成', (c.title || 'Antigravity 对话') + (c.projectName ? (' · ' + remoteProjectDisplayName(c.projectName, c.projectId)) : ''), c.id);
         } else if (prev !== 'waiting' && cur === 'waiting') {
-          showLocalSystemNotification('需要你的确认', (c.title || 'Antigravity 对话') + ' 正在等待确认或审批', c.id);
+          showLocalSystemNotification('需要你的确认', (c.title || 'Antigravity 对话')
+            + (${locale === 'zh-TW'} && c.projectName ? '（' + remoteProjectDisplayName(c.projectName, c.projectId) + '）' : '')
+            + ' 正在等待确认或审批', c.id);
         }
       }
     }
@@ -12432,7 +12990,7 @@ function buildMobileAppHtml() {
               ? '<span class="proj-stat-dot waiting" title="有待确认操作"></span>'
               : (hasRunning ? '<span class="proj-stat-dot running" title="有运行中对话"></span>' : '');
             const newBtnHtml = !isUngroupedProj
-              ? '<button class="proj-new-btn" data-new-proj="' + esc(p.id) + '" type="button" title="在 ' + esc(p.name) + ' 中新建对话" aria-label="在 ' + esc(p.name) + ' 中新建对话">+</button>'
+              ? '<button class="proj-new-btn" data-new-proj="' + esc(p.id) + '" type="button" title="在 ' + esc(remoteProjectDisplayName(p.name, p.id)) + ' 中新建对话" aria-label="在 ' + esc(remoteProjectDisplayName(p.name, p.id)) + ' 中新建对话">+</button>'
               : '';
             const projMoreHtml = list.length < projTotal
               ? '<button class="conv-more-btn" data-proj-more="' + esc(p.id) + '" type="button">加载该项目更多对话 (' + list.length + '/' + projTotal + ')</button>'
@@ -12445,7 +13003,7 @@ function buildMobileAppHtml() {
                 '<button class="proj-toggle" data-proj-toggle="' + esc(p.id) + '" type="button"' + expandedAttr + '>' +
                   '<span class="proj-chev">' + chevChar + '</span>' +
                   '<span class="proj-icon">' + FOLDER_ICON_SVG + '</span>' +
-                  '<span class="proj-name">' + esc(p.name) + '</span>' +
+                  '<span class="proj-name">' + esc(remoteProjectDisplayName(p.name, p.id)) + '</span>' +
                   statDot +
                   '<span class="proj-count">' + projTotal + '</span>' +
                 '</button>' +
@@ -12461,6 +13019,10 @@ function buildMobileAppHtml() {
         convList.innerHTML = html;
         convList.dataset.lastHtml = html;
       }
+    }
+
+    function remoteProjectDisplayName(name, id) {
+      return (!id || id === 'ungrouped') && sourceProjectLabels.includes(name) ? '未归属项目' : name;
     }
 
     function normalizeProjectGroups(snap) {
@@ -12526,7 +13088,7 @@ function buildMobileAppHtml() {
       if (selectedGroup) {
         if (navBar) {
           const navHtml = '<button id="btn-drawer-back" class="drawer-back-btn" type="button">‹ 返回项目</button>'
-            + '<span class="drawer-proj-title" title="' + esc(selectedGroup.name) + '">📁 ' + esc(selectedGroup.name) + '</span>';
+            + '<span class="drawer-proj-title" title="' + esc(remoteProjectDisplayName(selectedGroup.name, selectedGroup.id)) + '">📁 ' + esc(remoteProjectDisplayName(selectedGroup.name, selectedGroup.id)) + '</span>';
           if (navBar.dataset.lastHtml !== navHtml) {
             navBar.innerHTML = navHtml;
             navBar.dataset.lastHtml = navHtml;
@@ -12559,7 +13121,7 @@ function buildMobileAppHtml() {
       const projHtml = groups.length
         ? groups.map((g) =>
             '<button class="proj-item' + (g.active ? ' active' : '') + '" data-proj-key="' + esc(g.key) + '" type="button">'
-            + '<span class="proj-item-left"><span>📁</span><span class="proj-item-name">' + esc(g.name) + '</span>'
+            + '<span class="proj-item-left"><span>📁</span><span class="proj-item-name">' + esc(remoteProjectDisplayName(g.name, g.id)) + '</span>'
             + (g.active ? '<span class="mode-pill cur">当前</span>' : '')
             + '</span>'
             + '<span class="proj-item-right"><span class="lat-badge muted">' + esc(g.count) + '</span><span>›</span></span>'
@@ -12905,18 +13467,27 @@ function buildMobileAppHtml() {
       if (k === 'turbo' || k === 'auto' || k === 'default' || k === 'request_review') return k;
       const lbl = String(rawLabel || '').trim().toLowerCase();
       if (!lbl) return 'unknown';
-      if (/(?:turbo|无限|unrestricted)/i.test(lbl)) return 'turbo';
-      if (/(?:request_review|review|请求审核|请求审查|审核|审查)/i.test(lbl)) return 'request_review';
-      if (/(?:\bauto\b|自动)/i.test(lbl)) return 'auto';
-      if (/(?:\bdefault\b|默认)/i.test(lbl)) return 'default';
+      if (new RegExp(${serializeRemoteTemplateData(/(?:turbo|无限|無限|unrestricted)/.source)}, 'i').test(lbl)) return 'turbo';
+      if (new RegExp(${serializeRemoteTemplateData(/(?:request_review|review|请求审核|请求审查|請求審核|請求審查|审核|审查|審核|審查)/.source)}, 'i').test(lbl)) return 'request_review';
+      if (new RegExp(${serializeRemoteTemplateData(/(?:\bauto\b|自动|自動)/.source)}, 'i').test(lbl)) return 'auto';
+      if (new RegExp(${serializeRemoteTemplateData(/(?:\bdefault\b|默认|預設)/.source)}, 'i').test(lbl)) return 'default';
       return 'unknown';
+    }
+
+    const localizedPermissionLabels = ${serializeRemoteTemplateData(permissionLabels)};
+
+    function remotePermissionDisplayLabel(key, label) {
+      const localized = localizedPermissionLabels[resolvePermKey(key, label)];
+      if (!localized) return ${locale === 'zh-TW'} && label ? '未知權限' : label;
+      const icon = String(label || '').match(/^[⚡🛡️🔒👁]+\\s*/u)?.[0] || '';
+      return icon + localized;
     }
 
     function syncPermInlineUi(rawKey, rawLabel) {
       const mode = resolvePermKey(rawKey, rawLabel);
       const lblEl = $('perm-inline-label');
       if (lblEl) {
-        lblEl.textContent = String(rawLabel || '').trim() || ({ turbo: '无限', auto: '自动', default: '默认', request_review: '请求审核' }[mode]) || '权限';
+        lblEl.textContent = String(remotePermissionDisplayLabel(mode, rawLabel) || '').trim() || ({ turbo: '无限', auto: '自动', default: '默认', request_review: '请求审核' }[mode]) || '权限';
       }
       const icoEl = $('perm-inline-icon');
       if (icoEl) {
@@ -13155,7 +13726,7 @@ function buildMobileAppHtml() {
       }
       html += msgs.map((m) => {
         if (m.role === 'system-notice') {
-          return '<div class="compact-done-pill" data-msg-idx="' + m.msgIndex + '">' + esc(m.text || '✓ 上下文已完成压缩') + '</div>';
+          return '<div class="compact-done-pill" data-msg-idx="' + m.msgIndex + '">' + esc(m.text || ${JSON.stringify(locale === 'zh-TW' ? localizeRemoteText('✓ 上下文已完成压缩') : '✓ 上下文已完成压缩')}) + '</div>';
         }
         if (m.role === 'user') {
           const atts = Array.isArray(m.attachments) ? m.attachments : [];
@@ -13182,11 +13753,11 @@ function buildMobileAppHtml() {
             }).join('');
             if (tiles) attHtml = '<div class="msg-atts above-user">' + tiles + '</div>';
           }
-          let userText = String(m.text || '');
+          let userText = String((renderedImgCount > 0 ? m.text : m.displayText ?? m.text) || '');
           if (renderedImgCount > 0) {
             userText = userText
-              .replace(/\\n?\\[附带\\s*\\d+\\s*张图片\\]\\s*$/g, '')
-              .replace(/^\\[图片附件\\]$/g, '')
+              .replace(new RegExp(${serializeRemoteTemplateData(/\n?\[附带\s*\d+\s*张图片\]\s*$/.source)}, 'g'), '')
+              .replace(new RegExp(${serializeRemoteTemplateData(/^\[图片附件\]$/.source)}), '')
               .trim();
           }
           if (attHtml) {
@@ -13229,7 +13800,8 @@ function buildMobileAppHtml() {
           || (Array.isArray(snap?.pendingPrompts) && snap.pendingPrompts.length)
         );
         if (!compactBlocked && lastM && lastM.role === 'user' && /^\\/compact(?:\\s|$)/i.test(String(lastM.text || '').trim())) {
-          html += '<div class="compact-done-pill">✓ 上下文已完成压缩</div>';
+          html += '<div class="compact-done-pill">' + ${JSON.stringify(locale === 'zh-TW'
+            ? localizeRemoteText('✓ 上下文已完成压缩') : '✓ 上下文已完成压缩')} + '</div>';
         }
       }
 
@@ -13303,7 +13875,7 @@ function buildMobileAppHtml() {
         { key: 'request_review', label: '👁️ 请求审核 (Review)' }
       ]).map((p) => ({
         key: p.key,
-        label: p.label,
+        label: remotePermissionDisplayLabel(p.key, p.label),
         active: curKey !== 'unknown' ? (p.key === curKey) : Boolean(cur && p.label.toLowerCase().includes(cur))
       }));
       openSheet('切换权限预设', opts, async (opt) => {
@@ -13312,7 +13884,7 @@ function buildMobileAppHtml() {
           const r = await apiAction({ action: 'select-permission', preset: opt.key });
           if (r?.ok) {
             syncPermInlineUi(r.actionResult?.permissionKey || opt.key, r.actionResult?.permissionLabel || opt.label);
-            showToast('已切换权限: ' + (r.actionResult?.permissionLabel || opt.label));
+            showToast('已切换权限: ' + remotePermissionDisplayLabel(r.actionResult?.permissionKey || opt.key, r.actionResult?.permissionLabel || opt.label));
           } else {
             showToast(r?.error || r?.actionResult?.error || '切换权限失败，请确认电脑端窗口在线后重试');
           }
@@ -13688,7 +14260,7 @@ function buildMobileAppHtml() {
           body.innerHTML = renderPanelStateHtml({
             icon: EMPTY_CHANGES_ICON_SVG,
             title: '当前会话暂无代码改动或产物',
-            desc: '当 AI 修改了项目文件或生成了文档产物，会自动汇总到这里',
+            desc: '若有 AI 改动和产物会显示在这里',
             actionId: 'fv-go-tree-btn',
             actionLabel: '浏览项目文件'
           });
@@ -14011,7 +14583,8 @@ function buildMobileAppHtml() {
       openTopDrawer('quota');
     };
     document.addEventListener('click', (e) => {
-      const t = e.target;
+      // Drawer controls can replace the clicked element before the event bubbles here.
+      const path = e.composedPath();
       const pairs = [
         ['context-drawer', 'btn-context-panel'],
         ['usage-drawer', 'btn-usage-panel'],
@@ -14020,7 +14593,7 @@ function buildMobileAppHtml() {
       for (const [drawerId, btnId] of pairs) {
         const box = $(drawerId);
         const btn = $(btnId);
-        if (box && !box.hidden && !box.contains(t) && t !== btn && !btn?.contains?.(t)) {
+        if (box && !box.hidden && !path.includes(box) && !path.includes(btn)) {
           box.hidden = true;
         }
       }
@@ -14195,7 +14768,7 @@ function buildMobileAppHtml() {
         const roots = Array.isArray(data?.roots) ? data.roots : [];
         rootsEl.innerHTML = roots.map((r) => {
           const isCur = projBrowserState.currentPath === r.path;
-          return '<button class="proj-root-pill' + (isCur ? ' active' : '') + '" data-root-path="' + esc(r.path) + '" type="button">' + esc(r.label) + '</button>';
+          return '<button class="proj-root-pill' + (isCur ? ' active' : '') + '" data-root-path="' + esc(r.path) + '" type="button">' + esc(remoteChromeLabel(r.label)) + '</button>';
         }).join('');
       }
 
@@ -14628,7 +15201,7 @@ function buildMobileAppHtml() {
         applySelectedConversation(cid);
         const r = await apiAction({ action: 'switch-conversation', id: cid, isolated: true });
         if (!r?.ok && mySwitchSelEpoch === selectedProjectEpoch) {
-          showToast(r?.error || r?.actionResult?.error || '切换会话失败，请检查电脑端连接或刷新重试');
+          showToast(r?.error || r?.actionResult?.error || ${serializeRemoteTemplateData(locale === 'zh-TW' ? localizeRemoteText('切换会话失败，请检查电脑端连接或刷新重试') : '切换会话失败，请检查电脑端连接或刷新重试')});
           if (latestSnap && lastNavActionSeq === myNavSeqSnapshot + 1) {
             $('conv-title').textContent = latestSnap.title || 'Antigravity';
             syncTopbarProjectBadge(resolveConversationProjectName(latestSnap));
@@ -14636,7 +15209,7 @@ function buildMobileAppHtml() {
         }
       } catch (err) {
         if (mySwitchSelEpoch === selectedProjectEpoch) {
-          showToast(humanizeRemoteError(err?.message, '切换会话失败，请检查电脑端连接或刷新重试'));
+          showToast(humanizeRemoteError(err?.message, ${serializeRemoteTemplateData(locale === 'zh-TW' ? localizeRemoteText('切换会话失败，请检查电脑端连接或刷新重试') : '切换会话失败，请检查电脑端连接或刷新重试')}));
           if (latestSnap && lastNavActionSeq === myNavSeqSnapshot + 1) {
             $('conv-title').textContent = latestSnap.title || 'Antigravity';
             syncTopbarProjectBadge(resolveConversationProjectName(latestSnap));
@@ -14957,7 +15530,7 @@ function buildMobileAppHtml() {
   })();
   </script>
 </body>
-</html>`;
+</html>`, locale);
 }
 
 // ==================== HTTP 服务器管理器（双栈监听，入口强制仅放行本机及内网私网/Tailscale 来源） ====================
@@ -16083,7 +16656,8 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
   };
 
   const webPushManager = options.webPushManager || createWebPushManager({
-    getStateFilePath: () => path.join(getStateDir(), 'remote-push-state.json')
+    getStateFilePath: () => path.join(getStateDir(), 'remote-push-state.json'),
+    formatCatalogNotification: formatTraditionalCatalogNotification
   });
   let lastCompletedUnreadCount = 0;
   let pushWatcherTimer = null;
@@ -16213,17 +16787,27 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
     }
   };
 
-  const cachedHtml = buildMobileAppHtml();
-  let cachedHtmlGzip = null;
-  try {
-    cachedHtmlGzip = zlib.gzipSync(Buffer.from(cachedHtml, 'utf8'), { level: 1 });
-  } catch {
-    cachedHtmlGzip = null;
-  }
   const cachedIcon = buildMobileIconSvg();
-  const cachedManifest = buildManifestJson();
-  const cachedSw = buildServiceWorkerJs();
-  const cached401 = buildUnauthorizedHtml();
+  const localizedPages = new Map();
+  const compressedPages = new Map();
+
+  function getLocalizedPages(req, assetLanguage) {
+    const locale = normalizeRemoteChineseLocale(assetLanguage) || resolveRemoteLocale(req);
+    if (!localizedPages.has(locale)) {
+      const html = buildMobileAppHtml(locale);
+      localizedPages.set(locale, {
+        locale,
+        html,
+        manifest: buildManifestJson(locale),
+        serviceWorker: buildServiceWorkerJs(locale),
+        unauthorized: buildUnauthorizedHtml(locale)
+      });
+      try {
+        compressedPages.set(html, zlib.gzipSync(Buffer.from(html, 'utf8'), { level: 1 }));
+      } catch {}
+    }
+    return localizedPages.get(locale);
+  }
 
   function mergeVaryHeader(existingVary, token) {
     const parts = String(existingVary || '')
@@ -16236,18 +16820,19 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
     return parts.join(', ');
   }
 
+  function localizedPageHeaders(res, { locale }) {
+    return { 'Content-Language': locale, Vary: mergeVaryHeader(res.getHeader?.('Vary'), 'Accept-Language') };
+  }
+
   function sendPayload(req, res, statusCode, headers, bodyStr) {
     const raw = typeof bodyStr === 'string' ? bodyStr : String(bodyStr || '');
     const baseHeaders = headers && typeof headers === 'object' ? { ...headers } : {};
     if (acceptsGzipEncoding(req?.headers?.['accept-encoding']) && Buffer.byteLength(raw, 'utf8') >= 1024) {
       try {
-        const gz = (raw === cachedHtml && cachedHtmlGzip) ? cachedHtmlGzip : zlib.gzipSync(Buffer.from(raw, 'utf8'), { level: 1 });
+        const gz = compressedPages.get(raw) || zlib.gzipSync(Buffer.from(raw, 'utf8'), { level: 1 });
         const existingVaryKey = Object.keys(baseHeaders).find((k) => k.toLowerCase() === 'vary');
         const resVary = typeof res?.getHeader === 'function' ? res.getHeader('Vary') : '';
-        const combinedVary = [
-          Array.isArray(resVary) ? resVary.join(', ') : String(resVary || ''),
-          existingVaryKey ? String(baseHeaders[existingVaryKey] || '') : ''
-        ].filter(Boolean).join(', ');
+        const combinedVary = existingVaryKey ? baseHeaders[existingVaryKey] : resVary;
         const mergedVary = mergeVaryHeader(combinedVary, 'Accept-Encoding');
         if (existingVaryKey && existingVaryKey !== 'Vary') delete baseHeaders[existingVaryKey];
         res.writeHead(statusCode, { ...baseHeaders, 'Content-Encoding': 'gzip', Vary: mergedVary });
@@ -16262,6 +16847,12 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
   }
 
   const httpHandler = async (req, res) => {
+    let requestLocale;
+    const isTraditional = () => (requestLocale ??= resolveRemoteLocale(req)) === 'zh-TW';
+    const remoteError = (message) => isTraditional() ? localizeRemoteErrorText(message) : message;
+    const serializeResponse = (payload) => JSON.stringify(isTraditional()
+      ? localizeRemoteResponse(payload, (message) => localizeRemoteErrorText(message, errorFallback))
+      : payload);
     const config = getActiveConfig();
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
@@ -16303,6 +16894,16 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
       return;
     }
     const pathname = urlObj.pathname;
+    const errorFallback = {
+      '/api/action': '操作失敗，請確認電腦端狀態後再試。',
+      '/api/projects': '操作失敗，請確認電腦端狀態後再試。',
+      '/api/snapshot': '無法讀取對話，請再試一次。',
+      '/api/conversations': '無法讀取對話，請再試一次。',
+      '/api/messages': '無法讀取對話，請再試一次。',
+      '/api/context': '無法讀取上下文，請再試一次。',
+      '/api/push/test': '測試推播未送達，請檢查通知權限與連線。',
+      '/api/probe-hints': '無法測試連線，請稍後再試。'
+    }[pathname];
 
     const reqChannel = detectRequestChannel(req, activeTunnelUrl);
     const enabledMap = config.enabledChannels || {
@@ -16313,10 +16914,10 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
     };
     if (reqChannel !== 'loopback' && !enabledMap[reqChannel]) {
       const chNames = { lan: '局域网', tailscale: 'Tailscale', bonjour: 'Bonjour', tunnel: 'Cloudflare 隧道' };
-      const msg = `${chNames[reqChannel] || reqChannel} 连接方式已停用`;
+      const msg = remoteError(`${chNames[reqChannel] || reqChannel} 连接方式已停用`);
       if (pathname.startsWith('/api/')) {
         res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: false, channelDisabled: reqChannel, error: msg }));
+        res.end(serializeResponse({ ok: false, channelDisabled: reqChannel, error: msg }));
       } else {
         res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
         res.end(`403 Forbidden: ${msg}`);
@@ -16342,17 +16943,20 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
       return;
     }
     if (pathname === '/manifest.json') {
-      res.writeHead(200, { 'Content-Type': 'application/manifest+json; charset=utf-8', 'Cache-Control': 'no-cache' });
-      res.end(cachedManifest);
+      const pages = getLocalizedPages(req, urlObj.searchParams.get('lang'));
+      res.writeHead(200, { 'Content-Type': 'application/manifest+json; charset=utf-8', 'Cache-Control': 'no-cache', ...localizedPageHeaders(res, pages) });
+      res.end(pages.manifest);
       return;
     }
     if (pathname === '/sw.js') {
+      const pages = getLocalizedPages(req, urlObj.searchParams.get('lang'));
       res.writeHead(200, {
         'Content-Type': 'application/javascript; charset=utf-8',
         'Cache-Control': 'no-cache',
-        'Service-Worker-Allowed': '/'
+        'Service-Worker-Allowed': '/',
+        ...localizedPageHeaders(res, pages)
       });
-      res.end(cachedSw);
+      res.end(pages.serviceWorker);
       return;
     }
     if (req.method === 'GET' && pathname === '/api/ping.gif') {
@@ -16370,7 +16974,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
     const clientKey = String((fromLoopback && req.headers['cf-connecting-ip']) || normalizeRemoteIp(remoteIp) || 'unknown');
     if (isRateLimited(clientKey)) {
       res.writeHead(429, { 'Content-Type': 'application/json; charset=utf-8', 'Retry-After': '60' });
-      res.end(JSON.stringify({ ok: false, error: '配对口令尝试失败次数过多，请等待 60 秒后再试。' }));
+      res.end(serializeResponse({ ok: false, error: remoteError('配对口令尝试失败次数过多，请等待 60 秒后再试。') }));
       return;
     }
 
@@ -16380,10 +16984,11 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
       recordAuthFailure(clientKey);
       if (pathname.startsWith('/api/')) {
         res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: false, error: '未授权，请在终端运行 ag-context-meter remote 重新扫码' }));
+        res.end(serializeResponse({ ok: false, error: remoteError('未授权，请在终端运行 ag-context-meter remote 重新扫码') }));
       } else {
-        res.writeHead(401, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': HTML_CSP });
-        res.end(cached401);
+        const pages = getLocalizedPages(req);
+        res.writeHead(401, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': HTML_CSP, ...localizedPageHeaders(res, pages) });
+        res.end(pages.unauthorized);
       }
       return;
     }
@@ -16397,7 +17002,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
       const rawCt = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
       if (rawCt !== 'application/json') {
         res.writeHead(415, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: false, error: '写接口仅接受 Content-Type: application/json 请求' }));
+        res.end(serializeResponse({ ok: false, error: remoteError('写接口仅接受 Content-Type: application/json 请求') }));
         return;
       }
       const headerToken = String(req.headers['x-ag-remote-token'] || '').trim();
@@ -16427,7 +17032,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
         if (!isSameOriginTuple(originTuple)) {
           if (!hasValidCustomHeader) {
             res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-            res.end(JSON.stringify({ ok: false, error: '检测到跨协议/跨源或跨端口写请求，已拦截 (CSRF)' }));
+            res.end(serializeResponse({ ok: false, error: remoteError('检测到跨协议/跨源或跨端口写请求，已拦截 (CSRF)') }));
             return;
           }
         } else {
@@ -16437,14 +17042,14 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
         const refTuple = parseOriginTuple(rawReferer);
         if (!isSameOriginTuple(refTuple) && !hasValidCustomHeader) {
           res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-          res.end(JSON.stringify({ ok: false, error: '检测到跨协议/跨源 Referer 写请求，已拦截 (CSRF)' }));
+          res.end(serializeResponse({ ok: false, error: remoteError('检测到跨协议/跨源 Referer 写请求，已拦截 (CSRF)') }));
           return;
         }
       }
       // 仅凭 Cookie 鉴权的写请求必须提供严格同源 Origin（或有效自定义 X-AG-Remote-Token），禁止仅凭 Referer 放行
       if (fromCookie && !hasValidCustomHeader && !sameOriginByOrigin) {
         res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: false, error: 'Cookie 鉴权写请求须提供同源 Origin 或 X-AG-Remote-Token 请求头' }));
+        res.end(serializeResponse({ ok: false, error: remoteError('Cookie 鉴权写请求须提供同源 Origin 或 X-AG-Remote-Token 请求头') }));
         return;
       }
     }
@@ -16465,7 +17070,8 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
         cookiesToSet.push(`ag_ui_ver=${MOBILE_UI_VERSION}; Path=/; SameSite=Lax${secureAttr}; Max-Age=31536000`);
       }
       if (cookiesToSet.length) res.setHeader('Set-Cookie', cookiesToSet);
-      sendPayload(req, res, 200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': HTML_CSP }, cachedHtml);
+      const pages = getLocalizedPages(req);
+      sendPayload(req, res, 200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': HTML_CSP, ...localizedPageHeaders(res, pages) }, pages.html);
       return;
     }
 
@@ -16485,7 +17091,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
         tailscaleCustomHost: config.tailscaleCustomHost
       });
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({
+      res.end(serializeResponse({
         ok: true,
         service: 'ag-mobile-remote',
         nonce: probeNonce,
@@ -16503,10 +17109,10 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
       try {
         const info = webPushManager.getPublicInfo();
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: true, ...info }));
+        res.end(serializeResponse({ ok: true, ...info }));
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: false, error: err?.message || '读取推送密钥状态失败' }));
+        res.end(serializeResponse({ ok: false, error: remoteError(err?.message || '读取推送密钥状态失败') }));
       }
       return;
     }
@@ -16521,10 +17127,10 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
         });
         const code = result.ok ? 200 : (result.statusCode || 400);
         res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify(result));
+        res.end(serializeResponse(result));
       } catch (err) {
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: false, error: err?.message || '订阅请求解析失败' }));
+        res.end(serializeResponse({ ok: false, error: remoteError(err?.message || '订阅请求解析失败') }));
       }
       return;
     }
@@ -16535,10 +17141,10 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
         const result = webPushManager.removeSubscription(body?.endpoint || '');
         const code = result.ok ? 200 : (result.statusCode || 500);
         res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify(result));
+        res.end(serializeResponse(result));
       } catch (err) {
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: false, error: err?.message || '取消订阅失败' }));
+        res.end(serializeResponse({ ok: false, error: remoteError(err?.message || '取消订阅失败') }));
       }
       return;
     }
@@ -16549,10 +17155,10 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
         const result = webPushManager.updatePrefs(body || {});
         const code = result.ok ? 200 : (result.statusCode || 500);
         res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify(result));
+        res.end(serializeResponse(result));
       } catch (err) {
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: false, error: err?.message || '更新推送偏好失败' }));
+        res.end(serializeResponse({ ok: false, error: remoteError(err?.message || '更新推送偏好失败') }));
       }
       return;
     }
@@ -16571,10 +17177,10 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
           ts: Date.now()
         });
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: true, completedUnreadCount: liveUnreadCount, ...result }));
+        res.end(serializeResponse({ ok: true, completedUnreadCount: liveUnreadCount, ...result }));
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: false, error: err?.message || '发送测试推送失败' }));
+        res.end(serializeResponse({ ok: false, error: err?.message || remoteError('发送测试推送失败') }));
       }
       return;
     }
@@ -16584,10 +17190,10 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
         const forceProbe = urlObj.searchParams.get('force') === '1';
         const hints = await probeClientPrivateReachability(req, config, { force: forceProbe });
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: true, hints }));
+        res.end(serializeResponse({ ok: true, hints }));
       } catch (err) {
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: true, hints: {}, error: err?.message || '' }));
+        res.end(serializeResponse({ ok: true, hints: {}, error: err?.message || '' }));
       }
       return;
     }
@@ -16597,7 +17203,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
       const checked = resolveSafeLocalMediaPath(rawMediaPath, options.mediaOptions || {});
       if (!checked.ok) {
         res.writeHead(checked.status || 403, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: false, error: checked.error }));
+        res.end(serializeResponse({ ok: false, error: checked.error }));
         return;
       }
       try {
@@ -16618,7 +17224,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
         res.end(buf);
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: false, error: err?.message || '读取本地文件失败' }));
+        res.end(serializeResponse({ ok: false, error: remoteError(err?.message || '读取本地文件失败') }));
       }
       return;
     }
@@ -16627,7 +17233,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
       const rawFilePath = urlObj.searchParams.get('path') || '';
       const preview = readSafeTextFilePreview(rawFilePath, options.mediaOptions || {});
       res.writeHead(preview.ok ? 200 : (preview.status || 403), { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify(preview));
+      res.end(serializeResponse(preview));
       return;
     }
 
@@ -16636,7 +17242,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
       const showAll = urlObj.searchParams.get('showAll') === '1';
       const tree = listSafeProjectTree(rawDir, { ...(options.mediaOptions || {}), showAll });
       res.writeHead(tree.ok ? 200 : (tree.status || 403), { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify(tree));
+      res.end(serializeResponse(tree));
       return;
     }
 
@@ -16744,7 +17350,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
         }
       }
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({ ok: true, conversationId: cid, diffs, artifacts }));
+      res.end(serializeResponse({ ok: true, conversationId: cid, diffs, artifacts }));
       return;
     }
 
@@ -16757,10 +17363,10 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
           cachedUsageAt = Date.now();
         }
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: true, data: data || null }));
+        res.end(serializeResponse({ ok: true, data: data || null }));
       } catch (err) {
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: false, error: err?.message || '读取本机用量失败' }));
+        res.end(serializeResponse({ ok: false, error: remoteError(err?.message || '读取本机用量失败') }));
       }
       return;
     }
@@ -16774,15 +17380,16 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
         const snap = await fetchSnapshot(targetId, { conversationId: convId, clientId });
         if (!snap || snap.ok === false) {
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-          res.end(JSON.stringify({ ok: false, error: snap?.error || '读取上下文窗口失败' }));
+          res.end(serializeResponse({ ok: false, error: snap?.error || remoteError('读取上下文窗口失败') }));
           return;
         }
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({
+        res.end(serializeResponse({
           ok: true,
           clientId,
           conversationId: snap.activeConversationId || snap.sessionId || convId,
-          title: snap.title || '',
+          title: (isTraditional() ? localizeRemoteConversationTitle(snap.title, snap.activeConversationId || snap.sessionId,
+            snap.isNewConversation, snap.currentProjectId) : snap.title) || '',
           model: snap.model || '',
           contextBadge: snap.contextBadge || '',
           pulseText: snap.pulseText || '',
@@ -16790,7 +17397,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
         }));
       } catch (err) {
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: false, error: err?.message || '读取上下文窗口失败' }));
+        res.end(serializeResponse({ ok: false, error: err?.message || remoteError('读取上下文窗口失败') }));
       }
       return;
     }
@@ -16799,7 +17406,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
       if ((fromCookie || uiVersion) && uiVersion !== MOBILE_UI_VERSION) {
         res.setHeader('Set-Cookie', `ag_ui_ver=${MOBILE_UI_VERSION}; Path=/; SameSite=Lax${secureAttr}; Max-Age=31536000`);
         res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: false, reloadRequired: true, error: '界面已升级，正在自动刷新…' }));
+        res.end(serializeResponse({ ok: false, reloadRequired: true, error: remoteError('界面已升级，正在自动刷新…') }));
         return;
       }
       try {
@@ -16923,10 +17530,10 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
           ? await getCachedUsageSummary()
           : null;
         const payloadOut = enrichSnapshotPayload(snap, config, activeTunnelUrl, clientId, usageSummary);
-        sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify(payloadOut));
+        sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse(payloadOut));
       } catch (err) {
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: false, error: err?.message || '读取 Antigravity 状态失败' }));
+        res.end(serializeResponse({ ok: false, error: err?.message || remoteError('读取 Antigravity 状态失败') }));
       }
       return;
     }
@@ -16938,10 +17545,10 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
         const rawLimit = urlObj.searchParams.get('limit') || '100';
         const limit = (rawLimit === 'all' || rawLimit === '0') ? 0 : Math.max(1, Number.parseInt(rawLimit, 10) || 100);
         const page = listCatalogConversations({ projectId, offset, limit });
-        sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify(page));
+        sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse(page));
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: false, error: err?.message || '读取会话列表失败' }));
+        res.end(serializeResponse({ ok: false, error: err?.message || remoteError('读取会话列表失败') }));
       }
       return;
     }
@@ -16951,17 +17558,17 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
         const sessionId = urlObj.searchParams.get('sessionId') || '';
         if (!String(sessionId).trim()) {
           res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-          res.end(JSON.stringify({ ok: false, error: '缺少 sessionId 参数' }));
+          res.end(serializeResponse({ ok: false, error: remoteError('缺少 sessionId 参数') }));
           return;
         }
         const before = urlObj.searchParams.get('before');
         const rawLimit = urlObj.searchParams.get('limit') || '30';
         const limit = Math.max(1, Math.min(200, Number.parseInt(rawLimit, 10) || 30));
         const page = await getConversationMessagesPage({ sessionId, before, limit });
-        sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify(page));
+        sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse(page));
       } catch (err) {
         res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: false, error: err?.message || '读取会话消息失败' }));
+        res.end(serializeResponse({ ok: false, error: err?.message || remoteError('读取会话消息失败') }));
       }
       return;
     }
@@ -16979,10 +17586,10 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
           ...(options.configDir ? { configDir: options.configDir } : {})
         });
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify(listing));
+        res.end(serializeResponse(listing));
       } catch (err) {
         res.writeHead(err?.status || 400, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify({ ok: false, error: err?.message || '读取目录失败' }));
+        res.end(serializeResponse({ ok: false, error: remoteError(err?.message || '读取目录失败') }));
       }
       return;
     }
@@ -16995,12 +17602,12 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
           ...(Array.isArray(options.allowedRoots) ? { allowedRoots: options.allowedRoots } : {})
         });
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(JSON.stringify(result));
+        res.end(serializeResponse(result));
       } catch (err) {
         const errHeaders = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
         if (err?.status === 413) errHeaders.Connection = 'close';
         res.writeHead(err?.status || 400, errHeaders);
-        res.end(JSON.stringify({ ok: false, error: err?.message || '创建文件夹失败' }));
+        res.end(serializeResponse({ ok: false, error: remoteError(err?.message || '创建文件夹失败') }));
       }
       return;
     }
@@ -17035,7 +17642,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
             targetId: payload?.targetId || '',
             clientId,
             conversationId: ''
-          }).catch((err) => ({ ok: false, error: err?.message || '未能切换桌面端至新建项目' }));
+          }).catch((err) => ({ ok: false, error: remoteError(err?.message || '未能切换桌面端至新建项目') }));
           if (!checkNavOk(actionRes) && !createdRes.alreadyExists && !options.performAction) {
             await new Promise((r) => setTimeout(r, 350));
             actionRes = await doPerformAction({
@@ -17044,7 +17651,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
               targetId: payload?.targetId || '',
               clientId,
               conversationId: ''
-            }).catch((err) => ({ ok: false, error: err?.message || '未能切换桌面端至新建项目' }));
+            }).catch((err) => ({ ok: false, error: remoteError(err?.message || '未能切换桌面端至新建项目') }));
           }
           const rawNav = (actionRes?.actionResult && typeof actionRes.actionResult === 'object')
             ? actionRes.actionResult
@@ -17066,7 +17673,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
             snapshot = enrichSnapshotPayload(snapshot, config, activeTunnelUrl, clientId, usageSummary);
           }
         }
-        sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+        sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
           ...createdRes,
           navOk,
           navError,
@@ -17077,7 +17684,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
         const errHeaders = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
         if (err?.status === 413) errHeaders.Connection = 'close';
         res.writeHead(err?.status || 400, errHeaders);
-        res.end(JSON.stringify({ ok: false, error: err?.message || '创建项目失败' }));
+        res.end(serializeResponse({ ok: false, error: err?.message || remoteError('创建项目失败') }));
       }
       return;
     }
@@ -17093,7 +17700,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
         if (actionName === 'send-queued-messages' || actionName === 'delete-queued-message' || actionName === 'edit-queued-message') {
           const cascadeId = String(payload?.conversationId || session?.conversationId || '').trim();
           if (!cascadeId || cascadeId === '__new__' || cascadeId === 'new') {
-            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({ ok: false, error: '当前尚未打开有效会话，请先选择一个对话' }));
+            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({ ok: false, error: remoteError('当前尚未打开有效会话，请先选择一个对话') }));
             return;
           }
           const messageId = String(payload?.messageId || '').trim();
@@ -17146,7 +17753,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
             if (reqTextNorm !== liveTextNorm || reqExpectsMedia !== liveHasMedia) {
               return {
                 ok: false,
-                error: '目标排队步骤内容或媒体形态已变化（索引已被其他消息占用），已取消操作以防误删'
+                error: remoteError('目标排队步骤内容或媒体形态已变化（索引已被其他消息占用），已取消操作以防误删')
               };
             }
             if (reqExpectsMedia && liveHasMedia) {
@@ -17155,13 +17762,13 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
                 if (!liveMediaSig || reqMediaSig !== liveMediaSig) {
                   return {
                     ok: false,
-                    error: '目标排队步骤的媒体附件签名已变化（索引已被同文异附件消息占用），已取消操作以防误删'
+                    error: remoteError('目标排队步骤的媒体附件签名已变化（索引已被同文异附件消息占用），已取消操作以防误删')
                   };
                 }
               } else if (!reqTextNorm && !liveTextNorm) {
                 return {
                   ok: false,
-                  error: '纯媒体排队项缺少匹配的媒体身份标识（索引可能已被其他媒体项占用），已取消操作以防误删'
+                  error: remoteError('纯媒体排队项缺少匹配的媒体身份标识（索引可能已被其他媒体项占用），已取消操作以防误删')
                 };
               }
             }
@@ -17210,7 +17817,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
                 errorPayload: {
                   ok: false,
                   mediaRecoveryUnavailable: true,
-                  error: mat.error || '该排队消息包含媒体附件，当前无法完整恢复附件数据，已取消撤回以避免丢失附件'
+                  error: mat.error || remoteError('该排队消息包含媒体附件，当前无法完整恢复附件数据，已取消撤回以避免丢失附件')
                 }
               };
             }
@@ -17226,7 +17833,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
                 errorPayload: {
                   ok: false,
                   outcomeUnknown: true,
-                  error: '当前会话存在同内容未确认撤回的暂存批次，无法确认本次编辑是否为原项重试，已取消删除以防覆盖已保留内容'
+                  error: remoteError('当前会话存在同内容未确认撤回的暂存批次，无法确认本次编辑是否为原项重试，已取消删除以防覆盖已保留内容')
                 }
               };
             }
@@ -17270,7 +17877,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
                 ok: false,
                 errorPayload: {
                   ok: false,
-                  error: delOutcome.error || '删除原排队消息被服务端拒绝，已保留原排队项'
+                  error: delOutcome.error || remoteError('删除原排队消息被服务端拒绝，已保留原排队项')
                 }
               };
             }
@@ -17290,7 +17897,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
                 ok: false,
                 errorPayload: {
                   ok: false,
-                  error: delOutcome.error || '删除原排队消息响应超时，经核验原项仍在队列中，请重试'
+                  error: delOutcome.error || remoteError('删除原排队消息响应超时，经核验原项仍在队列中，请重试')
                 }
               };
             }
@@ -17305,7 +17912,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
                 outcomeUnknown: true,
                 attachmentsPreserved: true,
                 textPreserved: true,
-                error: '删除原排队消息响应超时且无法确认原项状态，已保留恢复的文本与附件以避免丢失',
+                error: remoteError('删除原排队消息响应超时且无法确认原项状态，已保留恢复的文本与附件以避免丢失'),
                 actionResult: {
                   ok: false,
                   outcomeUnknown: true,
@@ -17335,7 +17942,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
                 ok: false,
                 errorPayload: {
                   ok: false,
-                  error: delOutcome.error || '删除原排队消息被服务端拒绝，已保留原排队项'
+                  error: delOutcome.error || remoteError('删除原排队消息被服务端拒绝，已保留原排队项')
                 }
               };
             }
@@ -17352,7 +17959,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
                 ok: false,
                 errorPayload: {
                   ok: false,
-                  error: delOutcome.error || '删除原排队消息响应超时，经核验原项仍在队列中，请重试'
+                  error: delOutcome.error || remoteError('删除原排队消息响应超时，经核验原项仍在队列中，请重试')
                 }
               };
             }
@@ -17363,7 +17970,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
                 ok: false,
                 outcomeUnknown: true,
                 textPreserved: true,
-                error: '删除原排队消息响应超时且无法确认原项状态，已保留恢复的文本以避免丢失',
+                error: remoteError('删除原排队消息响应超时且无法确认原项状态，已保留恢复的文本以避免丢失'),
                 actionResult: {
                   ok: false,
                   outcomeUnknown: true,
@@ -17398,14 +18005,14 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
                 text: resolvedText
               });
             } catch (domErr) {
-              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({ ok: false, error: domErr?.message || '桌面端队列操作失败' }));
+              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({ ok: false, error: domErr?.message || remoteError('桌面端队列操作失败') }));
               return false;
             }
             if (!domRes?.ok) {
-              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
                 ok: false,
                 ...(domRes?.mediaRecoveryUnavailable || domRes?.actionResult?.mediaRecoveryUnavailable ? { mediaRecoveryUnavailable: true } : {}),
-                error: domRes?.error || domRes?.actionResult?.error || '电脑端队列操作未能生效，请重试'
+                error: domRes?.error || domRes?.actionResult?.error || remoteError('电脑端队列操作未能生效，请重试')
               }));
               return false;
             }
@@ -17435,7 +18042,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
             const usageSummary = (partialSnap && partialSnap.ok !== false && !partialSnap.usageSummary) ? await getCachedUsageSummary() : null;
             const enrichedPartial = enrichSnapshotPayload(partialSnap, config, activeTunnelUrl, clientId, usageSummary);
             const finalErr = errMsg || '消息已立即发送，但移除原排队项失败；再次点击将仅重试移除而不重复发送';
-            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
               ok: false,
               partialSuccess: true,
               sent: true,
@@ -17460,7 +18067,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
                 return {
                   ok: false,
                   partialSuccess: true,
-                  error: delRetryOutcome.error || '消息此前已发送，重试移除原排队项仍失败；请稍后再试，不会重复发送'
+                  error: delRetryOutcome.error || remoteError('消息此前已发送，重试移除原排队项仍失败；请稍后再试，不会重复发送')
                 };
               }
               dispatchedQueueDeletes.delete(dispatchKey);
@@ -17485,7 +18092,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
                 ok: false,
                 sendFailed: true,
                 confirmedNotExecuted: Boolean(sendOutcome.confirmedNotExecuted),
-                error: sendOutcome.error || '立即发送排队消息失败'
+                error: sendOutcome.error || remoteError('立即发送排队消息失败')
               };
             }
             const delOutcome = await callLsRpcDetailed(deleteMethod, deleteBody, rpcTimeoutMs);
@@ -17494,7 +18101,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
               return {
                 ok: false,
                 partialSuccess: true,
-                error: delOutcome.error || '消息已立即发送，但移除原排队项失败；再次点击将仅重试移除而不重复发送'
+                error: delOutcome.error || remoteError('消息已立即发送，但移除原排队项失败；再次点击将仅重试移除而不重复发送')
               };
             }
             dispatchedQueueDeletes.delete(dispatchKey);
@@ -17540,7 +18147,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
                   verifyOriginalStillQueued: verifyMsgStillQueued
                 });
                 if (!recovered.ok) {
-                  sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify(recovered.errorPayload));
+                  sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse(recovered.errorPayload));
                   return;
                 }
                 rpcRes = recovered.rpcRes;
@@ -17553,7 +18160,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
                   verifyOriginalStillQueued: verifyMsgStillQueued
                 });
                 if (!recoveredText.ok) {
-                  sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify(recoveredText.errorPayload));
+                  sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse(recoveredText.errorPayload));
                   return;
                 }
                 rpcRes = recoveredText.rpcRes;
@@ -17577,10 +18184,10 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
                 const okDom = await runQueuedDomFallback('send-queued-dom', false);
                 if (!okDom) return;
               } else {
-                sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+                sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
                   ok: false,
                   outcomeUnknown: true,
-                  error: '立即发送请求超时或结果未知，已阻止自动补发以避免重复发送，请核对后再试'
+                  error: remoteError('立即发送请求超时或结果未知，已阻止自动补发以避免重复发送，请核对后再试')
                 }));
                 return;
               }
@@ -17597,7 +18204,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
               || (typeof rawStep === 'string' && /^\d+$/.test(rawStep.trim()));
             const stepIndex = isValidStep ? Number(rawStep) : -1;
             if (!isValidStep || !Number.isSafeInteger(stepIndex) || stepIndex < 0) {
-              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({ ok: false, error: '缺少有效的排队标识 messageId 或 stepIndex' }));
+              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({ ok: false, error: remoteError('缺少有效的排队标识 messageId 或 stepIndex') }));
               return;
             }
             const hasDelIdentityHint = Boolean(
@@ -17609,10 +18216,10 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
               const trajOutcome = await callLsRpcDetailed('GetCascadeTrajectory', { cascadeId, trajectoryVerbosity: 3 }, rpcTimeoutMs, { idempotent: true });
               const trajSteps = trajOutcome.ok ? trajOutcome.result?.trajectory?.steps : null;
               if (!trajOutcome.ok || !Array.isArray(trajSteps)) {
-                sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+                sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
                   ok: false,
                   outcomeUnknown: true,
-                  error: '无法验证目标排队步骤状态，已取消撤回以防误删'
+                  error: remoteError('无法验证目标排队步骤状态，已取消撤回以防误删')
                 }));
                 return;
               }
@@ -17625,16 +18232,16 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
               const directExtraStep = extraList.find((qs) => qs && Number(qs.stepIndex ?? qs.step_index) === stepIndex) || null;
               const directQueuedStep = isQueuedTrajectoryUserStep(trajSteps[stepIndex]) ? trajSteps[stepIndex] : null;
               if (!matchedQ && !directQueuedStep && !directExtraStep) {
-                sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+                sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
                   ok: false,
-                  error: '目标步骤已不在排队中，已取消撤回'
+                  error: remoteError('目标步骤已不在排队中，已取消撤回')
                 }));
                 return;
               }
               const targetUi = directQueuedStep?.userInput || directExtraStep?.userInput || directExtraStep?.user_input || directExtraStep || null;
               const idCheck = verifyStepIndexTargetIdentity(targetUi, matchedQ, payload);
               if (!idCheck.ok) {
-                sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+                sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
                   ok: false,
                   outcomeUnknown: true,
                   error: idCheck.error
@@ -17652,16 +18259,16 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
               || (typeof rawStep === 'string' && /^\d+$/.test(rawStep.trim()));
             const stepIndex = isValidStep ? Number(rawStep) : -1;
             if (!isValidStep || !Number.isSafeInteger(stepIndex) || stepIndex < 0) {
-              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({ ok: false, error: '缺少有效的排队标识 messageId 或 stepIndex' }));
+              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({ ok: false, error: remoteError('缺少有效的排队标识 messageId 或 stepIndex') }));
               return;
             }
             const dispatchKey = `${cascadeId}::step:${stepIndex}`;
             const trajOutcome = await callLsRpcDetailed('GetCascadeTrajectory', { cascadeId, trajectoryVerbosity: 3 }, rpcTimeoutMs, { idempotent: true });
             const trajSteps = trajOutcome.ok ? trajOutcome.result?.trajectory?.steps : null;
             if (!trajOutcome.ok || !Array.isArray(trajSteps)) {
-              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
                 ok: false,
-                error: '无法验证目标排队步骤状态，已取消编辑以防误删'
+                error: remoteError('无法验证目标排队步骤状态，已取消编辑以防误删')
               }));
               return;
             }
@@ -17674,9 +18281,9 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
             const directExtraStep = extraList.find((qs) => qs && Number(qs.stepIndex ?? qs.step_index) === stepIndex) || null;
             const directQueuedStep = isQueuedTrajectoryUserStep(trajSteps[stepIndex]) ? trajSteps[stepIndex] : null;
             if (!matchedQ && !directQueuedStep && !directExtraStep) {
-              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
                 ok: false,
-                error: '目标步骤已不在排队中，已取消编辑'
+                error: remoteError('目标步骤已不在排队中，已取消编辑')
               }));
               return;
             }
@@ -17684,7 +18291,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
             const targetUi = directQueuedStep?.userInput || directExtraStep?.userInput || directExtraStep?.user_input || directExtraStep || null;
             const idCheck = verifyStepIndexTargetIdentity(targetUi, matchedQ, payload);
             if (!idCheck.ok) {
-              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
                 ok: false,
                 outcomeUnknown: true,
                 error: idCheck.error
@@ -17744,7 +18351,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
                 verifyOriginalStillQueued: verifyStepStillQueued
               });
               if (!recovered.ok) {
-                sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify(recovered.errorPayload));
+                sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse(recovered.errorPayload));
                 return;
               }
               rpcRes = recovered.rpcRes;
@@ -17758,7 +18365,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
                 verifyOriginalStillQueued: verifyStepStillQueued
               });
               if (!recoveredText.ok) {
-                sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify(recoveredText.errorPayload));
+                sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse(recoveredText.errorPayload));
                 return;
               }
               rpcRes = recoveredText.rpcRes;
@@ -17769,7 +18376,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
               || (typeof rawStep === 'string' && /^\d+$/.test(rawStep.trim()));
             const stepIndex = isValidStep ? Number(rawStep) : -1;
             if (!isValidStep || !Number.isSafeInteger(stepIndex) || stepIndex < 0) {
-              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({ ok: false, error: '缺少有效的排队标识 messageId 或 stepIndex' }));
+              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({ ok: false, error: remoteError('缺少有效的排队标识 messageId 或 stepIndex') }));
               return;
             }
             const reqTextNorm = stripDisplayMediaSuffixFromQueuedText(editedText, true).replace(/\s+/g, ' ').trim();
@@ -17783,10 +18390,10 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
             const trajOutcome = await callLsRpcDetailed('GetCascadeTrajectory', { cascadeId, trajectoryVerbosity: 3 }, rpcTimeoutMs, { idempotent: true });
             const trajSteps = trajOutcome.ok ? trajOutcome.result?.trajectory?.steps : null;
             if (!trajOutcome.ok || !Array.isArray(trajSteps)) {
-              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
                 ok: false,
                 outcomeUnknown: true,
-                error: '无法验证目标排队步骤状态，已取消操作以防误删或重复发送'
+                error: remoteError('无法验证目标排队步骤状态，已取消操作以防误删或重复发送')
               }));
               return;
             }
@@ -17800,9 +18407,9 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
             const directExtraStep = extraList.find((qs) => qs && Number(qs.stepIndex ?? qs.step_index) === stepIndex) || null;
             const directQueuedStep = isQueuedTrajectoryUserStep(trajSteps[stepIndex]) ? trajSteps[stepIndex] : null;
             if (!matchedQ && !directQueuedStep && !directExtraStep) {
-              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
                 ok: false,
-                error: '目标步骤已不在排队中，已取消发送以防重复发送'
+                error: remoteError('目标步骤已不在排队中，已取消发送以防重复发送')
               }));
               return;
             }
@@ -17820,7 +18427,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
             }
             const sendIdCheck = verifyStepIndexTargetIdentity(targetUi, matchedQ, payload);
             if (!sendIdCheck.ok) {
-              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
                 ok: false,
                 outcomeUnknown: true,
                 error: sendIdCheck.error
@@ -17843,16 +18450,16 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
                 stepIdentityToken: sendStepIdentityToken
               });
               if (!continuous) {
-                sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+                sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
                   ok: false,
                   outcomeUnknown: true,
-                  error: '无法确认当前排队项与此前已发送待删项为同一消息（可能存在同内容新消息或并发变更），已停止操作以防误删或重复发送'
+                  error: remoteError('无法确认当前排队项与此前已发送待删项为同一消息（可能存在同内容新消息或并发变更），已停止操作以防误删或重复发送')
                 }));
                 return;
               }
             }
             if (!itemText && !itemHasMedia && !existingDispatchedRec) {
-              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({ ok: false, error: '未找到指定排队步骤或内容为空' }));
+              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({ ok: false, error: remoteError('未找到指定排队步骤或内容为空') }));
               return;
             }
             const outcome = await sendSingleQueuedWithCheckedDelete({
@@ -17878,9 +18485,9 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
             } else if (outcome.needsDomFallback || outcome.confirmedNotExecuted) {
               const coreText = stripMediaMarkerForMatch(itemText);
               if (verifiedDomIdx === undefined && !coreText) {
-                sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+                sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
                   ok: false,
-                  error: '无法确认目标媒体排队项的桌面映射，已取消发送以防误发'
+                  error: remoteError('无法确认目标媒体排队项的桌面映射，已取消发送以防误发')
                 }));
                 return;
               }
@@ -17891,10 +18498,10 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
               });
               if (!okDom) return;
             } else {
-              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
                 ok: false,
                 outcomeUnknown: true,
-                error: '立即发送请求超时或结果未知，已阻止自动补发以避免重复发送，请核对后再试'
+                error: remoteError('立即发送请求超时或结果未知，已阻止自动补发以避免重复发送，请核对后再试')
               }));
               return;
             }
@@ -17909,18 +18516,18 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
               const okDom = await runQueuedDomFallback('send-queued-dom', true);
               if (!okDom) return;
             } else {
-              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
                 ok: false,
                 ...(sendAllOutcome.confirmedNotExecuted ? {} : { outcomeUnknown: true }),
                 error: sendAllOutcome.confirmedNotExecuted
-                  ? (sendAllOutcome.error || '本机 LanguageServer 队列操作失败')
-                  : '本机 LanguageServer 队列操作调用超时或结果未知，已阻止自动补发以避免重复发送'
+                  ? (sendAllOutcome.error || remoteError('本机 LanguageServer 队列操作失败'))
+                  : remoteError('本机 LanguageServer 队列操作调用超时或结果未知，已阻止自动补发以避免重复发送')
               }));
               return;
             }
           }
           if (!usedDomFallback && (rpcRes === null || rpcRes === false)) {
-            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({ ok: false, error: '电脑端后台队列服务暂时无响应或超时，请稍后重试' }));
+            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({ ok: false, error: remoteError('电脑端后台队列服务暂时无响应或超时，请稍后重试') }));
             return;
           }
           historyManager.invalidateSession?.(cascadeId);
@@ -17941,7 +18548,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
             Array.isArray(snap?.queuedMessages) &&
             snap.queuedMessages.some((q) => q && q.source === 'dom')
           );
-          sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+          sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
             ok: true,
             actionResult: {
               ok: true,
@@ -17999,7 +18606,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
         if (actionName === 'switch-conversation' && (clientId || payload?.isolated === true)) {
           const nextId = String(payload?.id || '').trim();
           if (!nextId) {
-            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({ ok: false, error: '缺少会话 ID' }));
+            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({ ok: false, error: remoteError('缺少会话 ID') }));
             return;
           }
           if (nextId === 'follow-desktop') {
@@ -18014,7 +18621,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
             }
             const usageSummary = (snap && snap.ok !== false && !snap.usageSummary) ? await getCachedUsageSummary() : null;
             const enriched = enrichSnapshotPayload(snap, config, activeTunnelUrl, clientId, usageSummary);
-            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
               ok: Boolean(snap && snap.ok !== false),
               actionResult: { ok: Boolean(snap && snap.ok !== false), id: enriched?.sessionId || '', isolated: false },
               snapshot: enriched
@@ -18042,7 +18649,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
             });
             const usageSummary = (snap && snap.ok !== false && !snap.usageSummary) ? await getCachedUsageSummary() : null;
             const enriched = enrichSnapshotPayload(snap, config, activeTunnelUrl, clientId, usageSummary);
-            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
               ok: Boolean(snap && snap.ok !== false),
               actionResult: { ok: Boolean(snap && snap.ok !== false), id: nextId, isolated: true },
               snapshot: enriched
@@ -18073,7 +18680,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
             const draftSnap = buildIsolatedDraftSnapshot(baseSnap, draftPid, draftName);
             const usageSummary = (draftSnap && draftSnap.ok !== false && !draftSnap.usageSummary) ? await getCachedUsageSummary() : null;
             const enriched = enrichSnapshotPayload(draftSnap, config, activeTunnelUrl, clientId, usageSummary);
-            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
               ok: Boolean(draftSnap && draftSnap.ok !== false),
               actionResult: { ok: Boolean(draftSnap && draftSnap.ok !== false), id: '__new__', projectId: draftPid, isolated: true, deferred: true },
               snapshot: enriched
@@ -18095,7 +18702,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
             const usageSummary = !newResult.snapshot.usageSummary ? await getCachedUsageSummary() : null;
             newResult.snapshot = enrichSnapshotPayload(newResult.snapshot, config, activeTunnelUrl, clientId, usageSummary);
           }
-          sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify(newResult));
+          sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse(newResult));
           return;
         }
 
@@ -18124,7 +18731,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
             const draftSnap = buildIsolatedDraftSnapshot(baseSnap, draftPid, draftName);
             const usageSummary = (draftSnap && draftSnap.ok !== false && !draftSnap.usageSummary) ? await getCachedUsageSummary() : null;
             const enriched = enrichSnapshotPayload(draftSnap, config, activeTunnelUrl, clientId, usageSummary);
-            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
               ok: Boolean(draftSnap && draftSnap.ok !== false),
               actionResult: { ok: Boolean(draftSnap && draftSnap.ok !== false), id: '__new__', projectId: draftPid, isolated: true, deferred: true },
               snapshot: enriched
@@ -18147,7 +18754,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
             const usageSummary = !newResult.snapshot.usageSummary ? await getCachedUsageSummary() : null;
             newResult.snapshot = enrichSnapshotPayload(newResult.snapshot, config, activeTunnelUrl, clientId, usageSummary);
           }
-          sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify(newResult));
+          sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse(newResult));
           return;
         }
 
@@ -18165,7 +18772,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
           }
           const usageSummary = (snap && snap.ok !== false && !snap.usageSummary) ? await getCachedUsageSummary() : null;
           const enriched = enrichSnapshotPayload(snap, config, activeTunnelUrl, clientId, usageSummary);
-          sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+          sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
             ok: Boolean(snap && snap.ok !== false),
             actionResult: { ok: Boolean(snap && snap.ok !== false), targetId: enriched?.currentTargetId || nextTargetId },
             snapshot: enriched
@@ -18186,16 +18793,16 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
           if (actionName === 'upload-image') {
             const rawB64 = String(payload?.base64 || '').trim();
             if (!rawB64) {
-              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
                 ok: false,
-                error: '缺少附件数据'
+                error: remoteError('缺少附件数据')
               }));
               return;
             }
             if (session.draftPendingUploads.length >= 10) {
-              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
                 ok: false,
-                error: '草稿最多可附带 10 个待发附件'
+                error: remoteError('草稿最多可附带 10 个待发附件')
               }));
               return;
             }
@@ -18206,7 +18813,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
               mimeType: attMime,
               base64: rawB64
             });
-            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
               ok: true,
               deferredDraftUpload: true,
               actionResult: {
@@ -18221,7 +18828,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
           if (payload?.clearAll === true) {
             const removed = session.draftPendingUploads.length;
             session.draftPendingUploads = [];
-            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
               ok: true,
               deferredDraftUpload: true,
               actionResult: { ok: true, deferred: true, removed }
@@ -18241,14 +18848,14 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
             rmIdx = reqIdx;
           }
           if (rmIdx < 0) {
-            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+            sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
               ok: false,
-              error: '草稿中未找到指定附件'
+              error: remoteError('草稿中未找到指定附件')
             }));
             return;
           }
           session.draftPendingUploads.splice(rmIdx, 1);
-          sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+          sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
             ok: true,
             deferredDraftUpload: true,
             actionResult: { ok: true, deferred: true, removed: 1, pendingCount: session.draftPendingUploads.length }
@@ -18275,7 +18882,7 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
                   conversationId: effectiveConvId
                 }).catch(() => null);
               }
-              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+              sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
                 ok: true,
                 actionResult: { ok: true, staged: true, removed: removedStaged }
               }));
@@ -18299,10 +18906,10 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
           session.draftSendPendingAt = 0;
         }
         if (isDeferredDraftSend && (session?.draftSendInflight || session?.draftSendPending)) {
-          sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify({
+          sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse({
             ok: false,
             pendingConfirmation: true,
-            error: '首条消息正在发送或等待新会话 ID 确认，请稍候或切换会话后再试，避免重复发送'
+            error: remoteError('首条消息正在发送或等待新会话 ID 确认，请稍候或切换会话后再试，避免重复发送')
           }));
           return;
         }
@@ -18436,12 +19043,12 @@ function createRemoteHttpHandler(initialConfig, options = {}) {
           const usageSummary = !result.snapshot.usageSummary ? await getCachedUsageSummary() : null;
           result.snapshot = enrichSnapshotPayload(result.snapshot, config, activeTunnelUrl, clientId, usageSummary);
         }
-        sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, JSON.stringify(result));
+        sendPayload(req, res, 200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }, serializeResponse(result));
       } catch (err) {
         const errHeaders = { 'Content-Type': 'application/json; charset=utf-8' };
         if (err?.status === 413) errHeaders.Connection = 'close';
         res.writeHead(err?.status || 500, errHeaders);
-        res.end(JSON.stringify({ ok: false, error: err?.message || '操作失败' }));
+        res.end(serializeResponse({ ok: false, error: err?.message || remoteError('操作失败') }));
       }
       return;
     }

@@ -11,8 +11,71 @@
     getDailyModelCost,
     calculateIntervalCost,
     convertToCNY,
+    convertCurrency,
     resolveEffectivePlanStatus
   } = (globalThis.__AGContextMeterCore || {});
+
+  const BASE_CURRENCY_STORAGE_KEY = 'ag_suite_base_currency';
+  const BASE_CURRENCY_SYMBOLS = { TWD: 'NT$', USD: '$', CNY: '¥' };
+
+  function getActiveBaseCurrency() {
+    try {
+      const saved = String(localStorage?.getItem?.(BASE_CURRENCY_STORAGE_KEY) || '').trim().toUpperCase();
+      if (saved === 'TWD' || saved === 'USD' || saved === 'CNY') return saved;
+    } catch {}
+    let loc = '';
+    try {
+      loc = (typeof suiteEnhancerPrefs !== 'undefined' && suiteEnhancerPrefs?.locale)
+        ? String(suiteEnhancerPrefs.locale)
+        : String(localStorage?.getItem?.('ag_suite_locale') || 'zh-TW');
+    } catch { loc = 'zh-TW'; }
+    if (loc === 'zh-CN') return 'CNY';
+    if (loc === 'en') return 'USD';
+    return 'TWD';
+  }
+
+  function convertToBaseCurrency(amount, fromCurrency, regionQuery = null, targetCur = null) {
+    const toCur = targetCur || getActiveBaseCurrency();
+    if (typeof convertCurrency === 'function') {
+      return convertCurrency(amount, fromCurrency, toCur, regionQuery);
+    }
+    if (toCur === 'CNY' && typeof convertToCNY === 'function') {
+      return convertToCNY(amount, fromCurrency, regionQuery);
+    }
+    return null;
+  }
+
+  const twoDecimalFormat = new Intl.NumberFormat('en-US', {
+    useGrouping: false,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+
+  function formatUsdEstimate(amount, prefix = '') {
+    return amount > 0 && amount < 0.005 ? '<$0.01' : `${prefix}$${twoDecimalFormat.format(amount)}`;
+  }
+
+  function formatBaseCurrencyParen(amount, fromCurrency, regionQuery = null, decimals = 1) {
+    if (amount === null || amount === undefined || Number.isNaN(Number(amount))) return '';
+    const baseCur = getActiveBaseCurrency();
+    let fromCur = String(fromCurrency || 'USD').toUpperCase();
+    if (fromCur === 'NTD') fromCur = 'TWD';
+    if (fromCur === baseCur) return '';
+    const val = convertToBaseCurrency(amount, fromCur, regionQuery, baseCur);
+    if (val === null || val === undefined || Number.isNaN(Number(val))) return '';
+    const sym = BASE_CURRENCY_SYMBOLS[baseCur] || '';
+    return `(≈ ${sym}${Number(val).toFixed(decimals)} ${baseCur})`;
+  }
+
+  function formatUsdSecondaryParen(usdAmount) {
+    if (usdAmount === null || usdAmount === undefined || Number.isNaN(Number(usdAmount))) return '';
+    const baseCur = getActiveBaseCurrency();
+    if (baseCur === 'USD') return '';
+    const val = convertToBaseCurrency(usdAmount, 'USD', null, baseCur);
+    if (val === null || val === undefined || Number.isNaN(Number(val))) return '';
+    const sym = BASE_CURRENCY_SYMBOLS[baseCur] || '';
+    return ` (${sym}${Number(val).toFixed(2)})`;
+  }
   const host = document.createElement('div');
   host.id = 'ag-context-meter';
   host.setAttribute('data-layout', 'wide');
@@ -500,10 +563,10 @@
     const sessTotal = state.sessionCostTotal || 0;
     if (latestCall && latestCall.isPriced) {
       const roundCost = latestCall.costUSD || 0;
-      const roundCostStr = roundCost < 0.01 ? '<$0.01' : `≈$${roundCost.toFixed(4)}`;
+      const roundCostStr = formatUsdEstimate(roundCost, '≈');
       const estLabel = latestCall.status === 'streaming' ? '生成中暂估' : '按已返回用量估算';
       roundCostText.textContent = `最近调用 ${roundCostStr} · ${estLabel}`;
-      roundCostText.title = `模型：${latestCall.model}\n输入：${fmt(latestCall.inputTokens)} tok\n缓存：${fmt(latestCall.cacheTokens)} tok\n输出：${fmt(latestCall.outputTokens)} tok\n参考金额：$${roundCost.toFixed(6)}`;
+      roundCostText.title = `模型：${latestCall.model}\n输入：${fmt(latestCall.inputTokens)} tok\n缓存：${fmt(latestCall.cacheTokens)} tok\n输出：${fmt(latestCall.outputTokens)} tok\n参考金额：${formatUsdEstimate(roundCost)}`;
     } else if (latestCall) {
       roundCostText.textContent = '最近调用：模型费率未收录';
       roundCostText.title = latestCall.model ? `模型：${latestCall.model}（公开费率未收录）` : '缺少模型信息';
@@ -511,7 +574,7 @@
       roundCostText.textContent = '最近调用估值：—';
       roundCostText.title = '';
     }
-    sessionCostText.textContent = sessTotal > 0 ? `当前会话合计约 $${sessTotal.toFixed(4)}` : '当前会话合计：—';
+    sessionCostText.textContent = sessTotal > 0 ? `当前会话合计约 ${formatUsdEstimate(sessTotal)}` : '当前会话合计：—';
   }
 
   function applyLayoutMode(nextMode) {
@@ -932,23 +995,23 @@
   ];
 
   const CURRENCY_OPTIONS = [
-    { value: 'USD', code: 'USD', symbol: '$', name: '美元', label: 'USD ($ 美元)', aliases: ['美元', 'usd', '$', 'dollar'] },
-    { value: 'KRW', code: 'KRW', symbol: '₩', name: '韩元', label: 'KRW (₩ 韩元)', aliases: ['韩元', 'krw', '₩', 'won'] },
-    { value: 'AUD', code: 'AUD', symbol: 'AU$', name: '澳元', label: 'AUD (AU$ 澳元)', aliases: ['澳元', '澳洲', 'aud', 'au$', 'australian'] },
-    { value: 'JPY', code: 'JPY', symbol: '¥', name: '日元', label: 'JPY (¥ 日元)', aliases: ['日元', '日本', 'jpy', '¥', 'yen'] },
-    { value: 'HKD', code: 'HKD', symbol: 'HK$', name: '港币', label: 'HKD (HK$ 港币)', aliases: ['港币', '香港', 'hkd', 'hk$'] },
-    { value: 'TWD', code: 'TWD', symbol: 'NT$', name: '台币', label: 'TWD (NT$ 台币)', aliases: ['台币', '台湾', 'twd', 'ntd', 'nt$'] },
-    { value: 'TRY', code: 'TRY', symbol: '₺', name: '里拉', label: 'TRY (₺ 里拉)', aliases: ['里拉', '土耳其', 'try', '₺', 'lira'] },
-    { value: 'NGN', code: 'NGN', symbol: '₦', name: '奈拉', label: 'NGN (₦ 奈拉)', aliases: ['奈拉', '尼日利亚', 'ngn', '₦', 'naira'] },
-    { value: 'CNY', code: 'CNY', symbol: '¥', name: '人民币', label: 'CNY (¥ 人民币)', aliases: ['人民币', '中国', 'cny', 'rmb', '¥', 'yuan'] },
-    { value: 'EUR', code: 'EUR', symbol: '€', name: '欧元', label: 'EUR (€ 欧元)', aliases: ['欧元', '欧洲', 'eur', '€', 'euro'] },
-    { value: 'GBP', code: 'GBP', symbol: '£', name: '英镑', label: 'GBP (£ 英镑)', aliases: ['英镑', '英国', 'gbp', '£', 'pound'] },
-    { value: 'SGD', code: 'SGD', symbol: 'S$', name: '新元', label: 'SGD (S$ 新元)', aliases: ['新元', '新加坡', 'sgd', 's$'] },
-    { value: 'CAD', code: 'CAD', symbol: 'CA$', name: '加元', label: 'CAD (CA$ 加元)', aliases: ['加元', '加拿大', 'cad', 'ca$'] },
-    { value: 'PHP', code: 'PHP', symbol: '₱', name: '比索', label: 'PHP (₱ 比索)', aliases: ['比索', '菲律宾', 'php', '₱', 'peso'] },
-    { value: 'INR', code: 'INR', symbol: '₹', name: '卢比', label: 'INR (₹ 卢比)', aliases: ['卢比', '印度', 'inr', '₹', 'rupee'] },
-    { value: 'MYR', code: 'MYR', symbol: 'RM', name: '令吉', label: 'MYR (RM 令吉)', aliases: ['令吉', '马来西亚', 'myr', 'rm', 'ringgit'] },
-    { value: 'BRL', code: 'BRL', symbol: 'R$', name: '雷亚尔', label: 'BRL (R$ 雷亚尔)', aliases: ['雷亚尔', '巴西', 'brl', 'r$', 'real'] }
+    { value: 'USD', code: 'USD', flag: '🇺🇸', symbol: '$', name: '美元', label: '🇺🇸 USD', aliases: ['美元', 'usd', '$', 'dollar'] },
+    { value: 'KRW', code: 'KRW', flag: '🇰🇷', symbol: '₩', name: '韩元', label: '🇰🇷 KRW', aliases: ['韩元', 'krw', '₩', 'won'] },
+    { value: 'AUD', code: 'AUD', flag: '🇦🇺', symbol: 'AU$', name: '澳元', label: '🇦🇺 AUD', aliases: ['澳元', '澳洲', 'aud', 'au$', 'australian'] },
+    { value: 'JPY', code: 'JPY', flag: '🇯🇵', symbol: '¥', name: '日元', label: '🇯🇵 JPY', aliases: ['日元', '日本', 'jpy', '¥', 'yen'] },
+    { value: 'HKD', code: 'HKD', flag: '🇭🇰', symbol: 'HK$', name: '港币', label: '🇭🇰 HKD', aliases: ['港币', '香港', 'hkd', 'hk$'] },
+    { value: 'TWD', code: 'TWD', flag: '🇹🇼', symbol: 'NT$', name: '新台币', label: '🇹🇼 TWD', aliases: ['台币', '新台币', '台湾', 'twd', 'ntd', 'nt$'] },
+    { value: 'TRY', code: 'TRY', flag: '🇹🇷', symbol: '₺', name: '里拉', label: '🇹🇷 TRY', aliases: ['里拉', '土耳其', 'try', '₺', 'lira'] },
+    { value: 'NGN', code: 'NGN', flag: '🇳🇬', symbol: '₦', name: '奈拉', label: '🇳🇬 NGN', aliases: ['奈拉', '尼日利亚', 'ngn', '₦', 'naira'] },
+    { value: 'CNY', code: 'CNY', flag: '🇨🇳', symbol: '¥', name: '人民币', label: '🇨🇳 CNY', aliases: ['人民币', '中国', 'cny', 'rmb', '¥', 'yuan'] },
+    { value: 'EUR', code: 'EUR', flag: '🇪🇺', symbol: '€', name: '欧元', label: '🇪🇺 EUR', aliases: ['欧元', '欧洲', 'eur', '€', 'euro'] },
+    { value: 'GBP', code: 'GBP', flag: '🇬🇧', symbol: '£', name: '英镑', label: '🇬🇧 GBP', aliases: ['英镑', '英国', 'gbp', '£', 'pound'] },
+    { value: 'SGD', code: 'SGD', flag: '🇸🇬', symbol: 'S$', name: '新元', label: '🇸🇬 SGD', aliases: ['新元', '新加坡', 'sgd', 's$'] },
+    { value: 'CAD', code: 'CAD', flag: '🇨🇦', symbol: 'CA$', name: '加元', label: '🇨🇦 CAD', aliases: ['加元', '加拿大', 'cad', 'ca$'] },
+    { value: 'PHP', code: 'PHP', flag: '🇵🇭', symbol: '₱', name: '比索', label: '🇵🇭 PHP', aliases: ['比索', '菲律宾', 'php', '₱', 'peso'] },
+    { value: 'INR', code: 'INR', flag: '🇮🇳', symbol: '₹', name: '卢比', label: '🇮🇳 INR', aliases: ['卢比', '印度', 'inr', '₹', 'rupee'] },
+    { value: 'MYR', code: 'MYR', flag: '🇲🇾', symbol: 'RM', name: '令吉', label: '🇲🇾 MYR', aliases: ['令吉', '马来西亚', 'myr', 'rm', 'ringgit'] },
+    { value: 'BRL', code: 'BRL', flag: '🇧🇷', symbol: 'R$', name: '雷亚尔', label: '🇧🇷 BRL', aliases: ['雷亚尔', '巴西', 'brl', 'r$', 'real'] }
   ];
 
   function hasClass(node, cls) {
@@ -1163,21 +1226,17 @@
       targetCny = '(随套餐免费)';
     } else if (ps.actualPricePaid !== null && ps.actualPricePaid !== undefined) {
       targetSymbol = curSymbol;
-      targetNum = Number(ps.actualPricePaid);
+      const rawPaid = Number(ps.actualPricePaid);
+      const isAnnual = String(ps.billingCycle || '').includes('年');
+      const monthlyPaid = isAnnual ? Number((rawPaid / 12).toFixed(2)) : rawPaid;
+      targetNum = monthlyPaid;
       targetCycle = '/月';
-      if (ps.currency === 'CNY') {
-        targetCny = '';
-      } else if (ps.cnyFormatted) {
-        targetCny = '(' + ps.cnyFormatted.replace('折合 ', '') + ')';
-      } else {
-        targetCny = '';
-      }
+      targetCny = formatBaseCurrencyParen(monthlyPaid, ps.currency || 'USD', ps.region || ps.subscriptionRegion || null, 1);
     } else if (ps.officialPriceMonthly !== null && ps.officialPriceMonthly !== undefined) {
       targetSymbol = '$';
       targetNum = Number(ps.officialPriceMonthly);
       targetCycle = '/月';
-      const cnyVal = typeof convertToCNY === 'function' ? convertToCNY(targetNum, 'USD') : Number((targetNum * 6.72).toFixed(2));
-      targetCny = cnyVal !== null ? `(≈ ¥${cnyVal.toFixed(1)} CNY)` : '';
+      targetCny = formatBaseCurrencyParen(targetNum, 'USD', null, 1);
     } else if (ps.tierKey === 'ultra') {
       targetSymbol = '$99.99~199.99';
       targetNum = null;
@@ -1187,7 +1246,7 @@
       targetSymbol = '$';
       targetNum = 19.99;
       targetCycle = '/月';
-      targetCny = '(≈ ¥134.3 CNY)';
+      targetCny = formatBaseCurrencyParen(19.99, 'USD', null, 1);
     }
 
     renderPlanSummaryPriceBadge(targetSymbol, targetNum, targetCycle, targetCny, targetNum === null ? { forceDirect: true } : {});
@@ -1331,7 +1390,8 @@
       if (ps.actualPricePaid === 0 || ps.isZeroExtraCost) {
         detPrice.textContent = `${curSymbol}0 · ${ps.billingCycle || '随套餐包含'}`;
       } else if (ps.actualPricePaid !== null && ps.actualPricePaid !== undefined) {
-        const cnyPart = (ps.currency !== 'CNY' && ps.cnyFormatted) ? ` (${ps.cnyFormatted})` : '';
+        const baseParen = formatBaseCurrencyParen(ps.actualPricePaid, ps.currency || 'USD', ps.region || ps.subscriptionRegion || null, 1);
+        const cnyPart = baseParen ? ` ${baseParen}` : '';
         const paidFormatted = Number(ps.actualPricePaid) % 1 === 0 ? Number(ps.actualPricePaid) : Number(ps.actualPricePaid).toFixed(2);
         detPrice.textContent = `${curSymbol}${paidFormatted} · ${ps.billingCycle || '月付'}${cnyPart}`;
       } else if (ps.priceRangeNote && ps.priceRangeNote !== '未知') {
@@ -2234,8 +2294,8 @@
       apiCost = Number(effectiveRef.totalCostUSD || 0);
       if (grandVal) {
         if (apiCost > 0) {
-          grandVal.textContent = `约 $${apiCost.toFixed(2)}`;
-          grandVal.title = `参考费率折算值：$${apiCost.toFixed(4)}`;
+          grandVal.textContent = formatUsdEstimate(apiCost, '约 ');
+          grandVal.title = `参考费率折算值：${formatUsdEstimate(apiCost)}`;
         } else if (curTotal > 0 && curIn === 0 && curCa === 0 && curOut === 0) {
           grandVal.textContent = '数据未就绪';
           grandVal.title = '缺少有效分类统计数据';
@@ -2245,7 +2305,7 @@
         }
       }
       if (grandSub) {
-        grandSub.textContent = `统一按 ${effectiveRef.modelDisplayName || 'Gemini 3.8 Flash'} 估算 (输入 $${rateIn.toFixed(2)} / 缓存 $${rateCa.toFixed(3)} / 输出 $${rateOut.toFixed(2)} 每百万 Token)`;
+        grandSub.textContent = `统一按 ${effectiveRef.modelDisplayName || 'Gemini 3.8 Flash'} 估算 (输入 ${formatUsdEstimate(rateIn)} / 缓存 ${formatUsdEstimate(rateCa)} / 输出 ${formatUsdEstimate(rateOut)} 每百万 Token)`;
       }
       pillText = '参考模型估算';
       pillClass = 'key-pill pill-muted';
@@ -2260,11 +2320,12 @@
       const h = curHybrid.hybrid || {};
       apiCost = Number(h.combinedTotalUSD || effectiveRef.totalCostUSD || 0);
       if (grandVal) {
-        grandVal.textContent = `约 $${apiCost.toFixed(2)}`;
-        grandVal.title = `混合模式：已识别 $${h.knownCostUSD || 0} + 未知折算 $${h.unpricedResidualCostUSD || 0}`;
+        grandVal.textContent = formatUsdEstimate(apiCost, '约 ');
       }
-      if (grandSub) {
-        grandSub.textContent = `混合模式：已识别 $${Number(h.knownCostUSD || 0).toFixed(2)} + 未知折算 $${Number(h.unpricedResidualCostUSD || 0).toFixed(2)}`;
+      if (grandVal || grandSub) {
+        const breakdown = `混合模式：已识别 ${formatUsdEstimate(h.knownCostUSD || 0)} + 未知折算 ${formatUsdEstimate(h.unpricedResidualCostUSD || 0)}`;
+        if (grandVal) grandVal.title = breakdown;
+        if (grandSub) grandSub.textContent = breakdown;
       }
       pillText = '混合模式折算';
       pillClass = 'key-pill pill-muted';
@@ -2289,12 +2350,9 @@
         } else if (pricedCount === 0) {
           grandVal.textContent = '暂无法估值';
           grandVal.title = '当前范围内已扫描请求均缺少模型信息或费率未收录，未记为 $0';
-        } else if (apiCost < 0.01 && apiCost > 0) {
-          grandVal.textContent = '<$0.01';
-          grandVal.title = `已识别模型价值：$${apiCost.toFixed(6)}`;
         } else {
-          grandVal.textContent = `$${apiCost.toFixed(2)}`;
-          grandVal.title = `已识别模型价值：$${apiCost.toFixed(4)}`;
+          grandVal.textContent = formatUsdEstimate(apiCost);
+          grandVal.title = `已识别模型价值：${grandVal.textContent}`;
         }
       }
       if (grandSub) {
@@ -2351,7 +2409,8 @@
       if (ps.actualPricePaid === 0 || ps.isZeroExtraCost) {
         subLine.textContent = `订阅额外实付：${curSymbol}0 (${ps.acquisitionSourceName || '免费活动'} · 用户确认)`;
       } else if (ps.actualPricePaid !== null && ps.actualPricePaid !== undefined) {
-        const cnyPart = (ps.currency !== 'CNY' && ps.cnyFormatted) ? ` (${ps.cnyFormatted})` : '';
+        const baseParen = formatBaseCurrencyParen(ps.actualPricePaid, ps.currency || 'USD', ps.region || ps.subscriptionRegion || null, 1);
+        const cnyPart = baseParen ? ` ${baseParen}` : '';
         subLine.textContent = `订阅实付：${curSymbol}${Number(ps.actualPricePaid).toFixed(2)}${cnyPart} (${ps.billingCycle || '月付'}${ps.isExpired ? ' · ⚠️ 权益已到期' : ''})`;
       } else {
         subLine.textContent = '订阅实付：未填写';
@@ -2922,18 +2981,13 @@
     const thisYearPrefix = nowYmd.slice(0, 4);
 
     const todayCostInfo = getDailyModelCost(ANTIGRAVITY_TOKEN_DATA.dailyMap[nowYmd], nowYmd, activeCostModel, { mode: activeCostMode });
-    const todayCostCny = convertToCNY(todayCostInfo.costUSD, 'USD');
-
     const totalCostAgg = calculateIntervalCost(ANTIGRAVITY_TOKEN_DATA.dailyMap, allDateKeys, activeCostModel, { mode: activeCostMode, todayStr: nowYmd });
-    const totalCostCny = convertToCNY(totalCostAgg.totalCostUSD, 'USD');
 
     const monthKeys = allDateKeys.filter(k => k.startsWith(thisMonthPrefix) && k <= nowYmd);
     const monthCostAgg = calculateIntervalCost(ANTIGRAVITY_TOKEN_DATA.dailyMap, monthKeys, activeCostModel, { mode: activeCostMode, todayStr: nowYmd });
-    const monthCostCny = convertToCNY(monthCostAgg.totalCostUSD, 'USD');
 
     const yearKeys = allDateKeys.filter(k => k.startsWith(thisYearPrefix) && k <= nowYmd);
     const yearCostAgg = calculateIntervalCost(ANTIGRAVITY_TOKEN_DATA.dailyMap, yearKeys, activeCostModel, { mode: activeCostMode, todayStr: nowYmd });
-    const yearCostCny = convertToCNY(yearCostAgg.totalCostUSD, 'USD');
 
     const tTotalCost = el('t-total-cost');
     const tTodayCost = el('t-today-cost');
@@ -2941,16 +2995,16 @@
     const tYearCost = el('t-year-cost');
 
     if (tTotalCost) {
-      tTotalCost.textContent = `≈ $${totalCostAgg.totalCostUSD.toFixed(2)}${totalCostCny !== null ? ` (¥${totalCostCny.toFixed(2)})` : ''} · 日均 $${totalCostAgg.dailyAverageUSD.toFixed(2)}`;
+      tTotalCost.textContent = `≈ $${totalCostAgg.totalCostUSD.toFixed(2)}${formatUsdSecondaryParen(totalCostAgg.totalCostUSD)} · 日均 $${totalCostAgg.dailyAverageUSD.toFixed(2)}`;
     }
     if (tTodayCost) {
-      tTodayCost.textContent = `≈ $${todayCostInfo.costUSD.toFixed(2)}${todayCostCny !== null ? ` (¥${todayCostCny.toFixed(2)})` : ''}`;
+      tTodayCost.textContent = `≈ $${todayCostInfo.costUSD.toFixed(2)}${formatUsdSecondaryParen(todayCostInfo.costUSD)}`;
     }
     if (tMonthCost) {
-      tMonthCost.textContent = `≈ $${monthCostAgg.totalCostUSD.toFixed(2)}${monthCostCny !== null ? ` (¥${monthCostCny.toFixed(2)})` : ''} · 日均 $${monthCostAgg.dailyAverageUSD.toFixed(2)}`;
+      tMonthCost.textContent = `≈ $${monthCostAgg.totalCostUSD.toFixed(2)}${formatUsdSecondaryParen(monthCostAgg.totalCostUSD)} · 日均 $${monthCostAgg.dailyAverageUSD.toFixed(2)}`;
     }
     if (tYearCost) {
-      tYearCost.textContent = `≈ $${yearCostAgg.totalCostUSD.toFixed(2)}${yearCostCny !== null ? ` (¥${yearCostCny.toFixed(2)})` : ''} · 日均 $${yearCostAgg.dailyAverageUSD.toFixed(2)}`;
+      tYearCost.textContent = `≈ $${yearCostAgg.totalCostUSD.toFixed(2)}${formatUsdSecondaryParen(yearCostAgg.totalCostUSD)} · 日均 $${yearCostAgg.dailyAverageUSD.toFixed(2)}`;
     }
 
     // 规范化已完整保留输入/缓存/输出分类，执行费用视图渲染
@@ -3647,7 +3701,7 @@
             ? '（已开启 240K 自动压缩，本轮回答结束后将自动执行 /compact；可在套件设置关闭）'
             : '（可在套件设置中开启 240K 自动压缩）';
           if (d.cacheDropDetected) {
-            keyTakeaway.textContent = `⚠ 缓存已脱落（命中率 ${(d.cacheHitRate ?? 0).toFixed(1)}%），本步全量重算 ${short(d.uncachedInput || d.input)} tokens！已使用 ${pct.toFixed(1)}%，极易引发 4~5 分钟卡顿与配额加速消耗，建议立即执行 /compact。${autoCompactHint}`;
+            keyTakeaway.textContent = `⚠ 缓存已脱落（命中率 ${twoDecimalFormat.format(d.cacheHitRate ?? 0)}%），本步全量重算 ${short(d.uncachedInput || d.input)} tokens！已使用 ${pct.toFixed(1)}%，极易引发 4~5 分钟卡顿与配额加速消耗，建议立即执行 /compact。${autoCompactHint}`;
           } else if (pct >= 90) {
             keyTakeaway.textContent = `⚠ 上下文已消耗 ${pct.toFixed(1)}%，仅剩约 ${short(remainVal)} tokens，接近预算上限！建议清理冗余上下文。`;
           } else if (pct >= 75) {
@@ -3878,6 +3932,7 @@
   }
 
   const timer = setInterval(tick, 500);
+  /* @INSERT_ZH_TW_CONVERTER */
   /* @INSERT_SUITE_SETTINGS_MODULE */
   globalThis.__AGContextMeter = {
     version: typeof METER_VERSION !== 'undefined' ? METER_VERSION : '0.8.2',

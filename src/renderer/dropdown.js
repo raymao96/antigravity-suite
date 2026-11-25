@@ -352,18 +352,21 @@
    * 格式化「订阅国家」选择器当前标签：自定义实付或 Ultra 套餐仅展示国家与币种，避免混入 Pro 1x 参考价。
    */
   function formatDirectRegionLabel(matched, core) {
-    const curCode = matched.currency === 'TWD' ? 'NTD' : matched.currency;
+    const curCode = matched.currency === 'NTD' ? 'TWD' : matched.currency;
     const baseText = (matched.flag || '🌏') + ' ' + matched.name + ' (' + curCode + ')';
     const ps = ANTIGRAVITY_TOKEN_DATA.planStatus || {};
     const hideProPresetPrice = ps.priceMode === 'custom' || ps.tierKey === 'ultra' || Boolean(ps.ultraSubTier);
     if (hideProPresetPrice) {
       return baseText;
     }
-    if (matched.currency === 'CNY') {
-      return baseText + ' · ¥' + matched.monthlyPrice + '/月';
+    const baseCur = typeof getActiveBaseCurrency === 'function' ? getActiveBaseCurrency() : 'CNY';
+    if (matched.currency === baseCur) {
+      return baseText + ' · ' + matched.symbol + matched.monthlyPrice + '/月';
     }
-    const cny = core?.convertToCNY ? core.convertToCNY(matched.monthlyPrice, matched.currency, matched.name) : (matched.monthlyPrice * matched.rateToCNY);
-    return baseText + ' · ' + matched.symbol + matched.monthlyPrice + ' (≈ ¥' + Number(cny).toFixed(1) + ' CNY)';
+    const paren = typeof formatBaseCurrencyParen === 'function'
+      ? formatBaseCurrencyParen(matched.monthlyPrice, matched.currency, matched.name, 1)
+      : '';
+    return baseText + ' · ' + matched.symbol + matched.monthlyPrice + (paren ? ' ' + paren : '');
   }
 
   // 刷新订阅地区直接选择器显示
@@ -803,9 +806,11 @@
           paidInput.value = (paid !== null && paid !== undefined) ? paid : '';
         }
         const prevEl = el('region-cny-preview');
-        if (prevEl && paid !== null && regionItem.rateToCNY) {
-          const cny = (paid * regionItem.rateToCNY).toFixed(1);
-          prevEl.textContent = '折合 ≈ ¥' + cny + ' CNY/月';
+        if (prevEl && paid !== null) {
+          const paren = typeof formatBaseCurrencyParen === 'function'
+            ? formatBaseCurrencyParen(paid, regionItem.currency, regionItem.name, 1)
+            : '';
+          prevEl.textContent = paren ? ('折合 ' + paren.replace(/^\(|\)$/g, '') + '/月') : '';
         }
       }
     });
@@ -1011,13 +1016,17 @@
       searchPlaceholder: '🔍 搜索订阅国家/地区、货币或缩写 (如: 台湾、澳、USD)...',
       getOptions: () => {
         return presets.map(p => {
-          const curCode = p.currency === 'TWD' ? 'NTD' : p.currency;
+          const curCode = p.currency === 'NTD' ? 'TWD' : p.currency;
+          const baseCur = typeof getActiveBaseCurrency === 'function' ? getActiveBaseCurrency() : 'CNY';
           let displayRight = '';
-          if (p.currency === 'CNY') {
+          if (p.currency === baseCur) {
             displayRight = p.symbol + p.monthlyPrice + '/月';
           } else {
-            const cny = core?.convertToCNY ? core.convertToCNY(p.monthlyPrice, p.currency, p.name) : (p.monthlyPrice * p.rateToCNY);
-            displayRight = p.symbol + p.monthlyPrice + '/月 · ≈ ¥' + Number(cny).toFixed(1) + ' CNY';
+            const paren = typeof formatBaseCurrencyParen === 'function'
+              ? formatBaseCurrencyParen(p.monthlyPrice, p.currency, p.name, 1)
+              : '';
+            const convText = paren ? paren.replace(/^\(|\)$/g, '') : '';
+            displayRight = p.symbol + p.monthlyPrice + '/月' + (convText ? ' · ' + convText : '');
           }
           return {
             value: p.id,
@@ -1063,7 +1072,11 @@
       menuId: 'direct-currency-menu',
       selectId: 'direct-currency-select',
       searchPlaceholder: '🔍 搜索订阅币种、代码或符号 (如: 美元、AUD、¥、$)...',
-      getOptions: () => CURRENCY_OPTIONS,
+      getOptions: () => CURRENCY_OPTIONS.map(it => ({
+        ...it,
+        displayLeft: it.label,
+        displayRight: `${it.symbol} ${it.name}`
+      })),
       getSelectedValue: () => {
         const ps = ANTIGRAVITY_TOKEN_DATA.planStatus || {};
         let cur = ps.currency || 'USD';

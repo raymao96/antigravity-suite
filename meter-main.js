@@ -142,7 +142,7 @@ async function handleToggleModule(event, moduleName, enable, extraOpts = {}) {
       if (moduleName === 'chinese') {
         const nextLang = normalizeClientLanguage(extraOpts?.language, targetEnable);
         cfg.modules.chinese.language = nextLang;
-        cfg.modules.chinese.enabled = nextLang === 'zh-CN';
+        cfg.modules.chinese.enabled = nextLang === 'zh-CN' || nextLang === 'zh-TW';
         if (extraOpts?.brandTitle !== undefined) cfg.modules.chinese.brandTitle = normalizeBrandTitle(extraOpts.brandTitle);
         cfg.modules.chinese.lastUpdated = new Date().toISOString();
       } else {

@@ -269,7 +269,7 @@ if pgrep -f "/Antigravity\\.app/Contents/MacOS/Antigravity" >/dev/null 2>&1; the
   if [ \$? -eq 0 ]; then
     notify "全部增强功能已加载完成！"
   else
-    notify "重启挂载未完成，请打开终端运行 ag-context-meter status 查看原因。"
+    notify "重启挂载未完成，请打开终端运行 ag-context-meter status 确认原因。"
   fi
   exit 0
 fi
@@ -856,7 +856,7 @@ console.log(remoteDisabled ? "手机远程操作：⚪ 已通过 --no-remote / A
   stop           停止后台守护进程，并卸载当前窗口的中文汉化与看板（恢复英文原样）
   auto-on        开启“启动 Antigravity 时自动加载”（含 v2.33.0+ 自动补参自愈）并立即尝试挂载
   auto-off       关闭“启动 Antigravity 时自动加载”，并停止/卸载当前挂载
-  status         查看当前各项核心状态（加 --json 可输出原始 JSON 数据）
+  status         显示当前各项核心状态（加 --json 可输出原始 JSON 数据）
   update         从 GitHub 拉取最新版本并自动热刷新运行中窗口
   remote         打印手机极速版 PWA 远程操作链接与终端二维码（支持 --reset-token / --json）
   check          执行本地运行环境预检
@@ -864,7 +864,7 @@ console.log(remoteDisabled ? "手机远程操作：⚪ 已通过 --no-remote / A
 EOF
     ;;
   *)
-    echo "未知命令: $cmd（请运行 ag-context-meter --help 查看可用命令）" >&2
+    echo "未知命令: $cmd（请运行 ag-context-meter --help 以列出可用命令）" >&2
     exit 1
     ;;
 esac

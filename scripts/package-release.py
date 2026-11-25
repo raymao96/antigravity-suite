@@ -33,14 +33,15 @@ COMMON_FILES = [
     "modules-config.js",
     "modular-installer.js",
     "i18n/zh-CN.json",
+    "i18n/zh-TW.json",
     "i18n/i18n-runtime.js",
+    "src/i18n/zh-tw-converter.js",
     "package.json",
     "README.md",
     "docs/README.en.md",
     "docs/README.ja.md",
     "docs/README.ko.md",
     "docs/README.es.md",
-    "AGENTS.md",
     "LICENSE",
 ]
 

@@ -10,9 +10,9 @@
 
 ## Core Highlights
 
-1. **🇨🇳 Instant Chinese / English UI Toggle (Zero-Token Local Translation)**
-   - Switch between Simplified Chinese UI (with zero-token cached translation for Thinking blocks & titles) and original English right inside **`⚙️` → `🌐 Language & Appearance`**, without restarting.
-   - *Note*: Built-in UI supports Simplified Chinese and English, while custom quick prompts can be written in any language.
+1. **🇨🇳 Instant Chinese (Simplified / Traditional Taiwan) & English UI Toggle (Zero-Token Local Translation)**
+   - Switch between Simplified Chinese, Traditional Chinese (Taiwan / `繁體中文（台灣）`), and original English right inside **`⚙️` → `🌐 Language & Appearance`**, without restarting (with zero-token cached translation for Thinking blocks & titles).
+   - *Note*: Built-in UI supports Simplified Chinese, Traditional Chinese (Taiwan), and English, while custom quick prompts can be written in any language.
 2. **🔔 macOS Dock Unread & Status Alerts (Badge + Frosted Capsule)**
    - **Check progress without switching windows**: Mirrors sidebar unread counts across windows (deduplicated) onto the Dock icon with **blue/red corner counters** and a **frosted status capsule (`Working` / `Unread` / `Approve` / `High Risk` or `3 new · 2 pending`)**, or switch to **Badge Only** under **`⚙️` → `🌐 Language & Appearance`**.
    - **Smooth follow & auto-clear**: Optically centered and follows Dock hover magnification seamlessly; returning to the window clears normal blue unread counts while keeping red approval badges until handled. Click **Grant Access** once for macOS Accessibility permission (requires Xcode Command Line Tools) and **Test Alert** to preview.

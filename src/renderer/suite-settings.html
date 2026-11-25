@@ -35,6 +35,7 @@
               </div>
               <div class="settings-select-wrap">
                 <select id="set-ui-language-select" class="settings-select" aria-label="插件与客户端语言">
+                  <option value="zh-TW">繁體中文 · Traditional Chinese</option>
                   <option value="zh-CN">简体中文 · Simplified Chinese</option>
                   <option value="en">English · 英文原版</option>
                 </select>
@@ -409,6 +410,14 @@
             <dd><div id="settings-slot-region"></div></dd>
             <dt>订阅币种：</dt>
             <dd><div id="settings-slot-currency"></div></dd>
+            <dt>基准换算币种：</dt>
+            <dd>
+              <select id="set-base-currency-select" class="settings-select">
+                <option value="TWD">🇹🇼 TWD</option>
+                <option value="USD">🇺🇸 USD</option>
+                <option value="CNY">🇨🇳 CNY</option>
+              </select>
+            </dd>
             <dt>计价模式：</dt>
             <dd><div id="settings-slot-pricemode"></div></dd>
           </dl>

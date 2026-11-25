@@ -9,6 +9,7 @@
   let uiLangDropdown = null;
   let uiCliModelDropdown = null;
   let uiCliMuxHostDropdown = null;
+  let uiBaseCurrencyDropdown = null;
 
   const SUITE_EN_UI_DICT = {
     'Antigravity Suite 统一设置': 'Antigravity Suite Settings',
@@ -20,6 +21,7 @@
     '⚡ 对话与效率': '⚡ Chat & Efficiency',
     '🧰 终端与网络': '🧰 Terminal & Network',
     '📊 套餐与订阅': '📊 Plan & Subscription',
+    '基准换算币种：': 'Reference Currency:',
     '语言与明暗外观': 'Language & Appearance',
     '桌面功能显示开关': 'Desktop Feature Toggles',
     '对话自动化与安全策略': 'Chat Automation & Safety',
@@ -466,9 +468,49 @@
     [/^检测代理设置(?:失败|异常):\s*([\s\S]+)$/, (_, d) => `Failed to inspect proxy settings: ${d}`]
   ];
 
+  const convertSuiteToZhTW = (raw) => {
+    const fn = (typeof globalThis !== 'undefined' && typeof globalThis.__AG_ZH_TW_CONVERT__ === 'function')
+      ? globalThis.__AG_ZH_TW_CONVERT__
+      : ((typeof window !== 'undefined' && typeof window.__AG_ZH_TW_CONVERT__ === 'function') ? window.__AG_ZH_TW_CONVERT__ : null);
+    return fn ? fn(raw) : raw;
+  };
+
+  const SUITE_ZH_TW_UI_DICT = {
+    'Antigravity Suite 统一设置': 'Antigravity Suite 統一設定',
+    '套件统一设置': '套件統一設定',
+    '关闭设置': '關閉設定',
+    '设置分类': '設定分類',
+    '🌐 语言与外观': '🌐 語言與外觀',
+    '📱 远程设置': '📱 遠端設定',
+    '⚡ 对话与效率': '⚡ 對話與效率',
+    '🧰 终端与网络': '🧰 終端機與網路',
+    '📊 套餐与订阅': '📊 方案與訂閱',
+    '语言与明暗外观': '語言與明暗外觀',
+    '面板深浅外观': '面板深淺外觀',
+    '跟随客户端': '跟隨用戶端',
+    '桌面功能显示开关': '桌面功能顯示開關',
+    '对话自动化与安全策略': '對話自動化與安全策略',
+    '自定义强调色与顶栏分项配色': '自訂強調色與頂部列分項配色',
+    'macOS Dock 未读与状态提醒': 'macOS Dock 未讀與狀態提醒',
+    '选项名保留英文': '選項名保留英文',
+    '模式与档位名保留英文': '模式與等級名保留英文',
+    '5 档色阶预设：': '5 級色階預設：',
+    '恢复 5 档预设': '恢復 5 級預設',
+    '累计处理 Token': '累計處理 Token',
+    '总计': '總計',
+    '今日使用': '今日使用',
+    '今日': '今日',
+    '本月使用': '本月使用',
+    '本月': '本月',
+    '年度使用': '年度使用',
+    '本年': '本年',
+    '无限': '無限'
+  };
+
   const SUITE_SUPPORTED_LOCALES = [
-    { code: 'zh-CN', hansCode: 'zh', capsuleLang: 'zh', label: '简体中文 · Simplified Chinese', uiDict: null, uiPatterns: null },
-    { code: 'en', hansCode: 'en', capsuleLang: 'en', label: 'English · 英文原版', uiDict: SUITE_EN_UI_DICT, uiPatterns: SUITE_EN_UI_PATTERNS }
+    { code: 'zh-TW', hansCode: 'zh-TW', capsuleLang: 'zh-TW', label: '繁體中文 · Traditional Chinese', uiDict: SUITE_ZH_TW_UI_DICT, uiPatterns: null, uiTransform: convertSuiteToZhTW },
+    { code: 'zh-CN', hansCode: 'zh', capsuleLang: 'zh', label: '简体中文 · Simplified Chinese', uiDict: null, uiPatterns: null, uiTransform: null },
+    { code: 'en', hansCode: 'en', capsuleLang: 'en', label: 'English · 英文原版', uiDict: SUITE_EN_UI_DICT, uiPatterns: SUITE_EN_UI_PATTERNS, uiTransform: null }
   ];
 
   let suiteTerminalState = {
@@ -490,8 +532,8 @@
     dockBadgeStyle: 'capsule',
     dockBadgeColorTier: true,
     dockBadgeAutoClear: true,
-    locale: 'zh-CN',
-    capsuleLang: 'zh',
+    locale: 'zh-TW',
+    capsuleLang: 'zh-TW',
     englishLabels: false
   };
   const DEFAULT_SUITE_FEATURE_FLAGS = {
@@ -1100,7 +1142,9 @@
 
   function suiteTr(zh, en) {
     const entry = findSupportedLocaleEntry(suiteEnhancerPrefs.locale);
-    return entry.hansCode === 'en' ? en : zh;
+    if (entry.hansCode === 'en') return en;
+    if (entry.code === 'zh-TW') return convertSuiteToZhTW(zh);
+    return zh;
   }
 
   function onSuiteSettingsClosed() {
@@ -1123,6 +1167,9 @@
     const lower = clean.toLowerCase();
     const exact = SUITE_SUPPORTED_LOCALES.find(item => item.code.toLowerCase() === lower);
     if (exact) return exact;
+    if (lower === 'zh-tw' || lower === 'zh-hant' || lower === 'zh-hk' || lower === 'tw' || lower.startsWith('zh-tw-') || lower.startsWith('zh-hant-')) {
+      return SUITE_SUPPORTED_LOCALES.find(item => item.code === 'zh-TW') || SUITE_SUPPORTED_LOCALES[0];
+    }
     if (lower === 'zh' || lower === 'zh-hans' || lower === 'cn') {
       return SUITE_SUPPORTED_LOCALES.find(item => item.code === 'zh-CN') || SUITE_SUPPORTED_LOCALES[0];
     }
@@ -1209,6 +1256,7 @@
     try { uiCliModelDropdown = enhanceCustomSelect('set-cli-model-select'); } catch {}
     try { uiCliMuxHostDropdown = enhanceCustomSelect('set-cli-mux-host-select'); } catch {}
     try { uiLangDropdown = enhanceCustomSelect('set-ui-language-select'); } catch {}
+    try { uiBaseCurrencyDropdown = enhanceCustomSelect('set-base-currency-select'); } catch {}
   }
 
   function transplantConfigControlsOnce() {
@@ -1299,9 +1347,18 @@
       poolsEl.textContent = qpd ? `${qpd.promptPoolText} · ${qpd.flowPoolText}` : '按当前套餐配额执行';
     }
     if (priceEl) {
-      const valText = el('plan-summary-price-val')?.textContent || '';
-      const cnyText = el('plan-summary-price-cny')?.textContent || '';
-      priceEl.textContent = valText ? `${valText} ${cnyText}`.trim() : '--';
+      if (typeof lastBadgePriceState !== 'undefined' && lastBadgePriceState && lastBadgePriceState.symbol !== undefined) {
+        const numStr = (lastBadgePriceState.num !== null && lastBadgePriceState.num !== undefined && lastBadgePriceState.symbol !== '$99.99~199.99')
+          ? (Number(lastBadgePriceState.num) % 1 === 0 ? String(Number(lastBadgePriceState.num)) : Number(lastBadgePriceState.num).toFixed(2))
+          : '';
+        const valText = `${lastBadgePriceState.symbol}${numStr}${lastBadgePriceState.cycle || ''}`;
+        const cnyText = lastBadgePriceState.cnyText || '';
+        priceEl.textContent = valText ? `${valText} ${cnyText}`.trim() : '--';
+      } else {
+        const valText = el('plan-summary-price-val')?.textContent || '';
+        const cnyText = el('plan-summary-price-cny')?.textContent || '';
+        priceEl.textContent = valText ? `${valText} ${cnyText}`.trim() : '--';
+      }
     }
     const isUltraPlan = ps.tierKey === 'ultra' || Boolean(ps.ultraSubTier);
     const subDt = el('settings-subtier-dt');
@@ -1309,6 +1366,12 @@
     if (subDt && subDd) {
       subDt.style.display = isUltraPlan ? 'block' : 'none';
       subDd.style.display = isUltraPlan ? 'flex' : 'none';
+    }
+    const baseCurSel = el('set-base-currency-select');
+    if (baseCurSel && typeof getActiveBaseCurrency === 'function') {
+      const activeBase = getActiveBaseCurrency();
+      if (baseCurSel.value !== activeBase) baseCurSel.value = activeBase;
+      try { uiBaseCurrencyDropdown?.refresh?.(); } catch {}
     }
     syncCliOptionControls();
   }
@@ -1321,8 +1384,9 @@
 
   function dispatchSuitePrefsChanged() {
     const curEntry = findSupportedLocaleEntry(suiteEnhancerPrefs.locale);
-    const activeLocale = suiteEnhancerPrefs.locale || 'zh-CN';
-    const hansLangVal = curEntry.hansCode === 'en' ? 'en' : 'zh';
+    const activeLocale = suiteEnhancerPrefs.locale || 'zh-TW';
+    const hansLangVal = curEntry.hansCode === 'en' ? 'en' : (curEntry.hansCode === 'zh-TW' ? 'zh-TW' : 'zh');
+    const capsuleLangVal = curEntry.capsuleLang === 'en' ? 'en' : (curEntry.capsuleLang === 'zh-TW' ? 'zh-TW' : 'zh');
     try {
       if (typeof document !== 'undefined' && document.documentElement?.setAttribute) {
         document.documentElement.setAttribute('data-ag-suite-locale', activeLocale);
@@ -1344,7 +1408,7 @@
       localStorage?.setItem?.('ag_suite_dock_badge_color_tier', suiteEnhancerPrefs.dockBadgeColorTier !== false ? 'true' : 'false');
       localStorage?.setItem?.('ag_suite_dock_badge_autoclear', suiteEnhancerPrefs.dockBadgeAutoClear !== false ? 'true' : 'false');
       localStorage?.setItem?.('ag_suite_locale', activeLocale);
-      localStorage?.setItem?.('__agy_ctx_lang__', curEntry.capsuleLang === 'en' ? 'en' : 'zh');
+      localStorage?.setItem?.('__agy_ctx_lang__', capsuleLangVal);
       localStorage?.setItem?.('antigravityHansLang', hansLangVal);
       localStorage?.setItem?.('antigravityHansEnglishLabels', suiteEnhancerPrefs.englishLabels ? '1' : '0');
       localStorage?.setItem?.('ag_suite_feature_flags', JSON.stringify(suiteFeatureFlags));
@@ -1393,7 +1457,7 @@
   let suiteTranslateApplying = false;
   let suiteTranslatePending = false;
 
-  function translateSuiteString(raw, dict, patternsList) {
+  function translateSuiteString(raw, dict, patternsList, transformFn) {
     if (!raw || typeof raw !== 'string') return raw;
     const trimmed = raw.trim();
     if (!trimmed) return raw;
@@ -1409,6 +1473,10 @@
           if (next !== trimmed) return lead + next + tail;
         }
       }
+    }
+    if (typeof transformFn === 'function') {
+      const next = transformFn(trimmed);
+      if (next && next !== trimmed) return lead + next + tail;
     }
     return raw;
   }
@@ -1459,13 +1527,13 @@
     visit(root);
   }
 
-  function translateShadowSubtreeLocale(root, dict, patternsList) {
+  function translateShadowSubtreeLocale(root, dict, patternsList, transformFn) {
     const visit = (node) => {
       if (!node || node.nodeType === 8) return;
       if (node.nodeType === 3) {
         if (isProtectedSuiteLocaleSubtree(node)) return;
         const cur = node.nodeValue !== undefined ? node.nodeValue : node.textContent;
-        const next = translateSuiteString(cur, dict, patternsList);
+        const next = translateSuiteString(cur, dict, patternsList, transformFn);
         if (next && next !== cur) {
           const prevRec = suiteTextOriginals.get(node);
           const orig = prevRec ? prevRec.orig : cur;
@@ -1480,7 +1548,7 @@
         const tag = String(node.tagName || '').toUpperCase();
         if ((!node.childNodes || node.childNodes.length === 0) && tag !== 'INPUT' && tag !== 'TEXTAREA' && node.textContent) {
           const curLeaf = node.textContent;
-          const nextLeaf = translateSuiteString(curLeaf, dict, patternsList);
+          const nextLeaf = translateSuiteString(curLeaf, dict, patternsList, transformFn);
           if (nextLeaf && nextLeaf !== curLeaf) {
             const prevLeaf = suiteLeafOriginals.get(node);
             suiteLeafOriginals.set(node, { orig: prevLeaf ? prevLeaf.orig : curLeaf, translated: nextLeaf });
@@ -1490,7 +1558,7 @@
         for (const attrName of ['title', 'placeholder', 'aria-label']) {
           const attrVal = node.getAttribute?.(attrName);
           if (!attrVal) continue;
-          const nextAttr = translateSuiteString(attrVal, dict, patternsList);
+          const nextAttr = translateSuiteString(attrVal, dict, patternsList, transformFn);
           if (nextAttr && nextAttr !== attrVal) {
             let map = suiteAttrOriginals.get(node);
             if (!map) suiteAttrOriginals.set(node, (map = new Map()));
@@ -1505,22 +1573,51 @@
     visit(root);
   }
 
+  let suiteShadowPendingRoots = new Set();
   function ensureSuiteShadowObserver(active) {
     if (!active) {
       if (suiteShadowObserver) {
         try { suiteShadowObserver.disconnect(); } catch {}
       }
+      suiteShadowPendingRoots.clear();
       return;
     }
     if (typeof MutationObserver !== 'function') return;
     if (!suiteShadowObserver) {
-      suiteShadowObserver = new MutationObserver(() => {
-        if (suiteTranslateApplying || suiteTranslatePending) return;
-        suiteTranslatePending = true;
-        setTimeout(() => {
-          suiteTranslatePending = false;
-          applySuiteShadowLocale();
-        }, 0);
+      suiteShadowObserver = new MutationObserver((mutations) => {
+        if (suiteTranslateApplying) return;
+        for (const m of mutations) {
+          if (m.type === 'characterData' && m.target) {
+            suiteShadowPendingRoots.add(m.target);
+          } else if (m.type === 'childList') {
+            if (m.addedNodes && m.addedNodes.length) {
+              for (const n of m.addedNodes) suiteShadowPendingRoots.add(n);
+            } else if (m.target) {
+              suiteShadowPendingRoots.add(m.target);
+            }
+          }
+        }
+        if (suiteShadowPendingRoots.size === 0) return;
+        const entry = findSupportedLocaleEntry(suiteEnhancerPrefs.locale);
+        const isZhBase = /^(?:zh|cn)/i.test(entry.code) && !entry.uiDict && !entry.uiTransform;
+        if (isZhBase || (!entry.uiDict && !entry.uiTransform)) {
+          suiteShadowPendingRoots.clear();
+          return;
+        }
+        const roots = Array.from(suiteShadowPendingRoots);
+        suiteShadowPendingRoots.clear();
+        suiteTranslateApplying = true;
+        try {
+          ensureSuiteShadowObserver(false);
+          for (const r of roots) {
+            if (r && r.isConnected !== false) {
+              translateShadowSubtreeLocale(r, entry.uiDict, entry.uiPatterns, entry.uiTransform);
+            }
+          }
+          ensureSuiteShadowObserver(true);
+        } finally {
+          suiteTranslateApplying = false;
+        }
       });
     }
     try {
@@ -1531,18 +1628,19 @@
   function applySuiteShadowLocale() {
     if (!shadow || suiteTranslateApplying) return;
     const entry = findSupportedLocaleEntry(suiteEnhancerPrefs.locale);
-    const isZh = /^(?:zh|cn)/i.test(entry.code) && !entry.uiDict;
+    const isZhBase = /^(?:zh|cn)/i.test(entry.code) && !entry.uiDict && !entry.uiTransform;
     suiteTranslateApplying = true;
     try {
       ensureSuiteShadowObserver(false);
       restoreShadowNodeLocale(shadow);
-      if (!isZh && entry.uiDict) {
-        translateShadowSubtreeLocale(shadow, entry.uiDict, entry.uiPatterns);
+      if (!isZhBase && (entry.uiDict || entry.uiTransform)) {
+        translateShadowSubtreeLocale(shadow, entry.uiDict, entry.uiPatterns, entry.uiTransform);
       }
       try { uiCliModelDropdown?.refresh?.(); } catch {}
       try { uiCliMuxHostDropdown?.refresh?.(); } catch {}
       try { uiLangDropdown?.refresh?.(); } catch {}
-      if (!isZh) ensureSuiteShadowObserver(true);
+      try { uiBaseCurrencyDropdown?.refresh?.(); } catch {}
+      if (!isZhBase) ensureSuiteShadowObserver(true);
     } finally {
       suiteTranslateApplying = false;
     }
@@ -1568,7 +1666,7 @@
         sel.appendChild?.(newOpt);
       }
     }
-    sel.value = suiteEnhancerPrefs.locale || 'zh-CN';
+    sel.value = suiteEnhancerPrefs.locale || 'zh-TW';
     uiLangDropdown?.refresh?.();
   }
 
@@ -2049,17 +2147,23 @@
     const code = String(def.code || '').trim();
     if (!code) return false;
     const label = String(def.label || code).trim();
+    const isZhTwLike = /^(?:zh-tw|zh-hant|zh-hk|tw)\b/i.test(code);
     const isZhLike = /^(?:zh|cn)/i.test(code);
-    const capsuleLang = def.capsuleLang === 'zh' || def.capsuleLang === 'en' ? def.capsuleLang : (isZhLike ? 'zh' : 'en');
-    const hansCode = def.hansCode === 'zh' || def.hansCode === 'en' ? def.hansCode : (isZhLike ? 'zh' : 'en');
+    const capsuleLang = def.capsuleLang === 'zh' || def.capsuleLang === 'zh-TW' || def.capsuleLang === 'en'
+      ? def.capsuleLang
+      : (isZhTwLike ? 'zh-TW' : (isZhLike ? 'zh' : 'en'));
+    const hansCode = def.hansCode === 'zh' || def.hansCode === 'zh-TW' || def.hansCode === 'en'
+      ? def.hansCode
+      : (isZhTwLike ? 'zh-TW' : (isZhLike ? 'zh' : 'en'));
     const uiDict = (def.uiDict && typeof def.uiDict === 'object')
       ? def.uiDict
       : (!isZhLike && def.fallbackEn !== false ? SUITE_EN_UI_DICT : null);
     const uiPatterns = Array.isArray(def.uiPatterns)
       ? def.uiPatterns
       : (!isZhLike && def.fallbackEn !== false ? SUITE_EN_UI_PATTERNS : null);
+    const uiTransform = typeof def.uiTransform === 'function' ? def.uiTransform : null;
     const idx = SUITE_SUPPORTED_LOCALES.findIndex(item => item.code.toLowerCase() === code.toLowerCase());
-    const nextEntry = { code, hansCode, capsuleLang, label, uiDict, uiPatterns };
+    const nextEntry = { code, hansCode, capsuleLang, label, uiDict, uiPatterns, uiTransform };
     if (idx >= 0) SUITE_SUPPORTED_LOCALES[idx] = nextEntry;
     else SUITE_SUPPORTED_LOCALES.push(nextEntry);
     syncLanguageDropdownOptions();
@@ -2067,7 +2171,7 @@
   }
 
   function getSuiteLocale() {
-    return suiteEnhancerPrefs.locale || 'zh-CN';
+    return suiteEnhancerPrefs.locale || 'zh-TW';
   }
 
   async function setSuiteLocale(localeCode, opts = {}) {
@@ -4081,7 +4185,19 @@
   });
 
   el('set-ui-language-select')?.addEventListener('change', e => {
-    void setSuiteLocale(e?.target?.value || 'zh-CN');
+    void setSuiteLocale(e?.target?.value || 'zh-TW');
+  });
+
+  el('set-base-currency-select')?.addEventListener('change', e => {
+    const nextCur = String(e?.target?.value || 'TWD').trim().toUpperCase();
+    if (nextCur !== 'TWD' && nextCur !== 'USD' && nextCur !== 'CNY') return;
+    try { localStorage?.setItem?.(BASE_CURRENCY_STORAGE_KEY, nextCur); } catch {}
+    try { uiBaseCurrencyDropdown?.refresh?.(); } catch {}
+    try { renderPlanDetail?.(ANTIGRAVITY_TOKEN_DATA.planStatus); } catch {}
+    try { refreshDirectRegionDisplay?.(); } catch {}
+    try { renderActiveCostEstimateView?.(); } catch {}
+    try { renderActiveHeatView?.(true); } catch {}
+    try { syncSettingsSubPreview?.(); } catch {}
   });
 
   el('set-english-labels')?.addEventListener('change', e => {
@@ -4149,7 +4265,7 @@
       const res = await invokeHostBridge('/dock-badge-test', {
         style: normalizeDockBadgeStyle(suiteEnhancerPrefs.dockBadgeStyle),
         colorTier: suiteEnhancerPrefs.dockBadgeColorTier !== false,
-        locale: suiteEnhancerPrefs.locale || 'zh-CN'
+        locale: suiteEnhancerPrefs.locale || 'zh-TW'
       }, 'dockBadgeTest');
       if (res && res.ok) {
         if (res.status?.axTrusted === false) {

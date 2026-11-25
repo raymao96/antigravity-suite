@@ -249,13 +249,15 @@ function createMacosDockBadgeManager(options = {}) {
       return false;
     }
 
-    const expectedFilename = `${CACHE_BINARY_PREFIX}${hash8}`;
+    const expectedFilename = 'ag-dock-overlay';
     const expectedPath = path.join(binDir, expectedFilename);
+    const hashFilePath = path.join(binDir, `${expectedFilename}.hash`);
 
     try {
-      if (fs.existsSync(expectedPath)) {
+      if (fs.existsSync(expectedPath) && fs.existsSync(hashFilePath)) {
         const st = fs.statSync(expectedPath);
-        if (st.isFile() && st.size > 0) {
+        const savedHash = String(fs.readFileSync(hashFilePath, 'utf8') || '').trim();
+        if (st.isFile() && st.size > 0 && savedHash === hash8) {
           try { fs.chmodSync(expectedPath, 0o755); } catch {}
           compiledBinPath = expectedPath;
           compiledHash = hash8;
@@ -323,7 +325,16 @@ function createMacosDockBadgeManager(options = {}) {
           return false;
         }
         try { fs.chmodSync(tmpOut, 0o755); } catch {}
+        try {
+          await execFileAsync(
+            execFileFn,
+            'codesign',
+            ['--force', '--sign', '-', '--identifier', 'com.antigravity.suite.dock-overlay', tmpOut],
+            { timeout: 10000 }
+          );
+        } catch {}
         fs.renameSync(tmpOut, expectedPath);
+        try { fs.writeFileSync(hashFilePath, hash8, 'utf8'); } catch {}
         compiledBinPath = expectedPath;
         compiledHash = hash8;
         compiled = true;
@@ -742,6 +753,18 @@ function createMacosDockBadgeManager(options = {}) {
     if (disableSpawn) {
       return { ok: true, dryRun: true };
     }
+    try {
+      const wasEnabled = prefs.enabled;
+      if (!wasEnabled) {
+        await ensureCompiled();
+      } else {
+        await ensureHelperRunning();
+      }
+      if (helperChild && !helperChild.killed && helperChild.exitCode === null && helperChild.stdin?.writable) {
+        helperChild.stdin.write(JSON.stringify({ promptAccessibility: true }) + '\n');
+        await new Promise((r) => setTimeout(r, 150));
+      }
+    } catch {}
     const res = await execFileAsync(
       execFileFn,
       'open',

@@ -1630,8 +1630,8 @@ test('需求 5d: 移除独立汉化悬浮图标，设置下拉框同步切换 an
   vm.runInContext(hansSrc, env.sandbox);
 
   assert.equal(env.doc.querySelectorAll('[data-agy-hans-ui]').length, 0, '不得渲染或保留独立中英文悬浮圆圈图标');
-  assert.equal(env.win.__antigravityZhGetLang?.(), 'zh');
-  assert.equal(textNode.nodeValue, '无限', '初始化中文状态应将 Turbo 翻译为 无限');
+  assert.equal(env.win.__antigravityZhGetLang?.(), 'zh-TW');
+  assert.equal(textNode.nodeValue, '無限', '默认繁体中文状态应将 Turbo 翻译为 無限');
   assert.equal(staleNewNode.nodeValue, '新增', '新版脚本加载应升级旧实例遗留的 新建 -> 新增 译文');
 
   // 通过统一设置面板加载并切换到英文 + 注册扩展语言
@@ -1646,11 +1646,11 @@ test('需求 5d: 移除独立汉化悬浮图标，设置下拉框同步切换 an
   const getTokenCardPairs = () => shadow.querySelectorAll('#token-stat-cards .t-card-lbl')
     .map(lbl => lbl.querySelectorAll('span').map(sp => sp.textContent.trim()));
   assert.deepEqual(getTokenCardPairs(), [
-    ['累计处理 Token', '总计'],
+    ['累計處理 Token', '總計'],
     ['今日使用', '今日'],
     ['本月使用', '本月'],
     ['年度使用', '本年']
-  ], 'zh-CN 下 Token 概览卡片右上角标签应显示中文');
+  ], '默认 zh-TW 下 Token 概览卡片右上角标签应显示繁体中文');
 
   api.setLocale('en');
   assert.equal(env.win.__antigravityZhGetLang?.(), 'en');
@@ -1857,6 +1857,7 @@ test('需求 6: #badge-remote 与 #ag-remote-popover 挂载、一码三用融合
     let copiedUrl = '';
     let mockPairSummary = { pairedCount: 0, onlineCount: 0, pairedDevices: [] };
     const env = createDomEnv();
+    env.localStorage.setItem('ag_suite_locale', 'zh-CN');
     env.sandbox.navigator.clipboard = { writeText: async (t) => { copiedUrl = String(t); } };
     env.win.__AGContextMeterLive = { port: 61220, token: 'tok-test' };
     env.sandbox.fetch = async (url, init) => {
@@ -2128,6 +2129,7 @@ test('需求 7: #ag-chat-nav-float 移除按钮内圈边框并使用 Lucide SVG 
   assert.ok(!ENHANCER_SRC.includes('z-index: 99990;'), '不得再使用过高 z-index: 99990;');
 
   const env = createDomEnv();
+  env.localStorage.setItem('ag_suite_locale', 'zh-CN');
   const sheetEl = env.doc.createElement('div');
   sheetEl.className = 'agy-sheet';
   env.doc.body.appendChild(sheetEl);
@@ -3018,13 +3020,13 @@ test('需求 13: 远程浮窗整行热区勾选、CLI 多路复用器指定主�
 
   vm.runInContext(CAPSULE_SRC, envCap.sandbox);
   const capsApi = envCap.win.__AGY_CTX_CAPSULE_API__;
-  assert.equal(capsApi.version, '1.5.0');
+  assert.equal(capsApi.version, '1.5.1');
 
   capsApi.renderFooterCapsule(footerEl, {
     contextUsed: 181000,
     contextLimit: 512000,
     usagePercent: 35.35,
-    cacheHitRate: 91.24,
+    cacheHitRate: 99.925,
     hasPreciseSnapshot: true,
     tokPerSec: 84,
     cacheReadTokens: 165000,
@@ -3037,7 +3039,7 @@ test('需求 13: 远程浮窗整行热区勾选、CLI 多路复用器指定主�
   assert.ok(capBtn.querySelector('.agy-ctx-occ .agy-ctx-occ-icon'), '上下文占用率应附带对应 SVG 图标');
   assert.equal(capBtn.querySelector('.agy-ctx-occ .agy-ctx-occ-val')?.textContent, '35.4%');
   assert.ok(capBtn.querySelector('.agy-ctx-cache .agy-ctx-cache-icon'), '缓存命中率应附带对应 SVG 图标');
-  assert.equal(capBtn.querySelector('.agy-ctx-cache .agy-ctx-cache-val')?.textContent, '91.2%');
+  assert.equal(capBtn.querySelector('.agy-ctx-cache .agy-ctx-cache-val')?.textContent, '99.93%');
 
   const occNode = capBtn.querySelector('.agy-ctx-occ');
   const cacheNode = capBtn.querySelector('.agy-ctx-cache');
@@ -3254,6 +3256,8 @@ test('需求 14: Cloudflare Token 入口、ASAR 全组件打包自注与 Antigra
   // 4. antigravity-hans-overlay 在 2.32.1 agent-response 下保护 Markdown 正文、翻译步骤按钮
   const hansSrc = fs.readFileSync(path.join(ROOT, 'antigravity-hans-overlay.js'), 'utf8');
   const envH = createDomEnv();
+  envH.localStorage.setItem('ag_suite_locale', 'zh-CN');
+  envH.localStorage.setItem('antigravityHansLang', 'zh');
   envH.sandbox.location.pathname = '/c/test-hans';
   envH.sandbox.location.href = 'https://127.0.0.1:12345/c/test-hans';
   envH.win.location = envH.sandbox.location;
@@ -3544,6 +3548,7 @@ test('需求 15: Cloudflare Tunnel Token/Hostname 预校验、表单错误保留
 
     // 4. 验证从误填 cloudflareaccess.com 点击「改用免登录临时隧道」时的慢请求加载状态与旧地址屏蔽
     const envQ = createDomEnv();
+    envQ.localStorage.setItem('ag_suite_locale', 'zh-CN');
     envQ.win.__AGContextMeterLive = { port: 61221, token: 'tok-quick-switch' };
     const staleNamedInfo = buildRemoteInfo({
       resetToken: false,
@@ -3901,7 +3906,7 @@ test('需求 18: meter-core 修复 cache=0 掩盖，pulse-capsule 与 renderer �
   const capBtn = footerEl.querySelector('[data-agy-context-capsule="1"]');
   assert.equal(capBtn.querySelector('.agy-ctx-cache')?.getAttribute('data-cache-alert'), 'drop');
   assert.equal(capBtn.querySelector('.agy-ctx-fill')?.getAttribute('fill'), '#ef4444');
-  assert.equal(capBtn.querySelector('.agy-ctx-cache-val')?.textContent, '0%');
+  assert.equal(capBtn.querySelector('.agy-ctx-cache-val')?.textContent, '0.00%');
 
   const uCliff = capsApi.analyzeSteps([
     {
@@ -5583,6 +5588,7 @@ test('需求 22: 远程设置默认免登录零配置可用与 cloudflared 一�
 
     // 2. 设置面板渲染一键复制安装命令引导（缺失态 + 已安装态 + 平台切换 + 一键复制 + 重新检测）
     const env = createDomEnv();
+    env.localStorage.setItem('ag_suite_locale', 'zh-CN');
     env.win.__AGContextMeterLive = { port: 61229, token: 'tok-install-guide' };
     let infoMode = 'missing';
     let infoFetchCount = 0;
@@ -8624,7 +8630,7 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
     assert.equal(poll2After.messages.some((m) => String(m.text || '').includes('#race2-S1-stale')), false);
     Date.now = origDateNow;
 
-    // 2) HTTP gzip 压缩、Accept-Encoding q=0 质量值协商与 Cookie 版本号 1.9.17 验证
+    // 2) HTTP gzip 压缩、Accept-Encoding q=0 质量值协商与 Cookie 版本号验证
     assert.equal(remoteMod.acceptsGzipEncoding('gzip, deflate, br'), true);
     assert.equal(remoteMod.acceptsGzipEncoding('gzip;q=0.5'), true);
     assert.equal(remoteMod.acceptsGzipEncoding('deflate, *;q=0.8'), true);
@@ -8634,15 +8640,16 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
 
     const cfg = remoteMod.loadOrCreateRemoteConfig();
     const handler = remoteMod.createRemoteHttpHandler(cfg);
-    const invokeHttp = (method, urlPath, headers = {}) => new Promise((resolve) => {
+    const invokeHttp = (method, urlPath, headers = {}, authenticated = true, requestHandler = handler, body) => new Promise((resolve) => {
       const resHeaders = {};
       let setCookie = null;
-      handler({
+      const req = body ? require('node:stream').Readable.from([Buffer.from(JSON.stringify(body))]) : {};
+      requestHandler(Object.assign(req, {
         method,
-        url: `${urlPath}${urlPath.includes('?') ? '&' : '?'}token=${encodeURIComponent(cfg.token)}`,
+        url: authenticated ? `${urlPath}${urlPath.includes('?') ? '&' : '?'}token=${encodeURIComponent(cfg.token)}` : urlPath,
         headers: { host: `127.0.0.1:${cfg.port}`, ...headers },
         socket: { remoteAddress: '127.0.0.1' }
-      }, {
+      }), {
         setHeader(k, v) { if (String(k).toLowerCase() === 'set-cookie') setCookie = v; resHeaders[k] = v; },
         writeHead(status, h = {}) { this.status = status; Object.assign(resHeaders, h); },
         end(body) { resolve({ status: this.status, headers: resHeaders, setCookie, body }); }
@@ -8651,7 +8658,7 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
 
     const htmlPlainRes = await invokeHttp('GET', '/');
     assert.equal(htmlPlainRes.status, 200);
-    assert.ok(String(htmlPlainRes.setCookie || '').includes('ag_ui_ver=2.1.0'), '根目录响应应下发最新版本号 2.1.0');
+    assert.ok(String(htmlPlainRes.setCookie || '').includes('ag_ui_ver=2.1.7'), '根目录响应应下发最新版本号 2.1.7');
 
     for (const rejectHeader of ['gzip;q=0', 'br, gzip; q=0.0, *;q=1', 'identity;q=1, *;q=0']) {
       const rejectedGzRes = await invokeHttp('GET', '/', { 'accept-encoding': rejectHeader });
@@ -8667,6 +8674,149 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
     assert.ok(Buffer.isBuffer(htmlGzipRes.body));
     const gunzippedHtml = zlib.gunzipSync(htmlGzipRes.body).toString('utf8');
     assert.ok(gunzippedHtml.includes('id="conv-list"') && gunzippedHtml.includes('openThoughtIdxSet'));
+
+    const twHeaders = { 'accept-language': 'zh-CN;q=0.3, zh-TW;q=0.9', 'accept-encoding': 'gzip' };
+    const twPage = await invokeHttp('GET', '/', twHeaders);
+    assert.equal(twPage.headers['Content-Language'], 'zh-TW');
+    assert.match(twPage.headers.Vary, /Accept-Language/i);
+    assert.match(twPage.headers.Vary, /Accept-Encoding/i);
+    const twHtml = zlib.gunzipSync(twPage.body).toString('utf8');
+    assert.match(twHtml, /<html lang="zh-TW">/);
+    assert.match(twHtml, /新增對話/);
+    assert.doesNotMatch(twHtml, /新建对话/);
+    assert.match(twHtml, /placeholder="傳送訊息/);
+    assert.match(twHtml, /⚡直接傳送/);
+    assert.match(twHtml, /未歸屬專案/);
+    assert.match(twHtml, /推播通知設定/);
+    assert.match(twHtml, /html: '無法連線'/);
+    assert.match(twHtml, /無法連線至推播服務/);
+    assert.doesNotMatch(twHtml, /不可[达達]/);
+    const builtInPrompts = JSON.parse(twHtml.match(/const builtInPrompts = (.+);/)[1]);
+    assert.equal(builtInPrompts['tpl-continue'].textTw, '繼續');
+    assert.equal(builtInPrompts['tpl-fix-err'].textTw, '修復這個錯誤：\n');
+    assert.equal(builtInPrompts.reload.textTw, '重新讀取 AGENTS');
+    assert.equal(builtInPrompts['tpl-req'].textTw, '依這項需求實作：\n');
+    const suggestionLabels = JSON.parse(twHtml.match(/const localizedSuggestions = (.+);/)[1]);
+    assert.equal(suggestionLabels['先帮我梳理下当前任务并给出方案'], '先幫我整理目前的任務並提出方案');
+    assert.equal(suggestionLabels['按这个需求做：'], '依這項需求實作：');
+    const shortSuggestionLabels = JSON.parse(twHtml.match(/const shortSuggestionLabels = (.+);/)[1]);
+    assert.equal(shortSuggestionLabels[suggestionLabels['先帮我梳理下当前任务并给出方案']], '整理任務');
+    assert.equal(shortSuggestionLabels[suggestionLabels['按这个需求做：']], '照需求做');
+    assert.equal(builtInPrompts['tpl-req'].labelTw, '照需求做');
+    assert.equal(builtInPrompts['tpl-no-explain'].textTw, '不用說明');
+    assert.equal(builtInPrompts['tpl-why'].labelTw, '為什麼無法執行');
+    const chromeLabels = JSON.parse(twHtml.match(/const localizedChromeLabels = (.+);/)[1]);
+    assert.equal(chromeLabels['待确认'], '待確認');
+    assert.equal(chromeLabels['运行中'], '執行中');
+    assert.equal(chromeLabels['主目录 (~)'], '主目錄 (~)');
+    assert.equal(chromeLabels['允许'], '允許');
+    const bodyBeforePicker = twHtml.slice(
+      twHtml.indexOf('function resolvePermKey('), twHtml.indexOf('function syncPermInlineUi(')
+    );
+    const picker = twHtml.slice(twHtml.indexOf('function openPermPicker('), twHtml.indexOf('function bindButtonClick('));
+    const permissionOptions = [
+      { key: 'turbo', label: '⚡ 无限 (Turbo)' },
+      { key: 'auto', label: '🛡️ 自动 (Auto)' },
+      { key: 'default', label: '🔒 默认 (Default)' },
+      { key: 'request_review', label: '👁️ 请求审核 (Review)' }
+    ];
+    vm.runInNewContext(bodyBeforePicker + picker + 'openPermPicker();', {
+      latestSnap: { permissionKey: 'default', permissionOptions },
+      openSheet(_title, options) {
+        assert.equal(Array.from(options, (option) => option.label).join('|'),
+          '⚡ 無限 (Turbo)|🛡️ 自動 (Auto)|🔒 預設 (Default)|👁️ 請求核准 (Review)');
+        assert.equal(options[2].active, true);
+      }
+    });
+    for (const [id, label] of Object.entries({
+      schedule: '/schedule 排程', learn: '/learn 歸納', teamwork: '/teamwork 團隊', goal: '/goal 做到完'
+    })) {
+      assert.equal(builtInPrompts[id].labelTw, label);
+      assert.equal(builtInPrompts[id].textTw, '/' + id + ' ');
+    }
+    for (const [, script] of twHtml.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)) new (require('node:vm').Script)(script);
+
+    const cnPage = await invokeHttp('GET', '/', { 'accept-language': 'zh-CN' });
+    assert.equal(cnPage.headers['Content-Language'], 'zh-CN');
+    assert.match(cnPage.body, /新建对话/);
+    assert.match(cnPage.body, /html: '不可达'/);
+
+    const pairing = await invokeHttp('GET', '/', twHeaders, false);
+    assert.equal(pairing.status, 401);
+    assert.match(pairing.body, /需要配對碼/);
+    const authError = await invokeHttp('GET', '/api/snapshot', twHeaders, false);
+    assert.match(JSON.parse(authError.body).error, /未授權/);
+
+    const manifest = await invokeHttp('GET', '/manifest.json', twHeaders);
+    assert.equal(JSON.parse(manifest.body).lang, 'zh-TW');
+    const manifestByPageLocale = await invokeHttp('GET', '/manifest.json?lang=zh-TW', { 'accept-language': 'zh-CN' });
+    assert.equal(JSON.parse(manifestByPageLocale.body).lang, 'zh-TW');
+    const sw = await invokeHttp('GET', '/sw.js', twHeaders);
+    assert.match(sw.body, /<html lang="zh-TW">/);
+    assert.match(sw.body, /連線方式|切換可用連線/);
+    new (require('node:vm').Script)(sw.body);
+
+    for (const [locale, expected] of [['zh-TW', '本機檔案路徑無效'], ['zh-CN', '无效的本地文件路径']]) {
+      const response = await invokeHttp('GET', '/api/file-content', { 'accept-language': locale });
+      assert.equal(response.status, 400);
+      assert.equal(JSON.parse(response.body).error, expected);
+    }
+
+    const rawActionLabel = '始终允许';
+    const rawTitle = '我的新对话';
+    const rawUserText = '排队消息与文件';
+    const rawSnapshot = {
+      ok: true,
+      sessionId: '12345678-1234',
+      title: '会话 12345678',
+      contextBadge: '独立视图',
+      pulseText: '读取失败',
+      conversations: [{ id: 'user-conversation', title: rawTitle }],
+      projects: [{ id: 'user-project', name: '未命名项目' }],
+      messages: [
+        { role: 'user', text: rawUserText },
+        { role: 'system-notice', text: '✓ 上下文已完成压缩' },
+        { role: 'assistant', text: '输出原文', thoughtLabel: '思考过程' }
+      ],
+      pendingApprovals: [{ label: rawActionLabel }]
+    };
+    const rawActionError = '目标排队消息文本已变化，已取消发送以防误操作';
+    const localizedHandler = remoteMod.createRemoteHttpHandler(cfg, {
+      fetchSnapshot: async () => rawSnapshot,
+      getUsageData: async () => null,
+      performAction: async () => ({ ok: false, actionResult: { error: rawActionError } }),
+      webPushManager: { observeCatalogItems: () => ({ completedUnreadCount: 0 }) }
+    });
+    const twOnly = { 'accept-language': 'zh-TW' };
+    const snapResponse = await invokeHttp('GET', '/api/snapshot', twOnly, true, localizedHandler);
+    const snapshot = JSON.parse(snapResponse.body);
+    assert.equal(snapshot.title, '對話 12345678');
+    assert.equal(snapshot.contextBadge, '獨立檢視');
+    assert.equal(snapshot.pulseText, '讀取失敗');
+    assert.equal(snapshot.conversations[0].title, rawTitle);
+    assert.equal(snapshot.projects[0].name, '未命名项目');
+    assert.equal(snapshot.messages[0].text, rawUserText);
+    assert.equal(snapshot.messages[1].text, '✓ 已壓縮上下文');
+    assert.equal(snapshot.messages[2].thoughtLabel, '思考過程');
+    assert.deepEqual(snapshot.pendingApprovals[0], { label: rawActionLabel, displayLabel: '一律允許' });
+    assert.equal(rawSnapshot.messages[1].text, '✓ 上下文已完成压缩');
+    const actionResponse = await invokeHttp('POST', '/api/action',
+      { ...twOnly, 'content-type': 'application/json', 'x-ag-remote-token': cfg.token }, true, localizedHandler,
+      { action: 'select-model' });
+    assert.equal(JSON.parse(actionResponse.body).actionResult.error,
+      '佇列訊息的內容已變更。為避免誤操作，已取消傳送。');
+
+    const pushListeners = {};
+    let pushed;
+    require('node:vm').runInNewContext(sw.body, { self: {
+      addEventListener(name, listener) { pushListeners[name] = listener; },
+      registration: { showNotification(title, { body }) { pushed = { title, body }; } }
+    } });
+    await new Promise((resolve) => pushListeners.push({
+      data: { json: () => ({ title: '对话已完成', body: 'Antigravity 对话 · 未归属项目' }) },
+      waitUntil: resolve
+    }));
+    assert.deepEqual(pushed, { title: '對話已完成', body: 'Antigravity 對話 · 未歸屬專案' });
 
     // 2b) evalInPickedTarget / performActionInTarget 非幂等副作用动作超时不得重放（send / new-conversation）
     for (const sideEffectPayload of [
@@ -10189,6 +10339,7 @@ exit 0
 // =========================================================================
 test('需求 24: 内置推荐池统一开关、三列自定义提示词与斜杠命令自动点选原生菜单', async () => {
   const env = createDomEnv();
+  env.localStorage.setItem('ag_suite_locale', 'zh-CN');
   const activeTimers = new Set();
   env.sandbox.setTimeout = (fn, ms) => {
     const delay = Number(ms) > 500 ? Number(ms) : Math.min(Number(ms) || 0, 10);
@@ -10452,6 +10603,8 @@ test('需求 25: UI 主题色系一致性静态门禁与动态主题变量绑定
 test('需求 26: antigravity-hans-overlay 仅翻译 div.entrance-title 登录欢迎标题，保留 [data-uri] 保护并优先处理设置侧栏', async () => {
   const hansSrc = fs.readFileSync(path.join(ROOT, 'antigravity-hans-overlay.js'), 'utf8');
   const env = createDomEnv();
+  env.localStorage.setItem('ag_suite_locale', 'zh-CN');
+  env.localStorage.setItem('antigravityHansLang', 'zh');
   env.sandbox.location.pathname = '/workbench.html';
   env.sandbox.location.href = 'file:///Applications/Antigravity.app/workbench.html';
   env.win.location = env.sandbox.location;
@@ -10570,6 +10723,99 @@ test('需求 26: antigravity-hans-overlay 仅翻译 div.entrance-title 登录欢
     env.win.__antigravityZhPatchCleanup?.();
     for (const t of activeTimers) clearTimeout(t);
     activeTimers.clear();
+  }
+});
+
+test('熱更新保留設定與輸入區的專案名稱和已儲存欄位，翻譯固定介面文案', () => {
+  const env = createDomEnv({ initialStorage: { antigravityHansLang: 'zh-TW' } });
+  const { doc, win, sandbox } = env;
+  sandbox.location.href = 'file:///Applications/Antigravity.app/workbench.html';
+  sandbox.URLSearchParams = URLSearchParams;
+  win.location = sandbox.location;
+  win.top = win;
+  sandbox.Node = { ELEMENT_NODE: 1, TEXT_NODE: 3, DOCUMENT_NODE: 9 };
+  sandbox.NodeFilter = { SHOW_TEXT: 4, SHOW_ELEMENT: 1 };
+  doc.createTreeWalker = (root, mask) => {
+    function* walk(parent) {
+      for (const node of parent.childNodes || []) {
+        if (mask & (node.nodeType === 3 ? 4 : 1)) yield node;
+        yield* walk(node);
+      }
+    }
+    const iterator = walk(root);
+    return { nextNode: () => iterator.next().value ?? null };
+  };
+
+  const append = (parent, tag, attrs = {}, text) => {
+    const element = doc.createElement(tag);
+    for (const [name, value] of Object.entries(attrs)) {
+      if (name === 'class') element.className = value;
+      else element.setAttribute(name, value);
+    }
+    if (text !== undefined) element.appendChild({ nodeType: 3, nodeValue: text, get textContent() { return this.nodeValue; } });
+    parent.appendChild(element);
+    return element;
+  };
+  const settings = append(doc.body, 'div', { class: 'settings-modal-backdrop antigravity-agent-side-panel' });
+  const sidebar = append(settings, 'div', { 'data-testid': 'settings-sidebar' });
+  const sectionHeader = append(sidebar, 'div');
+  append(sectionHeader, 'h2', {}, 'Projects');
+  const projectList = append(sidebar, 'div');
+  Object.defineProperty(projectList, 'previousElementSibling', { value: sectionHeader });
+  const row = append(append(projectList, 'div'), 'button', { 'data-testid': 'settings-nav-item-Rules' });
+  const projectNav = append(row, 'span', {}, '專案規則');
+  projectNav.__reactProps$fixture = { children: 'Rules' };
+  const titleRow = append(append(settings, 'h2'), 'div');
+  const projectTitle = append(titleRow, 'span', {}, '規則');
+  append(titleRow, 'button', { 'aria-label': 'Edit project name' });
+  const fieldRow = append(settings, 'div');
+  const field = append(fieldRow, 'span', { title: 'Git 提交' }, 'Git 提交');
+  const actions = append(fieldRow, 'div');
+  append(actions, 'button', { 'aria-label': 'Edit' });
+  append(actions, 'button', { 'aria-label': 'Remove' });
+  const staticRules = append(settings, 'h3', {}, 'Rules');
+  const mode = append(settings, 'span', { 'data-testid': 'mode-option-non-technical' }, 'Knowledge Work');
+  const composer = append(doc.body, 'div', { class: 'antigravity-agent-side-panel' });
+  const trigger = append(composer, 'button', { 'data-testid': 'project-selector-trigger' });
+  const projectLabel = append(trigger, 'span', { class: 'truncate flex-1 min-w-0' }, '規則');
+  const noProject = append(composer, 'div', {}, 'No Project');
+  const newProject = append(composer, 'div', {}, 'New Project');
+  const overlay = fs.readFileSync(path.join(ROOT, 'antigravity-hans-overlay.js'), 'utf8');
+
+  win.__antigravityZhPatchInstalled = true;
+  win.__observedDocument = doc;
+  win.__antigravityZhOriginals = {
+    texts: new WeakMap([[projectTitle.firstChild, { orig: 'Rules', zh: '規則' }],
+      [projectLabel.firstChild, { orig: 'Rules', zh: '規則' }],
+      [field.firstChild, { orig: 'git commit', zh: 'Git 提交' }]]),
+    attrs: new WeakMap([[field, new Map([['title', { orig: 'git commit', zh: 'Git 提交' }]])]])
+  };
+  try {
+    vm.runInContext(overlay, sandbox);
+    assert.equal(projectNav.textContent, 'Rules');
+    assert.equal(projectTitle.textContent, 'Rules');
+    assert.equal(field.textContent, 'git commit');
+    assert.equal(field.getAttribute('title'), 'git commit');
+    assert.notEqual(staticRules.textContent, 'Rules');
+    assert.equal(mode.textContent, '日常辦公');
+    assert.equal(projectLabel.textContent, 'Rules');
+    assert.equal(noProject.textContent, '無專案');
+    assert.equal(newProject.textContent, '新增專案');
+
+    for (const [rendered, native, search, expected] of [
+      ['新增專案', 'New Project', '?project=rules', 'New Project'],
+      ['No Project', 'No Project', '?project=rules', 'No Project'],
+      ['No Project', 'No Project', '?project=outside-of-project', '無專案']
+    ]) {
+      sandbox.location.search = search;
+      projectLabel.firstChild.nodeValue = rendered;
+      projectLabel.__reactProps$fixture = { children: native };
+      win.__antigravityZhPatchFingerprint = '';
+      vm.runInContext(overlay, sandbox);
+      assert.equal(projectLabel.textContent, expected);
+    }
+  } finally {
+    win.__antigravityZhPatchCleanup?.();
   }
 });
 
@@ -10821,7 +11067,7 @@ test('远程会话顶栏显示所属项目名与手机端右上角紧凑布局 (
   assert.ok(html.includes('id="conv-project-badge"'), '顶栏 .title-row 应渲染 #conv-project-badge 项目名徽章');
   assert.ok(html.includes('body.has-ctx-btn .quota-pill #ctx-badge{display:none}'), '手机端上下文按钮可见时应隐藏配额胶囊内重复的 #ctx-badge');
   assert.ok(html.includes('#btn-usage-panel #usage-top-val{display:none}'), '窄屏下用量按钮应折叠文字标签为图标按钮以释放标题空间');
-  assert.ok(html.includes('syncTopbarProjectBadge(resolveConversationProjectName(snap))'), 'renderSnapshot 应同步更新顶栏项目名徽章');
+  assert.ok(html.includes('syncTopbarProjectBadge(resolveConversationProjectName(snap), snap.currentProjectId)'), 'renderSnapshot 应同步更新顶栏项目名徽章');
   assert.ok(html.includes("document.body.classList.toggle('has-ctx-btn', Boolean(cfg.showContextPanel))"), 'applyRemoteDisplayConfig 应联动切换 body.has-ctx-btn');
 
   // 2. 行为级验证 resolveConversationProjectName 与 syncTopbarProjectBadge（含新建对话、直接字段、projects 查表、conversations 反查与空值隐藏）
@@ -10831,10 +11077,27 @@ test('远程会话顶栏显示所属项目名与手机端右上角紧凑布局 (
     normalizeProjectId: (v) => String(v || '').trim(),
     getEffectiveSelectedProject: () => ({ id: 'proj-new', name: 'NewTargetRepo' })
   };
-  const fnStart = html.indexOf('function resolveConversationProjectName(snap)');
-  const fnEnd = html.indexOf('function syncNewChatButtonUi(snap)');
-  assert.ok(fnStart > 0 && fnEnd > fnStart, '应能提取 resolveConversationProjectName 与 syncTopbarProjectBadge');
-  vm.runInNewContext(html.slice(fnStart, fnEnd) + '\nglobalThis.__resolve = resolveConversationProjectName;\nglobalThis.__sync = syncTopbarProjectBadge;', sandbox);
+  for (const locale of ['zh-CN', 'zh-TW']) {
+    const rendered = buildMobileAppHtml(locale);
+    const fnStart = rendered.indexOf('const localizedChromeLabels = ');
+    const fnEnd = rendered.indexOf('function syncNewChatButtonUi(snap)');
+    const labelStart = rendered.indexOf('function remoteProjectDisplayName(');
+    const labelEnd = rendered.indexOf('function normalizeProjectGroups(', labelStart);
+    assert.ok(fnStart > 0 && fnEnd > fnStart && labelEnd > labelStart);
+    const view = locale === 'zh-CN' ? sandbox : { ...sandbox };
+    vm.runInNewContext(rendered.slice(fnStart, fnEnd) + rendered.slice(labelStart, labelEnd)
+      + '\nglobalThis.__resolve = resolveConversationProjectName;\nglobalThis.__sync = syncTopbarProjectBadge;'
+      + '\nglobalThis.__title = remoteConversationDisplayTitle;', view);
+    if (locale === 'zh-TW') {
+      assert.equal(view.__title('新建對話 · 未歸屬項目', true), '新增對話 · 未歸屬專案');
+      assert.equal(view.__title('新对话', true), '新增對話');
+      assert.equal(view.__title('新對話', true), '新增對話');
+      assert.equal(view.__title('新对话 · 專案 A', true), '新增對話 · 專案 A');
+      assert.equal(view.__title('新建對話', false), '新建對話');
+      view.__sync('未归属项目');
+      assert.equal(badgeEl.textContent, '未歸屬專案');
+    }
+  }
 
   assert.equal(sandbox.__resolve({ isNewConversation: true }), 'NewTargetRepo', '新建对话应展示目标选中项目名');
   assert.equal(sandbox.__resolve({ currentProjectName: 'antigravity-suite' }), 'antigravity-suite', '常规会话应优先展示 currentProjectName');
@@ -13495,6 +13758,8 @@ test('远程端选择框与贴图防冲突、DOM 排队消息合并、单个附�
 test('需求 27: antigravity-hans-overlay 支持 2.33.1 听写与快捷键方案词条、commands. 上下文及 placeholder 规则', () => {
   const hansSrc = fs.readFileSync(path.join(ROOT, 'antigravity-hans-overlay.js'), 'utf8');
   const env = createDomEnv();
+  env.localStorage.setItem('ag_suite_locale', 'zh-CN');
+  env.localStorage.setItem('antigravityHansLang', 'zh');
   env.sandbox.location.pathname = '/workbench.html';
   env.sandbox.location.href = 'file:///Applications/Antigravity.app/workbench.html';
   env.win.location = env.sandbox.location;
@@ -13637,6 +13902,7 @@ test('需求 28: 快捷提示词直接发送（逐条直发开关 + 内置免参
 
   async function withQuickSendEnv(fn) {
     const env = createDomEnv();
+    env.localStorage.setItem('ag_suite_locale', 'zh-CN');
     const activeTimers = new Set();
     env.sandbox.setTimeout = (cb, ms) => {
       const delay = Number(ms) > 500 ? Number(ms) : Math.min(Number(ms) || 0, 8);
@@ -14073,6 +14339,8 @@ module.exports = {
 test('需求 30: antigravity-hans-overlay 支持 v3.3.60 插件市场语境与官方简介 Fiber 校验，local-api 优先存活 PID', () => {
   const hansSrc = fs.readFileSync(path.join(ROOT, 'antigravity-hans-overlay.js'), 'utf8');
   const env = createDomEnv();
+  env.localStorage.setItem('ag_suite_locale', 'zh-CN');
+  env.localStorage.setItem('antigravityHansLang', 'zh');
   env.sandbox.location.pathname = '/workbench.html';
   env.sandbox.location.href = 'file:///Applications/Antigravity.app/workbench.html';
   env.win.location = env.sandbox.location;
@@ -14366,6 +14634,7 @@ test('需求 31: 快捷提示词 + 新增布局、编辑态防轮询覆盖、慢
       }
     }
   });
+  env.localStorage.setItem('ag_suite_locale', 'zh-CN');
   const activeTimers = new Set();
   env.sandbox.setTimeout = (cb, ms) => {
     const t = setTimeout(() => { activeTimers.delete(t); cb(); }, Math.min(Number(ms) || 0, 8));
@@ -15475,7 +15744,10 @@ test('会话列表多态状态显示升级：未读蓝色光晕圆点、待审�
   assert.ok(startIdx > 0 && endIdx > startIdx);
   const escFn = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const ctx = vm.createContext({ Date, Math, Number, Boolean, String, esc: escFn });
-  vm.runInContext(html.slice(startIdx, endIdx) + '\nglobalThis.__renderConv = renderConvItemHtml;', ctx);
+  const chromeStart = html.indexOf('const localizedChromeLabels = ');
+  const chromeEnd = html.indexOf('const sourceProjectLabels = ', chromeStart);
+  vm.runInContext(html.slice(chromeStart, chromeEnd) + html.slice(startIdx, endIdx)
+    + '\nglobalThis.__renderConv = renderConvItemHtml;', ctx);
   const now = Date.now();
 
   // 2a. 已完成且有新产出（idle + unread）：行尾展示蓝色光晕圆点，严禁显示「运行中」
@@ -15977,6 +16249,7 @@ test('需求 32: 热门口令模板条渲染 10 项、预设直发/填入、去�
       }
     }
   });
+  env.localStorage.setItem('ag_suite_locale', 'zh-CN');
   const activeTimers = new Set();
   env.sandbox.setTimeout = (cb, ms) => {
     const t = setTimeout(() => { activeTimers.delete(t); cb(); }, Math.min(Number(ms) || 0, 8));
@@ -18056,6 +18329,8 @@ test('需求 35: 手机局域网长对话首屏超时防误判与后端软预算
 test('需求 36: antigravity-hans-overlay 修复 data-cascade-id 误伤主对话视图，恢复 Quote / Side Question 选区浮层与输入框占位提示汉化同时保护侧边栏会话名', () => {
   const hansSrc = fs.readFileSync(path.join(ROOT, 'antigravity-hans-overlay.js'), 'utf8');
   const env = createDomEnv();
+  env.localStorage.setItem('ag_suite_locale', 'zh-CN');
+  env.localStorage.setItem('antigravityHansLang', 'zh');
   env.sandbox.location.pathname = '/workbench.html';
   env.sandbox.location.href = 'file:///Applications/Antigravity.app/workbench.html';
   env.win.location = env.sandbox.location;
@@ -18234,6 +18509,7 @@ test('需求 36: antigravity-hans-overlay 修复 data-cascade-id 误伤主对话
 test('需求 37: 统一设置面板按 README 1→5 顺排重构、兼容旧别名并同步 README 路径', async () => {
   const freshRendererSrc = fs.readFileSync(path.join(ROOT, 'meter-renderer.js'), 'utf8');
   const env = createDomEnv();
+  env.localStorage.setItem('ag_suite_locale', 'zh-CN');
   vm.runInContext(freshRendererSrc, env.sandbox);
   const api = env.sandbox.__AGContextMeter;
   const shadow = env.getShadow();
@@ -19898,7 +20174,7 @@ test('底栏视觉层级分隔 (#39) 与顶栏信息降噪及项目名双端正�
   sandbox.window = sandbox;
   sandbox.addEventListener = () => {};
   const tailIdx = mainScript.lastIndexOf('})();');
-  const hooked = mainScript.slice(0, tailIdx) + '\nglobalThis.__test3945 = { renderSnapshot, openModeSwitcherSheet };\n' + mainScript.slice(tailIdx);
+  const hooked = mainScript.slice(0, tailIdx) + '\nglobalThis.__test3945 = { renderSnapshot, openModeSwitcherSheet, renderContextDrawer };\n' + mainScript.slice(tailIdx);
   try {
     vm.runInNewContext(hooked, sandbox);
     sandbox.__test3945.renderSnapshot({
@@ -19919,6 +20195,17 @@ test('底栏视觉层级分隔 (#39) 与顶栏信息降噪及项目名双端正�
     const subText = byId['sub-meta'].textContent;
     assert.equal(subText, '42.0 tok/s · 120k/840k (14.3%)', '正常态 #sub-meta 仅保留核心实时指标');
     assert.ok(!subText.includes('Tailscale') && !subText.includes('独立视图') && !subText.includes('▾'), '正常态 #sub-meta 不得出现冗余通道名或「独立视图」');
+
+    const contextDrawer = byId['context-drawer'];
+    contextDrawer.hidden = false;
+    sandbox.__test3945.renderContextDrawer({
+      contextPanel: { cacheHitRate: 99.928123456, tokPerSec: 42.125, lastDurationSec: 1.005 }
+    });
+    assert.match(contextDrawer.innerHTML, /缓存命中率<\/div><div class="ctx-stat-val">99\.93%<\/div>/);
+    assert.match(contextDrawer.innerHTML, /42\.13 tok\/s · 1\.01s/);
+    sandbox.__test3945.renderContextDrawer({}, { contextPanel: {} });
+    assert.match(contextDrawer.innerHTML, /缓存命中率<\/div><div class="ctx-stat-val">—<\/div>/);
+    contextDrawer.hidden = true;
     assert.equal(bodyCls.has('has-upper-dock'), true, '仅队列可见时 body 应标记 has-upper-dock');
     assert.equal(bodyCls.has('has-approval-dock'), false, '仅队列可见时不应标记 has-approval-dock');
 
@@ -27003,6 +27290,7 @@ test('扫码选路优先级、顶栏独立通道胶囊、SW Error 1033 容灾壳
   };
   const lStore = new Map();
   const sStore = new Map();
+  const documentClickHandlers = [];
   const domSandbox = {
     URL, URLSearchParams, Math, Number, String, Boolean, Array, Object, Set, Map, Date, JSON, Promise,
     Uint8Array, TextEncoder, TextDecoder, AbortController, Intl,
@@ -27032,7 +27320,9 @@ test('扫码选路优先级、顶栏独立通道胶囊、SW Error 1033 容灾壳
       getElementById: (id) => byId[id],
       querySelector: () => makeEl('__q'),
       createElement: (tag) => makeEl(tag),
-      addEventListener() {}
+      addEventListener(event, handler) {
+        if (event === 'click') documentClickHandlers.push(handler);
+      }
     },
     matchMedia: () => ({ matches: false, addEventListener() {} }),
     innerWidth: 390,
@@ -27056,6 +27346,19 @@ test('扫码选路优先级、顶栏独立通道胶囊、SW Error 1033 容灾壳
   try {
     vm.runInNewContext(hookedScript, domSandbox);
     await new Promise((r) => setTimeout(r, 40));
+
+    const usageDrawer = byId['usage-drawer'];
+    const replacedTab = makeEl('replaced-usage-tab');
+    usageDrawer.hidden = false;
+    for (const handler of documentClickHandlers) {
+      handler({ target: replacedTab, composedPath: () => [replacedTab, usageDrawer, domSandbox.document] });
+    }
+    assert.equal(usageDrawer.hidden, false, '切换来源后，已被重新渲染替换的按钮仍算抽屉内点击');
+    assert.equal(byId['btn-usage-panel'].classList.contains('active'), true);
+    for (const handler of documentClickHandlers) {
+      handler({ target: domSandbox.document.body, composedPath: () => [domSandbox.document.body, domSandbox.document] });
+    }
+    assert.equal(usageDrawer.hidden, true, '点击抽屉外应关闭用量面板');
 
     // latestSnap 为空时点配额按钮不能打开空配额抽屉
     byId['btn-quota'].onclick({ stopPropagation() {} });
@@ -27374,6 +27677,7 @@ test('扫码选路优先级、顶栏独立通道胶囊、SW Error 1033 容灾壳
   assert.ok(settingsSrc.includes('ag-rp-quick-tunnel-hint') && RENDERER_SRC.includes('ag-rp-quick-tunnel-hint'), '设置页与打包渲染产物均应渲染免登录临时隧道一次性域名提示');
 
   const priorityEnv = createDomEnv();
+  priorityEnv.localStorage.setItem('ag_suite_locale', 'zh-CN');
   const priorityCases = [
     {
       name: '固定域名 Named Tunnel 最优先',
@@ -28378,4 +28682,245 @@ test('PR #11 合并加固：行内 KaTeX 线性性能、前端消息缓存代际
     }
   }
 });
+
+test('繁體中文（台灣用語 / zh-TW）轉換器、設定面板切換、各覆蓋層與詞庫同步完整驗證', () => {
+  const { convertZhCNToZhTW } = require('../src/i18n/zh-tw-converter.js');
+  const { normalizeClientLanguage } = require('../modules-config.js');
+
+  // 1. 台灣用語轉換與防雙重替換、無港式異體字驗證
+  assert.equal(
+    convertZhCNToZhTW('配置文件中“总是直接继续”和文档与文件的区别'),
+    '設定檔中「總是直接繼續」和文件與檔案的區別',
+    '單次最長匹配應避免 文档->文件 再被 文件->檔案 重複替換'
+  );
+  assert.equal(
+    convertZhCNToZhTW('默认设置、文件夹、软件、内存、缓存、终端、并发、智能体、上下文、队列、快捷键、剪贴板、重启、刷新、卸载'),
+    '預設設定、資料夾、軟體、記憶體、快取、終端機、並行、Agent、上下文、佇列、快速鍵、剪貼簿、重新啟動、重新整理、解除安裝'
+  );
+  assert.equal(
+    convertZhCNToZhTW('周额度、每周限额、周一、周末、52 周、周边搜索、周围文本'),
+    '週額度、每週限額、週一、週末、52 週、周邊搜尋、周圍文字'
+  );
+  assert.equal(
+    convertZhCNToZhTW('快捷提示词、输入框快捷操作栏、快捷按钮、快捷指令、点击、按点击付费、日常高频、追问对齐、提炼经验、深度攻坚、复杂攻坚、蜂群并发、定时任务、定时器'),
+    '常用提示詞、輸入框常用工具列、指令按鈕、常用指令、點選、按點擊付費、日常常用、追問釐清、歸納經驗、深度解題、複雜任務、蜂群並行、排程任務、計時器'
+  );
+  assert.equal(
+    convertZhCNToZhTW('5h 滚动窗口 + 周限额、免费基础配额（滚动窗口限额）、滚动条、向下滚动、创建并发送、构建并发布'),
+    '5 小時限額 + 週限額、免費基礎配額（分時段限額）、捲軸、向下捲動、建立並傳送、建置並發布'
+  );
+  assert.equal(
+    convertZhCNToZhTW('设定智能体在本机和远程对话中可以执行的操作。'),
+    '設定 Agent 在本機和遠端對話中可以執行的操作。'
+  );
+  const twSample = convertZhCNToZhTW('启用后台状态与自定义列表，打开查看全部说明');
+  assert.ok(!/[啓裏衆爲着羣峯綫麪衞賬]/.test(twSample), `不應出現非台灣標準異體字: ${twSample}`);
+  assert.equal(convertZhCNToZhTW('布局'), '排版');
+  assert.equal(convertZhCNToZhTW('左右并排布局'), '左右並排版面設定');
+  for (const sample of ['工作流', '使用工作流编排多智能体', '布局', '进程', '周边', '周围', '干预', '干扰', '批准', '获准']) {
+    const once = convertZhCNToZhTW(sample);
+    assert.equal(convertZhCNToZhTW(once), once, `convertZhCNToZhTW(${sample}) 必須具備冪等性`);
+  }
+
+  // 2. modules-config 語系正規化
+  assert.equal(normalizeClientLanguage('zh-TW', false), 'zh-TW');
+  assert.equal(normalizeClientLanguage('zh-Hant', false), 'zh-TW');
+  assert.equal(normalizeClientLanguage('zh-CN', false), 'zh-CN');
+
+  // 3. i18n/zh-TW.json 與 src/i18n/zh-TW.json 同步及鍵值完整性驗證
+  const cnJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'i18n', 'zh-CN.json'), 'utf8'));
+  const twRootRaw = fs.readFileSync(path.join(ROOT, 'i18n', 'zh-TW.json'), 'utf8');
+  const twSrcRaw = fs.readFileSync(path.join(ROOT, 'src', 'i18n', 'zh-TW.json'), 'utf8');
+  assert.equal(twRootRaw, twSrcRaw, 'i18n/zh-TW.json 與 src/i18n/zh-TW.json 必須完全同步');
+  const twJson = JSON.parse(twRootRaw);
+  assert.equal(
+    Object.keys(twJson.exact).length,
+    Object.keys(cnJson.exact).length,
+    'zh-TW.json exact 詞條數量必須與 zh-CN.json 一致'
+  );
+  assert.equal(twJson.exact['Agent'], 'Agent');
+  assert.equal(twJson.exact['Settings'], '設定');
+  assert.equal(twJson.exact['Plan'], '方案');
+  assert.equal(twJson.exact['View plans'], '瀏覽方案');
+  assert.equal(twJson.exact['View File'], '檢視檔案');
+  assert.equal(twJson.exact['View usage'], '查詢用量明細');
+  assert.ok(Object.values(twJson.exact).every(text => !text.includes('查看')));
+  assert.ok(twJson.patterns.every(({ replacement, to }) => ![replacement, to].some(text => text?.includes('查看'))));
+  assert.equal(twJson.exact['Command Palette'], '指令面板');
+
+  const permissionDescriptions = [
+    ['Every command requires approval.', '每條指令都需要核准。', '每条命令都需要审核。'],
+    ['Ask before sensitive operations.', '執行敏感動作前先詢問。', '执行敏感操作前先询问。'],
+    ['Security agent decides if commands run.', '由安全 Agent 決定是否執行指令。', '由安全智能体决定是否运行命令。'],
+    ['Automatically decide if commands run.', '自動判斷是否執行指令。', '自动判断是否运行命令。'],
+    ['Run all commands without restrictions.', '不受限制地執行所有指令。', '不受限制地运行所有命令。'],
+  ];
+  for (const [en, tw, cn] of permissionDescriptions) {
+    assert.equal(twJson.exact[en], tw);
+    assert.equal(convertZhCNToZhTW(cn), tw);
+  }
+
+  // 4. Shadow DOM 設定面板、antigravity-hans-overlay.js 與 ag-enhancer-overlay.js 聯動切換驗證
+  const env = createDomEnv();
+  env.sandbox.location.pathname = '/workbench.html';
+  env.win.location = env.sandbox.location;
+  env.win.top = env.win;
+  const labelEl = env.doc.createElement('span');
+  const textNode = {
+    nodeType: 3,
+    nodeValue: 'Turbo',
+    get textContent() { return this.nodeValue; },
+    set textContent(v) { this.nodeValue = String(v); },
+    parentElement: labelEl
+  };
+  labelEl.childNodes.push(textNode);
+  const agentPane = env.doc.querySelector('.antigravity-agent-side-panel');
+  assert.ok(agentPane, '模擬 DOM 應包含 .antigravity-agent-side-panel');
+  agentPane.appendChild(labelEl);
+
+  const buildWelcome = env.doc.createElement('h1');
+  const buildWelcomeText = {
+    nodeType: 3,
+    nodeValue: 'Hey Guest, what should we build today?',
+    get textContent() { return this.nodeValue; },
+    set textContent(v) { this.nodeValue = String(v); },
+    parentElement: buildWelcome
+  };
+  buildWelcome.childNodes.push(buildWelcomeText);
+  agentPane.appendChild(buildWelcome);
+
+  const permissionTexts = permissionDescriptions.map(([en]) => {
+    const element = env.doc.createElement('span');
+    const text = {
+      nodeType: 3,
+      nodeValue: en,
+      get textContent() { return this.nodeValue; },
+      set textContent(v) { this.nodeValue = String(v); },
+      parentElement: element
+    };
+    element.childNodes.push(text);
+    agentPane.appendChild(element);
+    return text;
+  });
+  const readPermissionTexts = () => permissionTexts.map(text => text.nodeValue);
+
+  const thinkingTrigger = env.doc.createElement('button');
+  thinkingTrigger.setAttribute('data-testid', 'thinking-collapsible-trigger');
+  const thinkingText = {
+    nodeType: 3,
+    nodeValue: 'Thought Process',
+    get textContent() { return this.nodeValue; },
+    set textContent(v) { this.nodeValue = String(v); },
+    parentElement: thinkingTrigger
+  };
+  thinkingTrigger.childNodes.push(thinkingText);
+  agentPane.appendChild(thinkingTrigger);
+
+  env.sandbox.Node = { ELEMENT_NODE: 1, TEXT_NODE: 3, DOCUMENT_NODE: 9 };
+  env.sandbox.NodeFilter = { SHOW_TEXT: 4, SHOW_ELEMENT: 1 };
+  env.doc.createTreeWalker = (rootNode, whatToShow) => {
+    const flat = [];
+    const walk = (n) => {
+      if (!n) return;
+      const children = n.childNodes || n.children || [];
+      for (const ch of children) {
+        if ((ch.nodeType === 1 && (whatToShow & 1)) || (ch.nodeType === 3 && (whatToShow & 4))) {
+          flat.push(ch);
+        }
+        walk(ch);
+      }
+    };
+    walk(rootNode);
+    let idx = 0;
+    return { nextNode: () => (idx < flat.length ? flat[idx++] : null) };
+  };
+  env.doc.documentElement.lang = 'en';
+
+  const hansPath = path.join(ROOT, 'antigravity-hans-overlay.js');
+  vm.runInContext(fs.readFileSync(hansPath, 'utf8'), env.sandbox, { filename: hansPath });
+
+  const enhancerPath = path.join(ROOT, 'ag-enhancer-overlay.js');
+  vm.runInContext(fs.readFileSync(enhancerPath, 'utf8'), env.sandbox, { filename: enhancerPath });
+
+  vm.runInContext(RENDERER_SRC, env.sandbox);
+  const api = env.sandbox.__AGContextMeter;
+  const shadow = env.getShadow();
+  const langSel = shadow.getElementById('set-ui-language-select');
+  const twOption = Array.from(langSel.options || []).find(o => o.value === 'zh-TW');
+  assert.ok(twOption, '語言下拉選單應包含 zh-TW 選項');
+  assert.equal(twOption.textContent.trim(), '繁體中文 · Traditional Chinese');
+  assert.equal(api.getLocale(), 'zh-TW', '未設定語系時預設應為 zh-TW');
+
+  api.setLocale('zh-TW');
+  assert.equal(api.getLocale(), 'zh-TW');
+  assert.equal(env.localStorage.getItem('ag_suite_locale'), 'zh-TW');
+  assert.equal(env.localStorage.getItem('antigravityHansLang'), 'zh-TW');
+  assert.equal(env.localStorage.getItem('__agy_ctx_lang__'), 'zh-TW');
+  assert.equal(env.win.__antigravityZhGetLang?.(), 'zh-TW');
+  assert.equal(env.doc.documentElement.getAttribute('data-ag-hans-lang'), 'zh-TW');
+  assert.equal(textNode.nodeValue, '無限', 'zh-TW 下客戶端覆蓋層應輸出繁體中文');
+  assert.equal(buildWelcomeText.nodeValue, '你好，Guest，今天想打造什麼？');
+  assert.deepEqual(readPermissionTexts(), permissionDescriptions.map(([, tw]) => tw));
+  assert.equal(thinkingText.nodeValue, '思考過程', 'zh-TW 下思考外殼應顯示繁體中文「思考過程」');
+
+  const appearanceTabBtn = shadow.getElementById('settings-tab-btn-appearance');
+  const networkTabBtn = shadow.getElementById('settings-tab-btn-network');
+  const settingsTitle = shadow.querySelector('#panel-settings .panel-title')?.textContent || '';
+  assert.ok(settingsTitle.includes('Antigravity Suite 統一設定'), `標題應切換為繁體中文，實際=${settingsTitle}`);
+  assert.equal(appearanceTabBtn.textContent.trim(), '🌐 語言與外觀');
+  assert.equal(networkTabBtn.textContent.trim(), '🧰 終端機與網路');
+
+  // 切換至 English 應還原原文，再切回 zh-CN 應恢復簡體中文
+  api.setLocale('en');
+  assert.equal(textNode.nodeValue, 'Turbo');
+  assert.equal(buildWelcomeText.nodeValue, 'Hey Guest, what should we build today?');
+  assert.deepEqual(readPermissionTexts(), permissionDescriptions.map(([en]) => en));
+  assert.equal(thinkingText.nodeValue, 'Thought Process');
+  assert.equal(appearanceTabBtn.textContent.trim(), '🌐 Language & Appearance');
+
+  api.setLocale('zh-CN');
+  assert.equal(env.win.__antigravityZhGetLang?.(), 'zh');
+  assert.equal(textNode.nodeValue, '无限');
+  assert.equal(buildWelcomeText.nodeValue, '你好，Guest，今天想构建什么？');
+  assert.deepEqual(readPermissionTexts(), permissionDescriptions.map(([, , cn]) => cn));
+  assert.equal(thinkingText.nodeValue, '思考过程');
+  assert.equal(appearanceTabBtn.textContent.trim(), '🌐 语言与外观');
+
+  // 5. pulse-capsule-overlay.js 繁體中文（台灣）驗證
+  const capsuleCode = fs.readFileSync(path.join(ROOT, 'pulse-capsule-overlay.js'), 'utf8');
+  const capEnv = createDomEnv();
+  capEnv.sandbox.location.pathname = '/workbench.html';
+  capEnv.win.location = capEnv.sandbox.location;
+  capEnv.localStorage.setItem('__agy_ctx_lang__', 'zh-TW');
+  const footer = capEnv.doc.createElement('div');
+  footer.className = 'agy-composer-footer';
+  capEnv.doc.body.appendChild(footer);
+  vm.runInContext(capsuleCode, capEnv.sandbox, { filename: path.join(ROOT, 'pulse-capsule-overlay.js') });
+  const capApi = capEnv.win.__AGY_CTX_CAPSULE_API__;
+  assert.ok(capApi, 'pulse-capsule-overlay 應暴露 __AGY_CTX_CAPSULE_API__');
+  capApi.renderFooterCapsule(footer, {
+    contextUsed: 12000,
+    contextLimit: 256000,
+    usagePercent: 4.7,
+    remainPercent: 95.3,
+    cacheHitRate: 80,
+    hasPreciseSnapshot: true,
+    tokPerSec: 40,
+    avgTokPerSec: 38,
+    cacheReadTokens: 8000,
+    inputTokens: 4000,
+    outputTokens: 500,
+    estimatedDelta: 0,
+    stepCount: 2
+  });
+  const occEl = footer.querySelector('.agy-ctx-occ');
+  const cacheEl = footer.querySelector('.agy-ctx-cache');
+  assert.equal(occEl?.getAttribute('aria-label'), '上下文視窗佔用率');
+  assert.equal(cacheEl?.getAttribute('aria-label'), '上下文快取命中率');
+
+  capEnv.win.__AGY_CTX_CAPSULE_DISPOSE__?.();
+  env.win.__antigravityZhPatchCleanup?.();
+  api.dispose?.();
+});
+
 

@@ -101,7 +101,7 @@
   let quickAutoSendInFlight = false;
   let quickAutoSendLockUntil = 0;
   let quickAutoSendLockTimer = null;
-  let uiLang = 'zh';
+  let uiLang = 'zh-TW';
   let dockBadgeEnabled = true;
   let dockBadgeAutoClear = true;
   const DEFAULT_FEATURE_FLAGS = {
@@ -442,8 +442,42 @@
 
   const autoClickedButtons = new WeakMap();
 
-  function tr(zhText, enText) {
-    return uiLang === 'en' ? enText : zhText;
+  const __AG_ZH_TW_PHRASE_MAP = {"左右并排布局":"左右並排版面設定","布局":"排版","多路复用器":"多工器","正则表达式":"正規表示式","未检测到":"未偵測到","自动默认":"自動預設","配置文件":"設定檔","命令提示符":"命令提示字元","子系统":"子系統","文件夹":"資料夾","复选框":"核取方塊","下拉框":"下拉選單","工具栏":"工具列","侧边栏":"側邊欄","状态栏":"狀態列","标题栏":"標題列","地址栏":"網址列","活动栏":"活動列","导航栏":"導覽列","标签页":"分頁","对话框":"對話方塊","剪贴板":"剪貼簿","快捷键":"快速鍵","命令行":"命令列","控制台":"主控台","客户端":"用戶端","桌面端":"桌面版","移动端":"行動版","网页端":"網頁版","服务器端":"伺服器端","服务器":"伺服器","占位符":"預留位置","通配符":"萬用字元","分辨率":"解析度","返回值":"回傳值","字符串":"字串","智能体":"代理","热力图":"熱度圖","快捷提示词":"常用提示詞","快捷操作栏":"常用工具列","快捷按钮":"指令按鈕","快捷指令":"常用指令","快捷口令":"常用指令","快捷方式":"捷徑","快捷":"快速","按点击付费":"按點擊付費","点击":"點選","日常高频":"日常常用","追问对齐":"追問釐清","全部对齐":"全部釐清","提炼经验":"歸納經驗","提炼":"歸納","深度攻坚":"深度解題","复杂攻坚":"複雜任務","攻坚":"突破","定时任务":"排程任務","定时计划":"排程計畫","定时巡检":"排程巡檢","定时轮询":"排程輪詢","定时运行":"排程執行","定时后台":"背景排程","定时器":"計時器","5h 滚动窗口":"5 小時限額","5h 滚动":"5 小時限額","滚动窗口":"分時段","滚动条":"捲軸","滚动":"捲動","周边":"周邊","周邊":"周邊","周围":"周圍","周圍":"周圍","周全":"周全","周密":"周密","周到":"周到","圆周":"圓周","圓周":"圓周","周长":"周長","周長":"周長","周知":"周知","免审核":"免審核","待审批":"待審核","二进制":"二進位","自定义":"自訂","只读":"唯讀","仅限":"僅限","仅显示":"僅顯示","仅用于":"僅用於","默认值":"預設值","初始化":"初始化","上下文":"上下文","响应式":"響應式","高危":"高風險","审批":"審核","菜单":"選單","弹窗":"彈出視窗","浮窗":"懸浮視窗","窗口":"視窗","屏幕":"螢幕","鼠标":"滑鼠","图标":"圖示","角标":"徽章","标签":"標籤","书签":"書籤","字体":"字型","内存":"記憶體","缓存":"快取","软件":"軟體","硬件":"硬體","文档":"文件","文件":"檔案","默认":"預設","设置":"設定","配置":"設定","终端":"終端機","重启":"重新啟動","刷新":"重新整理","卸载":"解除安裝","新建":"新增","添加":"新增","保存":"儲存","加载":"載入","导入":"匯入","导出":"匯出","搜索":"搜尋","查找":"尋找","替换":"取代","撤销":"復原","重置":"重設","清空":"清除","过滤":"篩選","拖拽":"拖曳","粘贴":"貼上","拷贝":"複製","复制":"複製","重复":"重複","复杂":"複雜","复用":"重複使用","回复":"回覆","恢复":"恢復","复原":"復原","复核":"複核","复盘":"覆盤","复现":"重現","修复":"修復","支持":"支援","兼容":"相容","数据":"資料","元数据":"中繼資料","调用":"呼叫","连接器":"連接器","连接":"連線","创建":"建立","响应":"回應","内置":"內建","全局":"全域","本地":"本機","本机":"本機","远程":"遠端","远端":"遠端","后台":"背景","前台":"前景","实时":"即時","异步":"非同步","并发送":"並傳送","并发布":"並發布","并发现":"並發現","并发展":"並發展","并发起":"並發起","并发":"並行","合并":"合併","并行":"平行","并排":"並排","通过":"透過","用户":"使用者","登录":"登入","注销":"登出","账号":"帳號","账户":"帳戶","链接":"連結","视频":"影片","音频":"音訊","图像":"影像","文本":"文字","字符":"字元","字节":"位元組","信息":"資訊","消息":"訊息","反馈":"回饋","交互":"互動","崩溃":"當機","卡死":"卡住","报错":"錯誤","超时":"逾時","端口":"連接埠","域名":"網域","协议":"通訊協定","网络":"網路","带宽":"頻寬","磁盘":"磁碟","硬盘":"硬碟","插件":"外掛","汉化":"中文化","代码":"程式碼","项目":"專案","仓库":"儲存庫","归档":"封存","运行":"執行","调试":"除錯","构建":"建置","组件":"元件","模块":"模組","依赖":"相依套件","变量":"變數","常量":"常數","函数":"函式","接口":"介面","数组":"陣列","对象":"物件","布尔":"布林","回调":"回呼","进程":"處理程序","處理程序":"處理程序","线程":"執行緒","队列":"佇列","缩进":"縮排","后缀":"副檔名","套餐":"方案","概览":"總覽","积分":"點數","润色":"潤飾","剩余":"剩餘","占用":"佔用","兜底":"備援","启用":"啟用","启动":"啟動","开启":"開啟","禁用":"停用","地址":"位址","网址":"網址","打印":"列印","检测":"偵測","校验":"驗證","渲染":"算繪","高亮":"醒目提示","折叠":"摺疊","计划":"計畫","脚本":"指令碼","程序":"程式","内核":"核心","批注":"註解","教程":"教學","联系":"聯絡","关系":"關係","体系":"體系","系统":"系統","在线":"線上","离线":"離線","帮助":"說明","定制":"客製","制作":"製作","录制":"錄製","绘制":"繪製","控制":"控制","限制":"限制","强制":"強制","机制":"機制","干预":"干預","干預":"干預","干扰":"干擾","干擾":"干擾","干净":"乾淨","回滚":"還原","邮箱":"電子郵件","昵称":"暱稱","头像":"大頭貼","令牌":"權杖","密钥":"金鑰","汇总":"彙總","游戏":"遊戲","下游":"下游","上游":"上游","台币":"新台幣","中国台湾":"台灣","台湾":"台灣","占位":"預留位置","独占":"獨佔","其余":"其餘","多余":"多餘","轻松":"輕鬆","宽松":"寬鬆","松开":"放開","切换":"切換","刷新并":"重新整理並","当前":"目前","里面":"裡面","界面":"介面","页面":"頁面","面板":"面板","桌面":"桌面","下面":"下方","上面":"上方","后面":"後方","前面":"前方","全面":"全面","方面":"方面","浏览":"瀏覽","浏览器":"瀏覽器","编辑":"編輯","编辑器":"編輯器","评论":"留言","发送":"傳送","跳过":"略過","暂停":"暫停","继续":"繼續","取消":"取消","确定":"確定","确认":"確認","关闭":"關閉","打开":"開啟","删除":"刪除","移除":"移除","隐藏":"隱藏","显示":"顯示","展开":"展開","收起":"收合","收拢":"收合","折叠态":"摺疊狀態","同步":"同步","上传":"上傳","下载":"下載","更新":"更新","升级":"升級","安装":"安裝","权限":"權限","隐私":"隱私","安全":"安全","异常":"異常","失败":"失敗","成功":"成功","警告":"警告","提示":"提示","通知":"通知","状态":"狀態","统计":"統計","分析":"分析","历史":"歷史","日历":"行事曆","工作区":"工作區","工作台":"工作台","工作流":"工作流程","工作流程":"工作流程","任务":"任務","会话":"工作階段","对话":"對話","聊天":"聊天","标题":"標題","内容":"內容","详情":"詳細資訊","列表":"清單","表单":"表單","按钮":"按鈕","开关":"開關","选项":"選項","参数":"參數","属性":"屬性","格式":"格式","样式":"樣式","主题":"佈景主題","配色":"配色","强调色":"強調色","浅色":"淺色","深色":"深色","暗色":"深色","亮色":"淺色","预览":"預覽","草稿":"草稿","快照":"快照","提交":"提交","分支":"分支","差异":"差異","冲突":"衝突","拉取":"拉取","推送":"推送","克隆":"複製","模型":"模型","推理":"推理","思考":"思考","额度":"額度","配额":"配額","订阅":"訂閱","费用":"費用","价格":"價格","汇率":"匯率","货币":"貨幣","国家":"國家","地区":"地區","语言":"語言","简体中文":"簡體中文","繁体中文":"繁體中文","英文":"英文","原文":"原文","译文":"譯文","翻译":"翻譯","词典":"詞典","词库":"詞庫","日志":"日誌","记录":"記錄","规则":"規則","策略":"策略","模式":"模式","档位":"等級","级别":"層級","阈值":"門檻值","上限":"上限","下限":"下限","速率":"速率","速度":"速度","延迟":"延遲","耗时":"耗時","时长":"時間長度","分钟":"分鐘","小时":"小時","秒":"秒","毫秒":"毫秒","自动":"自動","手动":"手動","批量":"批次","单次":"單次","全局脚本":"全域指令碼","环境变量":"環境變數","代理":"代理","隧道":"通道","扫码":"掃碼","二维码":"QR Code","蓝牙":"藍牙","触控":"觸控","辅助功能":"輔助使用","系统设置":"系統設定","偏好设置":"偏好設定","常见":"常見","推荐":"推薦","必开":"必開","可选":"選用","其他":"其他","未知":"未知","暂无":"暫無","未提供":"未提供","未填写":"未填寫","已启用":"已啟用","已停用":"已停用","已关闭":"已關閉","已保存":"已儲存","已复制":"已複製","已连接":"已連線","未连接":"未連線","正在":"正在","完成":"完成","准备":"準備","“":"「","”":"」","‘":"『","’":"』","查看网站信息":"檢視網站資訊","查看全部说明":"查閱完整說明","查看更多结果":"顯示更多結果","查看更多":"瀏覽更多","查看全部":"顯示全部","查看文档":"查閱文件","查看发行说明":"閱讀發行說明","查看套餐方案":"瀏覽方案","查看方案":"瀏覽方案","查看模型用量":"查詢模型用量","查看用量":"查詢用量","查看忙闲状态":"查詢忙閒狀態","查看":"檢視"};
+  const __AG_ZH_TW_CHAR_MAP = {"周":"週","万":"萬","与":"與","专":"專","业":"業","丢":"丟","两":"兩","严":"嚴","丧":"喪","个":"個","丰":"豐","临":"臨","为":"為","举":"舉","么":"麼","义":"義","乐":"樂","习":"習","书":"書","买":"買","乱":"亂","争":"爭","于":"於","云":"雲","亚":"亞","产":"產","亿":"億","仅":"僅","从":"從","仓":"倉","仪":"儀","们":"們","价":"價","优":"優","会":"會","传":"傳","伤":"傷","体":"體","侣":"侶","侧":"側","倾":"傾","偿":"償","储":"儲","兰":"蘭","关":"關","兴":"興","兽":"獸","内":"內","册":"冊","写":"寫","军":"軍","冲":"衝","决":"決","况":"況","冻":"凍","净":"淨","减":"減","凑":"湊","几":"幾","凭":"憑","击":"擊","则":"則","刚":"剛","创":"創","删":"刪","别":"別","剥":"剝","办":"辦","务":"務","动":"動","势":"勢","匀":"勻","区":"區","医":"醫","协":"協","单":"單","占":"佔","卢":"盧","卫":"衛","历":"歷","压":"壓","参":"參","双":"雙","发":"發","变":"變","叠":"疊","叶":"葉","号":"號","叹":"嘆","后":"後","吗":"嗎","听":"聽","启":"啟","员":"員","响":"響","唤":"喚","团":"團","围":"圍","国":"國","图":"圖","圆":"圓","场":"場","坏":"壞","块":"塊","坚":"堅","声":"聲","壳":"殼","处":"處","备":"備","复":"復","够":"夠","头":"頭","夹":"夾","妆":"妝","学":"學","实":"實","审":"審","宽":"寬","宾":"賓","对":"對","寻":"尋","导":"導","将":"將","尔":"爾","尝":"嘗","尸":"屍","尽":"盡","层":"層","屉":"屜","属":"屬","币":"幣","师":"師","帐":"帳","带":"帶","帧":"幀","帮":"幫","干":"乾","并":"並","广":"廣","库":"庫","应":"應","废":"廢","开":"開","异":"異","弃":"棄","张":"張","弥":"彌","弹":"彈","强":"強","归":"歸","当":"當","录":"錄","彻":"徹","征":"徵","径":"徑","态":"態","总":"總","恶":"惡","悬":"懸","惩":"懲","懒":"懶","戏":"戲","战":"戰","户":"戶","扑":"撲","执":"執","扩":"擴","扫":"掃","扬":"揚","扰":"擾","抢":"搶","护":"護","报":"報","担":"擔","拟":"擬","拢":"攏","拥":"擁","拦":"攔","择":"擇","挂":"掛","挥":"揮","损":"損","换":"換","据":"據","携":"攜","摄":"攝","撑":"撐","敌":"敵","敛":"斂","数":"數","断":"斷","无":"無","旧":"舊","时":"時","昵":"暱","显":"顯","暂":"暫","术":"術","机":"機","杂":"雜","权":"權","杠":"槓","条":"條","来":"來","极":"極","构":"構","标":"標","栈":"棧","栏":"欄","树":"樹","样":"樣","档":"檔","桥":"橋","桩":"樁","检":"檢","横":"橫","欢":"歡","欧":"歐","残":"殘","毁":"毀","气":"氣","汇":"匯","汉":"漢","沉":"沈","沟":"溝","没":"沒","泄":"洩","洁":"潔","浅":"淺","测":"測","浏":"瀏","浓":"濃","淀":"澱","渐":"漸","温":"溫","湾":"灣","溃":"潰","滚":"滾","滞":"滯","满":"滿","滤":"濾","潜":"潛","灯":"燈","灵":"靈","点":"點","炼":"煉","烁":"爍","烟":"煙","热":"熱","爱":"愛","状":"狀","独":"獨","献":"獻","环":"環","现":"現","电":"電","画":"畫","畅":"暢","疗":"療","监":"監","盖":"蓋","盘":"盤","着":"著","睐":"睞","码":"碼","础":"礎","确":"確","碍":"礙","离":"離","种":"種","积":"積","称":"稱","税":"稅","稳":"穩","窃":"竊","竖":"竪","竞":"競","笔":"筆","笺":"箋","筛":"篩","筹":"籌","签":"簽","简":"簡","类":"類","紧":"緊","纠":"糾","红":"紅","约":"約","级":"級","纯":"純","纲":"綱","纳":"納","线":"線","练":"練","组":"組","细":"細","织":"織","终":"終","绍":"紹","经":"經","绑":"綁","结":"結","绕":"繞","绘":"繪","给":"給","络":"絡","绝":"絕","统":"統","继":"繼","绪":"緒","续":"續","维":"維","绿":"綠","缀":"綴","缓":"緩","编":"編","缘":"緣","缩":"縮","网":"網","罚":"罰","职":"職","联":"聯","胀":"脹","胁":"脅","胜":"勝","胶":"膠","脑":"腦","脚":"腳","脱":"脫","腊":"臘","节":"節","范":"範","荐":"薦","药":"藥","获":"獲","营":"營","蓝":"藍","虑":"慮","虚":"虛","虽":"雖","补":"補","装":"裝","见":"見","观":"觀","规":"規","视":"視","览":"覽","觉":"覺","触":"觸","计":"計","订":"訂","认":"認","讨":"討","让":"讓","训":"訓","议":"議","记":"記","讲":"講","许":"許","论":"論","设":"設","访":"訪","证":"證","评":"評","识":"識","诉":"訴","诊":"診","词":"詞","译":"譯","试":"試","诗":"詩","话":"話","询":"詢","该":"該","详":"詳","语":"語","误":"誤","诱":"誘","说":"說","请":"請","读":"讀","调":"調","谋":"謀","谢":"謝","谨":"謹","谱":"譜","负":"負","贡":"貢","责":"責","败":"敗","账":"帳","货":"貨","质":"質","购":"購","贴":"貼","费":"費","资":"資","赋":"賦","赖":"賴","赠":"贈","赶":"趕","趋":"趨","跃":"躍","践":"踐","踪":"蹤","车":"車","轨":"軌","转":"轉","轮":"輪","软":"軟","轴":"軸","轻":"輕","载":"載","较":"較","辅":"輔","辑":"輯","输":"輸","边":"邊","达":"達","迁":"遷","过":"過","运":"運","还":"還","这":"這","进":"進","远":"遠","连":"連","迟":"遲","迹":"跡","适":"適","选":"選","递":"遞","逻":"邏","遗":"遺","遥":"遙","邮":"郵","邻":"鄰","采":"採","释":"釋","鉴":"鑒","针":"針","钟":"鐘","钥":"鑰","钩":"鈎","钮":"鈕","钻":"鑽","铬":"鉻","铭":"銘","银":"銀","铺":"鋪","链":"鏈","销":"銷","锁":"鎖","错":"錯","锚":"錨","键":"鍵","镑":"鎊","镜":"鏡","长":"長","门":"門","闪":"閃","闭":"閉","问":"問","闲":"閒","间":"間","阅":"閱","阈":"閾","队":"隊","阴":"陰","阵":"陣","阶":"階","际":"際","陆":"陸","陈":"陳","险":"險","随":"隨","隐":"隱","难":"難","雾":"霧","静":"靜","韩":"韓","页":"頁","顶":"頂","项":"項","顺":"順","须":"須","顾":"顧","顿":"頓","颁":"頒","预":"預","领":"領","频":"頻","颗":"顆","题":"題","颜":"顏","额":"額","风":"風","饰":"飾","饱":"飽","饼":"餅","馈":"饋","马":"馬","驱":"驅","驻":"駐","验":"驗","骗":"騙","骚":"騷","骤":"驟","麦":"麥","黄":"黃","齐":"齊","龙":"龍","余":"餘","松":"鬆","准":"準","划":"劃"};
+  const __AG_ZH_TW_PHRASE_KEYS = Object.keys(__AG_ZH_TW_PHRASE_MAP).sort((a, b) => b.length - a.length);
+  const __AG_ZH_TW_PHRASE_RE = new RegExp(__AG_ZH_TW_PHRASE_KEYS.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g");
+  const __AG_ZH_TW_HAS_RE = /[\u4e00-\u9fff“”‘’]/;
+  const __AG_ZH_TW_CACHE = new Map();
+  function convertZhCNToZhTWFallback(input) {
+    if (typeof input !== "string" || !input || !__AG_ZH_TW_HAS_RE.test(input)) return input;
+    if (__AG_ZH_TW_CACHE.has(input)) return __AG_ZH_TW_CACHE.get(input);
+    const convSeg = (seg) => {
+      let out = ""; let changed = false;
+      for (let i = 0; i < seg.length; i++) { const c = seg[i]; const m = __AG_ZH_TW_CHAR_MAP[c]; if (m !== undefined) { out += m; changed = true; } else { out += c; } }
+      return changed ? out : seg;
+    };
+    let res = ""; let last = 0; __AG_ZH_TW_PHRASE_RE.lastIndex = 0; let m;
+    while ((m = __AG_ZH_TW_PHRASE_RE.exec(input)) !== null) {
+      if (m.index > last) res += convSeg(input.slice(last, m.index));
+      res += __AG_ZH_TW_PHRASE_MAP[m[0]]; last = m.index + m[0].length;
+    }
+    if (last < input.length) res += convSeg(input.slice(last));
+    if (__AG_ZH_TW_CACHE.size >= 8000) { const fk = __AG_ZH_TW_CACHE.keys().next().value; if (fk !== undefined) __AG_ZH_TW_CACHE.delete(fk); }
+    __AG_ZH_TW_CACHE.set(input, res);
+    return res;
+  }
+  function convertEnhancerToZhTW(text) {
+    if (typeof text !== 'string' || !text) return text;
+    if (typeof window !== 'undefined' && typeof window.__AG_ZH_TW_CONVERT__ === 'function') {
+      return window.__AG_ZH_TW_CONVERT__(text);
+    }
+    return typeof convertZhCNToZhTWFallback === 'function' ? convertZhCNToZhTWFallback(text) : text;
+  }
+
+  function tr(zhText, enText, zhTwText) {
+    if (uiLang === 'en') return enText;
+    if (uiLang === 'zh-TW') return zhTwText ?? convertEnhancerToZhTW(zhText);
+    return zhText;
   }
 
   function syncSuitePrefsFromStorage(detail = null) {
@@ -540,9 +574,17 @@
           || ''
         ).trim();
       }
-      uiLang = (rawLang && !/^(?:zh|cn)/i.test(rawLang)) ? 'en' : 'zh';
+      if (/^(?:zh-tw|zh-hant|zh-hk|tw)\b/i.test(rawLang)) {
+        uiLang = 'zh-TW';
+      } else if (!rawLang) {
+        uiLang = 'zh-TW';
+      } else if (/^(?:zh|cn)/i.test(rawLang)) {
+        uiLang = 'zh';
+      } else {
+        uiLang = 'en';
+      }
     } catch {
-      uiLang = 'zh';
+      uiLang = 'zh-TW';
     }
     try {
       let hasExplicitPool = false;
@@ -853,7 +895,8 @@
   }
 
   function formatResetCountdownZh(isoStr) {
-    if (!isoStr) return '重置时间未知';
+    const out = (zh) => (uiLang === 'zh-TW' ? convertEnhancerToZhTW(zh) : zh);
+    if (!isoStr) return out('重置时间未知');
     const target = new Date(isoStr);
     if (Number.isNaN(target.getTime())) return String(isoStr);
     const diffMs = target.getTime() - Date.now();
@@ -865,7 +908,7 @@
     const sameDay = now.getFullYear() === target.getFullYear() && now.getMonth() === target.getMonth() && now.getDate() === target.getDate();
     const timeLabel = sameDay ? `${hh}:${mm}` : `${month}月${day}日 ${hh}:${mm}`;
 
-    if (diffMs <= 0) return `即将重置 · ${timeLabel}`;
+    if (diffMs <= 0) return out(`即将重置 · ${timeLabel}`);
     const totalMin = Math.floor(diffMs / 60000);
     const days = Math.floor(totalMin / 1440);
     const hours = Math.floor((totalMin % 1440) / 60);
@@ -874,7 +917,7 @@
     if (days > 0) countdown = `${days}天${hours}小时`;
     else if (hours > 0) countdown = `${hours}小时${mins}分`;
     else countdown = `${Math.max(1, mins)}分钟`;
-    return `${countdown}后重置 · ${timeLabel}`;
+    return out(`${countdown}后重置 · ${timeLabel}`);
   }
 
   function detectCurrentModelText() {
@@ -1065,10 +1108,15 @@
     return { promptCredits, flowCredits };
   }
 
-  async function refreshQuota() {
-    if (disposed || quotaState.loading) return quotaState;
-    quotaState.loading = true;
-    renderQuotaUI();
+  let quotaFetchInFlight = false;
+  async function refreshQuota(options = {}) {
+    const silent = Boolean(options && options.silent === true);
+    if (disposed || quotaFetchInFlight) return quotaState;
+    quotaFetchInFlight = true;
+    if (!silent) {
+      quotaState.loading = true;
+      renderQuotaUI();
+    }
 
     try {
       const csrf = resolveLanguageServerCsrfToken();
@@ -1151,6 +1199,7 @@
       }
       quotaState.error = err?.name === 'AbortError' ? '配额查询超时' : (err?.message || '配额刷新失败');
     } finally {
+      quotaFetchInFlight = false;
       quotaState.loading = false;
       quotaState.activeModelText = detectCurrentModelText();
       quotaState.activePoolKey = classifyModelPoolKey(quotaState.activeModelText);
@@ -2033,10 +2082,10 @@
       quotaBtn.id = QUOTA_BADGE_ID;
       quotaBtn.className = 'ag-unit';
       quotaBtn.type = 'button';
-      quotaBtn.setAttribute('aria-label', '模型剩余配额');
+      quotaBtn.setAttribute('aria-label', tr('模型剩余配额', 'Model Quota'));
       quotaBtn.setAttribute('aria-expanded', 'false');
-      quotaBtn.title = '查看 Gemini / Claude 模型剩余配额与重置倒计时';
-      quotaBtn.innerHTML = '<span id="ag-quota-dot" class="ag-quota-dot"></span><span id="ag-quota-text">配额 --%</span>';
+      quotaBtn.title = tr('查看 Gemini / Claude 模型剩余配额与重置倒计时', 'View Gemini / Claude remaining quota & reset countdown');
+      quotaBtn.innerHTML = `<span id="ag-quota-dot" class="ag-quota-dot"></span><span id="ag-quota-text">${escapeHtml(tr('配额 --%', 'Quota --%'))}</span>`;
       anchorBadge.insertAdjacentElement('afterend', quotaBtn);
 
       quotaBtn.addEventListener('click', onQuotaBtnClick);
@@ -2057,7 +2106,7 @@
       popover.id = QUOTA_POPOVER_ID;
       popover.hidden = true;
       popover.setAttribute('role', 'dialog');
-      popover.setAttribute('aria-label', '模型剩余配额详情');
+      popover.setAttribute('aria-label', tr('模型剩余配额详情', 'Model Quota Details'));
       popover.addEventListener('click', (e) => e.stopPropagation());
       sr.appendChild(popover);
     }
@@ -2086,7 +2135,7 @@
       remoteBtn.setAttribute('aria-label', tr('手机远程操作配对', 'Mobile Remote Pairing'));
       const baseTitle = tr('手机远程操作配对（局域网 / Tailscale / Cloudflare）', 'Mobile Remote Pairing (LAN / Tailscale / Cloudflare)');
       const countTitle = pairedCount > 0
-        ? tr(`\n已关联 ${pairedCount} 台设备（${onlineCount} 台在线）`, `\n${pairedCount} paired (${onlineCount} online)`)
+        ? tr(`\n已关联 ${pairedCount} 台设备（${onlineCount} 台在线）`, `\n${pairedCount} paired (${onlineCount} online)`, `\n已配對 ${pairedCount} 台裝置（${onlineCount} 台在線上）`)
         : '';
       remoteBtn.title = `${baseTitle}${countTitle}`;
       if (pairedCount > 0) {
@@ -2394,7 +2443,7 @@
       ));
       const activeSummaryHtml = enabledChannels.length > 0
         ? `<div class="ag-rp-readonly-summary">${enabledChannels.map((ch) => {
-            const label = tr(ch.label || ch.key, ch.labelEn || ch.label || ch.key);
+            const label = tr(ch.label || ch.key, ch.labelEn || ch.label || ch.key, ch.key === 'tunnel' ? 'Cloudflare 隧道' : undefined);
             const canSelect = Boolean((ch.enabled !== false) && ch.available && ch.url);
             const hostVal = (ch.key === 'tunnel' && !ch.available && ch.state === 'starting')
               ? (ch.displayHost || tr('正在分配公网隧道…', 'Provisioning Tunnel…'))
@@ -2426,10 +2475,10 @@
         : '';
 
       const statusText = pairedCount > 0
-        ? tr(`已关联 ${pairedCount} 台设备（${onlineCount} 台在线）`, `${pairedCount} paired (${onlineCount} online)`)
+        ? tr(`已关联 ${pairedCount} 台设备（${onlineCount} 台在线）`, `${pairedCount} paired (${onlineCount} online)`, `已配對 ${pairedCount} 台裝置（${onlineCount} 台在線上）`)
         : (ep.activeKey === 'tunnel'
-            ? tr('口令保护 · 已启用公网 HTTPS 隧道 · 暂未关联设备', 'Token protected · Public HTTPS tunnel · No paired devices yet')
-            : tr('内网口令保护 · 暂未关联设备', 'Token protected · No paired devices yet'));
+            ? tr('口令保护 · 已启用公网 HTTPS 隧道 · 暂未关联设备', 'Token protected · Public HTTPS tunnel · No paired devices yet', '配對碼保護 · 已啟用公開 HTTPS 隧道 · 尚無已配對裝置')
+            : tr('内网口令保护 · 暂未关联设备', 'Token protected · No paired devices yet', '區域網路配對碼保護 · 尚無已配對裝置'));
       const devicesHtml = pairedDevices.length > 0
         ? `<div class="ag-rp-devices">${pairedDevices.slice(0, 6).map((d) => {
             const devLabel = escapeHtml(d?.label || tr('移动设备', 'Mobile'));
@@ -2453,7 +2502,7 @@
         <div class="ag-rp-actions">
           <button id="ag-remote-copy" class="ag-rp-btn" data-primary="true" type="button" ${ep.activeUrl ? '' : 'disabled'}>${escapeHtml(copiedRecent ? tr('已复制链接', 'Copied') : tr('复制链接', 'Copy Link'))}</button>
         </div>
-        <div class="ag-rp-tip">${escapeHtml(tr('通道、隧道与重置密钥请在顶栏设置面板的「远程设置」中管理。', 'Manage channels, tunnel, and token reset in Suite Settings → Remote.'))}</div>
+        <div class="ag-rp-tip">${escapeHtml(tr('通道、隧道与重置密钥请在顶栏设置面板的「远程设置」中管理。', 'Manage channels, tunnel, and token reset in Suite Settings → Remote.', '連線方式、Cloudflare 隧道與金鑰重設可在頂欄設定面板的「遠端設定」管理。'))}</div>
       `;
     }
 
@@ -2635,7 +2684,7 @@
       renderQuotaPopoverContent(nodes.popover);
       positionQuotaPopover();
       try { (globalThis.__AGContextMeter || window.__AGContextMeter)?.setHostElevated?.(true); } catch {}
-      void refreshQuota();
+      void refreshQuota({ silent: Boolean(quotaState.lastFetchedAt) });
     } else {
       if (remotePairState.tunnelPollTimer) {
         clearTimeout(remotePairState.tunnelPollTimer);
@@ -2761,18 +2810,21 @@
     const qpd = resolvePopoverPlanPools();
     const creditsRows = [];
     if (qpd) {
+      const subGroupText = uiLang === 'zh-TW' ? convertEnhancerToZhTW(qpd.subGroupLabel) : qpd.subGroupLabel;
+      const promptPoolText = uiLang === 'zh-TW' ? convertEnhancerToZhTW(qpd.promptPoolText) : qpd.promptPoolText;
+      const flowPoolText = uiLang === 'zh-TW' ? convertEnhancerToZhTW(qpd.flowPoolText) : qpd.flowPoolText;
       creditsRows.push(`
         <div class="ag-qp-credit-row">
           <span>${tr('当前套餐档位', 'Plan Tier')}</span>
-          <strong>${escapeHtml(qpd.subGroupLabel)}</strong>
+          <strong>${escapeHtml(subGroupText)}</strong>
         </div>
         <div class="ag-qp-credit-row">
           <span>${tr('Prompt 额度池', 'Prompt Pool')}</span>
-          <strong>${escapeHtml(qpd.promptPoolText)}</strong>
+          <strong>${escapeHtml(promptPoolText)}</strong>
         </div>
         <div class="ag-qp-credit-row">
           <span>${tr('Flow 额度池', 'Flow Pool')}</span>
-          <strong>${escapeHtml(qpd.flowPoolText)}</strong>
+          <strong>${escapeHtml(flowPoolText)}</strong>
         </div>
       `);
     } else {
@@ -2809,10 +2861,10 @@
       : `${renderPoolCard(tr('Gemini 4 / 3.8 配额池', 'Gemini 4 / 3.8 Pool'), g, activeKey === 'gemini')}${renderPoolCard(tr('Claude 5.5 / GPT 配额池', 'Claude 5.5 / GPT Pool'), c, activeKey === 'claude')}`;
 
     const updatedStr = quotaState.lastFetchedAt
-      ? `${tr('上次刷新：', 'Updated: ')}${new Date(quotaState.lastFetchedAt).toLocaleTimeString(uiLang === 'en' ? 'en-US' : 'zh-CN', { hour12: false })}`
-      : (quotaState.error || tr('等待数据…', 'Waiting for data…'));
+      ? `${tr('上次刷新：', 'Updated: ')}${new Date(quotaState.lastFetchedAt).toLocaleTimeString(uiLang === 'en' ? 'en-US' : (uiLang === 'zh-TW' ? 'zh-TW' : 'zh-CN'), { hour12: false })}`
+      : (quotaState.error ? tr(quotaState.error, quotaState.error) : tr('等待数据…', 'Waiting for data…'));
 
-    popover.innerHTML = `
+    const nextHtml = `
       <div class="ag-qp-header">
         <span class="ag-qp-title">${tr('模型剩余配额实时看板', 'Model Quota Live')}</span>
         <button id="ag-quota-refresh" class="ag-qp-refresh" type="button" ${quotaState.loading ? 'disabled' : ''}>${quotaState.loading ? `<span class="ag-rp-spin" aria-hidden="true"></span>${escapeHtml(tr('刷新中…', 'Refreshing…'))}` : escapeHtml(tr('↻ 刷新', '↻ Refresh'))}</button>
@@ -2827,6 +2879,9 @@
         <div>${escapeHtml(updatedStr)}</div>
       </div>
     `;
+    if (popover.__agLastHtml === nextHtml && popover.childElementCount > 0) return;
+    popover.__agLastHtml = nextHtml;
+    popover.innerHTML = nextHtml;
 
     const refreshBtn = popover.querySelector('#ag-quota-refresh');
     if (refreshBtn) {
@@ -4153,10 +4208,10 @@
   function extractDomFallbackMarkdown(sessionId) {
     const blocks = [];
     const header = [
-      '# Antigravity 会话记录（页面回退导出）',
+      tr('# Antigravity 会话记录（页面回退导出）', '# Antigravity 会话记录（页面回退导出）'),
       '',
-      `- 会话 ID: \`${sessionId || 'unknown'}\``,
-      `- 导出时间: ${new Date().toLocaleString('zh-CN', { hour12: false })}`,
+      `- ${tr('会话 ID', '会话 ID')}: \`${sessionId || 'unknown'}\``,
+      `- ${tr('导出时间', '导出时间')}: ${new Date().toLocaleString(uiLang === 'zh-TW' ? 'zh-TW' : 'zh-CN', { hour12: false })}`,
       '',
       '---',
       ''
@@ -4283,14 +4338,15 @@
       if (card.getAttribute('data-ag-risk-card') !== 'high') {
         card.setAttribute('data-ag-risk-card', 'high');
       }
+      const riskWarnText = tr(`🛡️ 高危命令预警：检测到 ${summary}，请人工核对`, `🛡️ High-risk command warning: detected ${summary}, please verify manually`);
       if (isInlineCode) {
-        card.setAttribute('title', `🛡️ 高危命令预警：检测到 ${summary}，请人工核对`);
+        card.setAttribute('title', riskWarnText);
       } else {
         let banner = card.querySelector(':scope > .ag-risk-banner');
         if (!banner && card.parentElement && card.previousElementSibling?.classList?.contains('ag-risk-banner')) {
           banner = card.previousElementSibling;
         }
-        const expectedText = `🛡️ 高危命令预警：检测到 ${summary}，请人工核对`;
+        const expectedText = riskWarnText;
         if (!banner) {
           banner = document.createElement('div');
           banner.className = 'ag-risk-banner';
@@ -6354,7 +6410,7 @@
       return raw.replace(trimmed, `思考中${m[1]}`);
     }
     if (trimmed === 'Thought Process') {
-      return raw.replace(trimmed, '思考过程');
+      return raw.replace(trimmed, uiLang === 'zh-TW' ? '思考過程' : '思考过程');
     }
     return null;
   }
@@ -6372,7 +6428,7 @@
     if ((m = trimmed.match(/^思考中(\.{0,3})$/))) {
       return raw.replace(trimmed, `Thinking${m[1]}`);
     }
-    if (trimmed === '思考过程') {
+    if (/^思考[过過]程$/.test(trimmed)) {
       return raw.replace(trimmed, 'Thought Process');
     }
     return null;
@@ -6423,7 +6479,7 @@
   }
 
   function localizeThinkingShells() {
-    if (disposed || uiLang !== 'zh') return 0;
+    if (disposed || uiLang === 'en') return 0;
     let changedCount = 0;
     const triggers = document.querySelectorAll('[data-testid="thinking-collapsible-trigger"]');
     for (const btn of triggers) {
@@ -6502,7 +6558,7 @@
   }
 
   async function translateExpandedThoughts() {
-    if (disposed || uiLang !== 'zh') return 0;
+    if (disposed || uiLang === 'en') return 0;
     if (thinkingShellTimerRunning) {
       thinkingReRunNeeded = true;
       return 0;
@@ -6562,7 +6618,10 @@
         batch.push(item);
       }
 
-      const res = await postToLiveHost('/translate-zh', { texts: uniqueTexts });
+      const res = await postToLiveHost('/translate-zh', {
+        texts: uniqueTexts,
+        targetLang: uiLang === 'zh-TW' ? 'zh-TW' : 'zh-CN'
+      });
       const map = res?.translations || {};
       let updated = 0;
       for (const item of batch) {
@@ -6647,7 +6706,7 @@
   }
 
   async function localizeSidebarConversations() {
-    if (disposed || uiLang !== 'zh') return 0;
+    if (disposed || uiLang === 'en') return 0;
     const rows = document.querySelectorAll('[data-testid="conversation-row-sidebar"]');
     const needLocalize = [];
     const seenNeed = new Set();
@@ -6698,7 +6757,10 @@
 
     for (const it of needLocalize) sidebarPendingIds.add(it.id);
     try {
-      const res = await postToLiveHost('/localize-conversations', { items: needLocalize });
+      const res = await postToLiveHost('/localize-conversations', {
+        items: needLocalize,
+        targetLang: uiLang === 'zh-TW' ? 'zh-TW' : 'zh-CN'
+      });
       const titles = res?.titles || {};
       for (const [id, zhTitle] of Object.entries(titles)) {
         if (!zhTitle || sidebarUserRenamedIds.has(id)) continue;
@@ -6716,7 +6778,7 @@
   }
 
   function scheduleLocalization() {
-    if (disposed || uiLang !== 'zh' || localizeTimer) return;
+    if (disposed || uiLang === 'en' || localizeTimer) return;
     localizeTimer = setTimeout(() => {
       localizeTimer = null;
       if (disposed) return;
@@ -6928,7 +6990,7 @@
         statusLeft.style.textOverflow = 'ellipsis';
         statusLeft.style.whiteSpace = 'nowrap';
         const statusRight = document.createElement('span');
-        statusRight.textContent = '⌘S / Ctrl+S 保存 · Tab 缩进';
+        statusRight.textContent = tr('⌘S / Ctrl+S 保存 · Tab 缩进', '⌘S / Ctrl+S Save · Tab Indent');
         statusRight.style.flexShrink = '0';
         statusbar.appendChild(statusLeft);
         statusbar.appendChild(statusRight);
@@ -7032,8 +7094,8 @@
       editBtn.id = 'ag-fedit-toggle';
       editBtn.type = 'button';
       editBtn.className = 'ag-fedit-btn';
-      editBtn.textContent = fileEditorState.loading ? '读取中…' : '编辑';
-      editBtn.title = '在侧边栏直接编辑当前文件';
+      editBtn.textContent = fileEditorState.loading ? tr('读取中…', 'Loading…') : tr('编辑', 'Edit');
+      editBtn.title = tr('在侧边栏直接编辑当前文件', 'Edit current file inline');
       editBtn.addEventListener('mousedown', (e) => e.preventDefault());
       editBtn.addEventListener('click', () => { void enterFileEditor(); });
       controls.appendChild(editBtn);
@@ -7043,8 +7105,8 @@
       saveBtn.type = 'button';
       saveBtn.className = 'ag-fedit-btn';
       saveBtn.setAttribute('data-primary', 'true');
-      saveBtn.textContent = fileEditorState.saving ? '保存中…' : (fileEditorState.dirty ? '保存*' : '保存');
-      saveBtn.title = '保存更改到硬盘 (⌘S / Ctrl+S)';
+      saveBtn.textContent = fileEditorState.saving ? tr('保存中…', 'Saving…') : (fileEditorState.dirty ? tr('保存*', 'Save*') : tr('保存', 'Save'));
+      saveBtn.title = tr('保存更改到硬盘 (⌘S / Ctrl+S)', 'Save changes to disk (⌘S / Ctrl+S)');
       saveBtn.addEventListener('mousedown', (e) => e.preventDefault());
       saveBtn.addEventListener('click', () => { void saveFileEditor(); });
 
@@ -7052,8 +7114,8 @@
       doneBtn.id = 'ag-fedit-done';
       doneBtn.type = 'button';
       doneBtn.className = 'ag-fedit-btn';
-      doneBtn.textContent = '完成';
-      doneBtn.title = '退出编辑并返回预览（自动刷新最新内容）';
+      doneBtn.textContent = tr('完成', 'Done');
+      doneBtn.title = tr('退出编辑并返回预览（自动刷新最新内容）', 'Exit editor and return to preview');
       doneBtn.addEventListener('mousedown', (e) => e.preventDefault());
       doneBtn.addEventListener('click', () => { exitFileEditor(true); });
 
@@ -7616,7 +7678,7 @@
       approvalCount: dockStateTracker.approvalCount,
       highRisk: dockStateTracker.highRisk,
       running: dockStateTracker.running,
-      locale: uiLang === 'en' ? 'en' : 'zh-CN'
+      locale: uiLang === 'en' ? 'en' : (uiLang === 'zh-TW' ? 'zh-TW' : 'zh-CN')
     };
     const sig = `${payload.unreadCount}|${unreadIds.join(',')}|${payload.approvalCount}|${payload.highRisk ? 1 : 0}|${payload.running ? 1 : 0}|${payload.locale}`;
     const changed = sig !== dockStateTracker.lastSentSig;
@@ -7796,7 +7858,7 @@
       approvalCount: dockStateTracker.approvalCount,
       highRisk: dockStateTracker.highRisk,
       running: dockStateTracker.running,
-      locale: uiLang === 'en' ? 'en' : 'zh-CN',
+      locale: uiLang === 'en' ? 'en' : (uiLang === 'zh-TW' ? 'zh-TW' : 'zh-CN'),
       activeCid: dockStateTracker.lastTrackedCid,
       armed: dockStateTracker.armed,
       armedCid: dockStateTracker.armedCid,
@@ -7867,9 +7929,14 @@
     updateAutoAcceptBtn();
     updateRemoteBtnLanguage();
     renderQuotaUI();
-    if (uiLang !== 'zh') {
+    if (uiLang === 'en') {
       revertEnhancerTranslations();
-    } else if (prevLang !== 'zh') {
+    } else if (prevLang !== uiLang) {
+      if (prevLang !== 'en') {
+        thoughtZhCache.clear();
+        sidebarZhCache.clear();
+        revertEnhancerTranslations();
+      }
       localizeThinkingShells();
       scheduleLocalization();
     }
@@ -7911,7 +7978,7 @@
     runAutoCompactTick();
     if (featureFlags.showTopbarQuota !== false && Date.now() - lastQuotaFetchAt >= 30000) {
       lastQuotaFetchAt = Date.now();
-      void refreshQuota();
+      void refreshQuota({ silent: true });
     }
     if (featureFlags.showTopbarRemote !== false && !remotePopoverOpen && Date.now() - lastRemoteFetchAt >= 10000) {
       lastRemoteFetchAt = Date.now();
@@ -8409,8 +8476,8 @@
         if (el.closest?.('[data-testid="agent-response"], [data-testid="user-message"], [data-markdown-root]')) return false;
         const txt = String(el.textContent || '').replace(/\s+/g, ' ').trim();
         if (!txt || txt.length > 100) return false;
-        return /^(?:Queued Messages\b|排队消息|排队中的消息)/i.test(txt)
-          || /^(?:Sends after agent finishes working|将在代理完成后发送)/i.test(txt);
+        return /^(?:Queued Messages\b|排队消息|排队中的消息|佇列訊息|佇列中的訊息)/i.test(txt)
+          || /^(?:Sends after agent finishes working|将在代理完成后发送|將在\s*Agent\s*完成後傳送)/i.test(txt);
       });
       if (!headerNodes.length) return [];
       for (const h of headerNodes) {
@@ -8437,14 +8504,14 @@
     const fiberItems = extractQueueFiberEntries(cardRoot);
     const stripHeaderNoise = (raw) => String(raw || '')
       .replace(/\s+/g, ' ')
-      .replace(/^(?:Queued Messages\b|排队消息|排队中的消息)\s*\d*\s*(?:Sends after agent finishes working|将在代理完成后发送)?/i, '')
+      .replace(/^(?:Queued Messages\b|排队消息|排队中的消息|佇列訊息|佇列中的訊息)\s*\d*\s*(?:Sends after agent finishes working|将在代理完成后发送|將在\s*Agent\s*完成後傳送)?/i, '')
       .trim();
 
     const isExpandBtn = (b) => {
       const tid = String(b?.getAttribute?.('data-testid') || '');
       if (tid === 'queued-messages-expand-button') return true;
       const aria = String(b?.getAttribute?.('aria-label') || '');
-      return /^(?:Collapse queued messages|Expand queued messages|收起排队消息|展开排队消息)$/i.test(aria);
+      return /^(?:Collapse queued messages|Expand queued messages|收起排队消息|展开排队消息|收合佇列訊息|收起佇列訊息|展開佇列訊息)$/i.test(aria);
     };
 
     const pickDecoratorBtns = (rowEl) => {
@@ -8579,9 +8646,9 @@
       const aria = String(b.getAttribute?.('aria-label') || '').trim();
       const expanded = String(b.getAttribute?.('aria-expanded') || '').trim().toLowerCase();
       if (expanded === 'true') return false;
-      if (/^(?:Collapse queued messages|收起排队消息)$/i.test(aria)) return false;
+      if (/^(?:Collapse queued messages|收起排队消息|收合佇列訊息|收起佇列訊息)$/i.test(aria)) return false;
       if (tid === 'queued-messages-expand-button') return true;
-      return /^(?:Expand queued messages|展开排队消息)$/i.test(aria);
+      return /^(?:Expand queued messages|展开排队消息|展開佇列訊息)$/i.test(aria);
     }) || null;
   }
 
@@ -9445,7 +9512,7 @@
               if (!cid || seenConv.has(cid)) continue;
               seenConv.add(cid);
               const rawSummary = String(entry?.conversation?.summary || '').replace(/\s+/g, ' ').trim();
-              const cachedZh = (uiLang === 'zh' && !sidebarUserRenamedIds.has(cid)) ? sidebarZhCache.get(cid) : '';
+              const cachedZh = (uiLang !== 'en' && !sidebarUserRenamedIds.has(cid)) ? sidebarZhCache.get(cid) : '';
               const pid = String(entry?.projectId || convGroupMap.get(cid) || gId).trim();
               convs.push({
                 id: cid,
@@ -10206,7 +10273,7 @@
         ? Number(((usedTokens / limitTokens) * 100).toFixed(1))
         : null;
       const cacheHitRate = (input + cached) > 0
-        ? Number(((cached / (input + cached)) * 100).toFixed(1))
+        ? (cached / (input + cached)) * 100
         : null;
       const ttft = parseRpcDurationSec(cm?.timeToFirstToken);
       const streaming = parseRpcDurationSec(cm?.streamingDuration);
@@ -11251,7 +11318,7 @@
   }
 
     globalThis.__AGEnhancer = {
-    version: '1.7.4',
+    version: '1.7.9',
     isAlive: () => {
       if (disposed) return false;
       const { sr } = getMeterHostAndShadow();
@@ -11347,7 +11414,7 @@
   renderQuotaUI();
   guardExpandedThinkingBlocks();
   startLocalizationObserver();
-  if (uiLang === 'zh') {
+  if (uiLang !== 'en') {
     localizeThinkingShells();
     void translateExpandedThoughts();
     void localizeSidebarConversations();
@@ -11356,6 +11423,6 @@
   }
   lastQuotaFetchAt = Date.now();
   lastRemoteFetchAt = Date.now();
-  if (featureFlags.showTopbarQuota !== false) void refreshQuota();
+  if (featureFlags.showTopbarQuota !== false) void refreshQuota({ silent: true });
   if (featureFlags.showTopbarRemote !== false) void refreshRemotePairInfo(false);
 })();

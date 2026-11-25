@@ -46,6 +46,7 @@ struct OverlayCommand: Decodable, Sendable {
     var style: String?
     var colorTier: Bool?
     var locale: String?
+    var promptAccessibility: Bool?
 
     func toOverlayState() -> OverlayState {
         let cleanStyle = (style ?? "capsule").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -87,7 +88,9 @@ private func computeCapsuleLayout(_ state: OverlayState, iconSide: CGFloat) -> C
     guard state.style == "capsule", iconSide >= 40.0 else {
         return .hidden
     }
-    let isEn = state.locale.lowercased().hasPrefix("en")
+    let lowerLocale = state.locale.lowercased()
+    let isEn = lowerLocale.hasPrefix("en")
+    let isTw = lowerLocale.hasPrefix("zh-tw") || lowerLocale.hasPrefix("zh-hant") || lowerLocale.hasPrefix("zh-hk")
     let compact = iconSide < 50.0
     let darkBg = NSColor(srgbRed: 22.0 / 255.0, green: 24.0 / 255.0, blue: 30.0 / 255.0, alpha: 0.91)
     let darkBorder = NSColor.white.withAlphaComponent(0.24)
@@ -96,7 +99,7 @@ private func computeCapsuleLayout(_ state: OverlayState, iconSide: CGFloat) -> C
     let redDot = NSColor(srgbRed: 1.0, green: 0x5E / 255.0, blue: 0x57 / 255.0, alpha: 1.0)
 
     if state.highRisk {
-        let text = isEn ? (compact ? "Risk" : "High Risk") : (compact ? "高危" : "高危待批")
+        let text = isEn ? (compact ? "Risk" : "High Risk") : (isTw ? (compact ? "高風險" : "高風險待審") : (compact ? "高危" : "高危待批"))
         return .statusDot(bgColor: urgentBg, borderColor: urgentBorder, dotColor: nil, text: text)
     }
     if state.approval > 0 && state.unread > 0 {
@@ -104,19 +107,19 @@ private func computeCapsuleLayout(_ state: OverlayState, iconSide: CGFloat) -> C
             return .statusDot(bgColor: darkBg, borderColor: darkBorder, dotColor: redDot, text: "Approve")
         }
         if compact {
-            return .statusDot(bgColor: darkBg, borderColor: darkBorder, dotColor: redDot, text: "待批")
+            return .statusDot(bgColor: darkBg, borderColor: darkBorder, dotColor: redDot, text: isTw ? "待審" : "待批")
         }
         let u = formatCapCount(state.unread)
         let a = formatCapCount(state.approval)
-        return .mixedSplit(unreadText: "\(u)新", approvalText: "\(a)批")
+        return .mixedSplit(unreadText: "\(u)新", approvalText: isTw ? "\(a)審" : "\(a)批")
     }
     if state.approval > 0 && state.unread == 0 {
-        let text = isEn ? "Approve" : (compact ? "待批" : "待审批")
+        let text = isEn ? "Approve" : (isTw ? (compact ? "待審" : "待審核") : (compact ? "待批" : "待审批"))
         return .statusDot(bgColor: darkBg, borderColor: darkBorder, dotColor: redDot, text: text)
     }
     if state.unread > 0 && state.approval == 0 {
         let dot = NSColor(srgbRed: 0x4D / 255.0, green: 0xA3 / 255.0, blue: 1.0, alpha: 1.0)
-        let text = isEn ? "Unread" : (compact ? "未读" : "新回复")
+        let text = isEn ? "Unread" : (isTw ? (compact ? "未讀" : "新回覆") : (compact ? "未读" : "新回复"))
         return .statusDot(bgColor: darkBg, borderColor: darkBorder, dotColor: dot, text: text)
     }
     if state.running && state.unread == 0 && state.approval == 0 && !state.highRisk {
@@ -456,6 +459,12 @@ final class OverlayController {
     }
 
     func applyCommand(_ cmd: OverlayCommand) {
+        if cmd.promptAccessibility == true {
+            let opts = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
+            _ = AXIsProcessTrustedWithOptions(opts)
+            tick(forceInitialReport: true)
+            return
+        }
         let next = cmd.toOverlayState()
         let changed = (next != state)
         state = next

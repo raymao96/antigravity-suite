@@ -699,6 +699,7 @@ function createWebPushManager(options = {}) {
         body: eventType === 'waiting'
           ? `${titleText}${projText ? ` (${projText})` : ''} 正在等待确认或审批`
           : `${titleText}${projText ? ` · ${projText}` : ''}`,
+        ...options.formatCatalogNotification?.(c, eventType),
         tag: `ag-${eventType}-${c.id}`,
         url: `/?conversationId=${encodeURIComponent(c.id)}`,
         completedUnreadCount,

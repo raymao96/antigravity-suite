@@ -329,8 +329,26 @@ function splitTextForTranslate(text, maxLen = 1200) {
   return chunks;
 }
 
-async function translateSingleChunkToZh(chunk) {
-  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=zh-CN&dt=t&q=${encodeURIComponent(chunk)}`;
+function normalizeTranslateTargetLang(targetLang) {
+  const raw = String(targetLang || '').trim().toLowerCase();
+  if (!raw) return 'zh-TW';
+  if (raw === 'zh-cn' || raw === 'zh-hans' || raw === 'zh' || raw === 'cn') {
+    return 'zh-CN';
+  }
+  if (raw === 'zh-tw' || raw === 'zh-hant' || raw === 'zh-hk' || raw === 'tw' || raw.startsWith('zh-tw-') || raw.startsWith('zh-hant-')) {
+    return 'zh-TW';
+  }
+  return 'zh-TW';
+}
+
+function getTranslationCacheKey(text, targetLang) {
+  const tl = normalizeTranslateTargetLang(targetLang);
+  return tl === 'zh-TW' ? `zh-TW\0${text}` : text;
+}
+
+async function translateSingleChunkToZh(chunk, targetLang = 'zh-TW') {
+  const tl = normalizeTranslateTargetLang(targetLang);
+  const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${encodeURIComponent(tl)}&dt=t&q=${encodeURIComponent(chunk)}`;
   const resp = await fetch(url, {
     method: 'GET',
     headers: { 'User-Agent': 'AntigravityContextMeter/1.0' },
@@ -342,36 +360,38 @@ async function translateSingleChunkToZh(chunk) {
   return data[0].map((seg) => (Array.isArray(seg) && typeof seg[0] === 'string' ? seg[0] : '')).join('');
 }
 
-async function translateToZh(rawText) {
+async function translateToZh(rawText, targetLang = 'zh-TW') {
   const text = String(rawText || '').trim();
   if (!text) return '';
-  if (typeof translationCache[text] === 'string' && translationCache[text]) {
-    return translationCache[text];
+  const tl = normalizeTranslateTargetLang(targetLang);
+  const cacheKey = getTranslationCacheKey(text, tl);
+  if (typeof translationCache[cacheKey] === 'string' && translationCache[cacheKey]) {
+    return translationCache[cacheKey];
   }
-  if (inFlightTranslations.has(text)) {
-    return inFlightTranslations.get(text);
+  if (inFlightTranslations.has(cacheKey)) {
+    return inFlightTranslations.get(cacheKey);
   }
   const job = (async () => {
     try {
       const chunks = splitTextForTranslate(text);
       const parts = [];
       for (const ch of chunks) {
-        const zh = await translateSingleChunkToZh(ch);
+        const zh = await translateSingleChunkToZh(ch, tl);
         if (zh) parts.push(zh);
       }
       const merged = parts.join('').trim();
       if (merged) {
-        translationCache[text] = merged;
+        translationCache[cacheKey] = merged;
         return merged;
       }
       return null;
     } catch {
       return null;
     } finally {
-      inFlightTranslations.delete(text);
+      inFlightTranslations.delete(cacheKey);
     }
   })();
-  inFlightTranslations.set(text, job);
+  inFlightTranslations.set(cacheKey, job);
   return job;
 }
 
@@ -559,7 +579,7 @@ function validateDockStatePayload(payload) {
     approvalCount: approvalRaw ?? 0,
     highRisk: Boolean(payload.highRisk),
     running: Boolean(payload.running),
-    locale: typeof payload.locale === 'string' && payload.locale.trim() ? payload.locale.trim() : 'zh-CN'
+    locale: typeof payload.locale === 'string' && payload.locale.trim() ? payload.locale.trim() : 'zh-TW'
   };
   if (unreadIds !== undefined) {
     data.unreadIds = unreadIds;
@@ -771,7 +791,7 @@ async function startEmbeddedLiveBridge(options = {}) {
           if (mod === 'chinese') {
             const nextLang = normalizeClientLanguage(extra.language, Boolean(request?.enable));
             cfg.modules.chinese.language = nextLang;
-            cfg.modules.chinese.enabled = nextLang === 'zh-CN';
+            cfg.modules.chinese.enabled = nextLang === 'zh-CN' || nextLang === 'zh-TW';
             if (extra.brandTitle !== undefined) cfg.modules.chinese.brandTitle = normalizeBrandTitle(extra.brandTitle);
             cfg.modules.chinese.lastUpdated = new Date().toISOString();
           } else {
@@ -856,6 +876,7 @@ async function startEmbeddedLiveBridge(options = {}) {
           return;
         }
         if (req.url === '/translate-zh') {
+          const targetLang = normalizeTranslateTargetLang(request.targetLang);
           const rawList = Array.isArray(request.texts) ? request.texts : [];
           const uniqueTexts = [];
           const seen = new Set();
@@ -870,8 +891,9 @@ async function startEmbeddedLiveBridge(options = {}) {
           const translations = {};
           const pending = [];
           for (const text of uniqueTexts) {
-            if (typeof translationCache[text] === 'string' && translationCache[text]) {
-              translations[text] = translationCache[text];
+            const cacheKey = getTranslationCacheKey(text, targetLang);
+            if (typeof translationCache[cacheKey] === 'string' && translationCache[cacheKey]) {
+              translations[text] = translationCache[cacheKey];
             } else {
               pending.push(text);
             }
@@ -879,7 +901,7 @@ async function startEmbeddedLiveBridge(options = {}) {
           let added = false;
           if (pending.length) {
             const results = await mapConcurrent(pending, 4, async (text) => {
-              const zh = await translateToZh(text);
+              const zh = await translateToZh(text, targetLang);
               return [text, zh];
             });
             for (const [text, zh] of results) {
@@ -895,6 +917,7 @@ async function startEmbeddedLiveBridge(options = {}) {
           return;
         }
         if (req.url === '/localize-conversations') {
+          const targetLang = normalizeTranslateTargetLang(request.targetLang);
           const rawItems = Array.isArray(request.items) ? request.items.slice(0, 50) : [];
           const titles = {};
           const toTranslate = [];
@@ -906,8 +929,9 @@ async function startEmbeddedLiveBridge(options = {}) {
             if (!title || /[\u4e00-\u9fff]/.test(title) || enWordCount < 3) {
               continue;
             }
-            if (typeof translationCache[title] === 'string' && translationCache[title]) {
-              titles[id] = translationCache[title];
+            const cacheKey = getTranslationCacheKey(title, targetLang);
+            if (typeof translationCache[cacheKey] === 'string' && translationCache[cacheKey]) {
+              titles[id] = translationCache[cacheKey];
             } else {
               toTranslate.push({ id, title });
             }
@@ -915,7 +939,7 @@ async function startEmbeddedLiveBridge(options = {}) {
           let added = false;
           if (toTranslate.length) {
             const results = await mapConcurrent(toTranslate, 4, async ({ id, title }) => {
-              const zh = await translateToZh(title);
+              const zh = await translateToZh(title, targetLang);
               return [id, zh];
             });
             for (const [id, zh] of results) {

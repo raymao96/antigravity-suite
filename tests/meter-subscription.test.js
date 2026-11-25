@@ -118,6 +118,7 @@ function response(chatModel) {
 // ============================================================================
 test('参考价模式下连续切换多个订阅国家与修改账号地区隔离', async () => {
   const h = harness();
+  h.sandbox.localStorage = { getItem: (k) => (k === 'ag_suite_base_currency' ? 'CNY' : null), setItem() {}, removeItem() {} };
   h.finishScan();
   h.pending[0].resolve(response({
     usage: { inputTokens: 10000, outputTokens: 1000 },
@@ -456,6 +457,7 @@ test('独立配置目录持久化、多账号隔离与重启后显示与落盘�
 // ============================================================================
 test('Google AI Ultra 子档自定义下拉支持 5x / 20x 数据展示、自定义实付隔离与持久化重置', async () => {
   const h = harness();
+  h.sandbox.localStorage = { getItem: (k) => (k === 'ag_suite_base_currency' ? 'CNY' : null), setItem() {}, removeItem() {} };
   h.finishScan();
   h.pending[0].resolve(response({
     usage: { inputTokens: 10000, outputTokens: 1000 },

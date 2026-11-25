@@ -73,6 +73,8 @@ function buildRenderer(options = {}) {
   const colors = readVerifiedRendererSource(effSrcDir, 'colors.js').trim();
   const dropdown = readVerifiedRendererSource(effSrcDir, 'dropdown.js').trim();
   const heatmap = readVerifiedRendererSource(effSrcDir, 'heatmap.js').trim();
+  const zhTwConverterPath = path.join(effRootDir, 'src', 'i18n', 'zh-tw-converter.js');
+  const zhTwConverter = fs.existsSync(zhTwConverterPath) ? fs.readFileSync(zhTwConverterPath, 'utf8').trim() : '';
   const suiteSettingsPath = path.join(effSrcDir, 'suite-settings.js');
   const suiteSettings = fs.existsSync(suiteSettingsPath) ? readVerifiedRendererSource(effSrcDir, 'suite-settings.js').trim() : '';
   let mainTemplate = readVerifiedRendererSource(effSrcDir, 'main.js');
@@ -92,6 +94,7 @@ function buildRenderer(options = {}) {
     .replace('  /* @INSERT_COLORS_MODULE */', () => colors)
     .replace('  /* @INSERT_DROPDOWN_MODULE */', () => dropdown)
     .replace('  /* @INSERT_HEATMAP_MODULE */', () => heatmap)
+    .replace('  /* @INSERT_ZH_TW_CONVERTER */', () => zhTwConverter)
     .replace('  /* @INSERT_SUITE_SETTINGS_MODULE */', () => suiteSettings);
 
   fs.writeFileSync(effTargetFile, output, 'utf8');

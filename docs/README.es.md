@@ -10,8 +10,8 @@
 
 ## Funciones principales
 
-1. **🇨🇳 Cambio instantáneo entre chino simplificado e inglés (traducción local sin tokens)**
-   - Alterna entre la interfaz en chino simplificado (con traducción en caché local para bloques de pensamiento y títulos) y el inglés original desde **`⚙️` → `🌐 Language & Appearance`** sin reiniciar (puedes escribir tus propios prompts en español).
+1. **🇨🇳 Cambio instantáneo entre chino (simplificado / tradicional de Taiwán) e inglés (traducción local sin tokens)**
+   - Alterna entre la interfaz en chino simplificado, chino tradicional de Taiwán (`繁體中文（台灣）`) e inglés original desde **`⚙️` → `🌐 Language & Appearance`** sin reiniciar (con traducción en caché local para bloques de pensamiento y títulos; puedes escribir tus propios prompts en español).
 2. **🔔 Alertas de estado y no leídos en el Dock de macOS (Insignia + Cápsula)**
    - **Estado visible sin cambiar de ventana**: Agrupa y deduplica los avisos sin leer de todas tus ventanas sobre el icono del Dock mediante **contadores azul/rojo en la esquina** y una **cápsula translúcida (`Working` / `Unread` / `Approve` / `High Risk`)**, o cambia a **Badge Only** en **`⚙️` → `🌐 Language & Appearance`**.
    - **Seguimiento fluido y limpieza automática**: Sigue la ampliación al pasar el ratón por el Dock; al volver a la ventana borra los avisos azules normales y conserva las alertas rojas hasta atenderlas. En el primer uso pulsa **Grant Access** para dar permiso de Accesibilidad en macOS (requiere Xcode Command Line Tools) y **Test Alert** para previsualizar.
