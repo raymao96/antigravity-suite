@@ -1,5 +1,5 @@
 (function () {
-  const METER_VERSION = '0.8.5';
+  const METER_VERSION = '0.9.0';
 
   'use strict';
   if (location.protocol !== 'https:' || location.hostname !== '127.0.0.1') return;
@@ -3411,7 +3411,7 @@
 
     <div id="view-context">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <h3 style="margin:0">会话用量与生成监控<span id="v">v0.8.5</span></h3>
+        <h3 style="margin:0">会话用量与生成监控<span id="v">v0.9.0</span></h3>
       </div>
 
       <!-- 本轮与当前会话实时 API 等值参考行 -->
@@ -4348,7 +4348,7 @@
     <div class="update-pop-hdr">
       <div style="display:flex;align-items:center;gap:6px">
         <span id="up-pop-title" style="font-weight:600;font-size:12px;color:var(--ag-text-primary)">检查更新</span>
-        <span id="up-pop-ver" class="key-pill pill-good" style="font-size:10px">v0.8.5</span>
+        <span id="up-pop-ver" class="key-pill pill-good" style="font-size:10px">v0.9.0</span>
       </div>
       <button id="btn-close-update-pop" class="panel-icon-btn" type="button" style="padding:1px 5px;font-size:13px">×</button>
     </div>
@@ -4377,7 +4377,7 @@
         <span style="font-size:14.5px;font-weight:600;color:var(--ag-text-primary)">Antigravity Suite 统一设置</span>
       </div>
       <div class="panel-header-actions">
-        <span id="suite-ver-status" class="key-pill pill-muted" title="当前版本状态">v0.8.5</span>
+        <span id="suite-ver-status" class="key-pill pill-muted" title="当前版本状态">v0.9.0</span>
         <button id="btn-suite-apply-update" class="switch-pill-btn active" type="button" hidden title="下载最新版本并立即生效，无需重启">立即更新</button>
         <button id="close-settings" class="panel-icon-btn" type="button" aria-label="关闭设置">×</button>
       </div>

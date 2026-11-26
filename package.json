@@ -1,6 +1,6 @@
 {
   "name": "antigravity-context-viewer",
-  "version": "0.8.5",
+  "version": "0.9.0",
   "description": "Google Antigravity（macOS 零改包）增强与远程遥控套件：全中文界面与思考中译、极速手机/电脑跨网遥控（比官方快得多）、快捷口令与一键润色、配额与防卡死自动压缩、高危命令红框拦截。",
   "repository": {
     "type": "git",
