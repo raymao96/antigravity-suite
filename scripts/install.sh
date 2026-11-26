@@ -6,7 +6,7 @@ if [ -f "$SCRIPT_DIR/cli.js" ]; then
 elif [ -f "$SCRIPT_DIR/../cli.js" ]; then
   ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 else
-  echo "[ERROR] cli.js not found near install.sh" >&2
+  echo "[錯誤] 在 install.sh 周邊目錄找不到 cli.js。" >&2
   exit 1
 fi
 cd "$ROOT_DIR"

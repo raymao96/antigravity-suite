@@ -408,12 +408,14 @@ test('cache tokens are preserved through parseGeneratorCall and summarizeApiCost
       usage: {
         inputTokens: 10000,
         cacheReadTokens: 20000,
+        cacheCreationTokens: 250,
         outputTokens: 1000,
         responseId: 'call-cache-test'
       }
     }
   };
   const call = parseGeneratorCall(row, 'convo-1', 'desktop');
+  assert.equal(call.cacheCreationTokens, 250);
   assert.equal(call.costUSD, 0.01275);
   // 单条账本记录再经由 summarizeApiCost 重新计算，费用必须仍为 0.01275 美元，绝不降为 0.0112 美元
   const summary = summarizeApiCost([call]);
@@ -1367,4 +1369,126 @@ test('collectTokenHistoryAsync 连续两次非强制调用不会卡在旧 active
     try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
     try { fs.rmSync(tempCliDir, { recursive: true, force: true }); } catch {}
   }
+});
+
+test('Gemini 4 Neon pricing, placeholder mapping, and shared quota pool sync (elviscjn v0.9.3)', () => {
+  const {
+    GEMINI_PRICING_TABLE,
+    normalizeModelId,
+    calculateRequestApiCost,
+    getModelPoolKey,
+    getSharedQuotaGroupKey
+  } = require('../meter-core');
+
+  assert.ok(Array.isArray(GEMINI_PRICING_TABLE['gemini-4-neon']));
+  assert.equal(normalizeModelId('Gemini 4 Neon (High)'), 'gemini-4-neon');
+  assert.equal(normalizeModelId('MODEL_PLACEHOLDER_M532'), 'gemini-4-neon');
+  assert.equal(normalizeModelId('MODEL_PLACEHOLDER_M537'), 'gemini-4-neon');
+  assert.equal(normalizeModelId('MODEL_PLACEHOLDER_M669'), 'gemini-4-hydrogen');
+  assert.equal(normalizeModelId('MODEL_PLACEHOLDER_M322'), 'gemini-3.8-flash');
+  assert.equal(normalizeModelId('MODEL_PLACEHOLDER_M402'), 'claude-opus-5-5');
+
+  assert.equal(getModelPoolKey('MODEL_PLACEHOLDER_M532'), 'gemini-4-neon');
+  assert.equal(getModelPoolKey('MODEL_PLACEHOLDER_M537'), 'gemini-4-neon');
+  assert.equal(getSharedQuotaGroupKey('Gemini 4 Neon (High)'), 'shared_gemini_main');
+
+  const res = calculateRequestApiCost({
+    model: 'MODEL_PLACEHOLDER_M532',
+    input_tokens: 1000000,
+    cache_read_tokens: 1000000,
+    output_tokens: 1000000,
+    date: '2026-11-25'
+  });
+  assert.equal(res.isPriced, true);
+  assert.equal(res.modelKey, 'gemini-4-neon');
+  // 3.00 + 0.15 + 15.00 = 18.15
+  assert.equal(res.costUSD, 18.15);
+});
+
+test('pure data pool isolation, PR #38 neutral interruption, short-window TPS filter, PR #48 post-compact & 6-tier 14-country matrix', () => {
+  const {
+    normalizeModelLookupName,
+    selectPrimaryQuotaBucket,
+    buildModelQuotaSnapshot,
+    classifyModelQuotaAvailability,
+    isValidSpeedSample,
+    isCheckpointNewerThanGenerator,
+    buildPostCompactSummary,
+    SUBSCRIPTION_TIER_SPECS,
+    SUBSCRIPTION_TIER_REGION_PRICES,
+    getRegionPlanReferencePrice,
+    resolvePlanSpecKey
+  } = require('../meter-core');
+
+  // 1. 纯数据防串池：归一化、装饰角标过滤与配额桶选择
+  assert.equal(normalizeModelLookupName('Gemini 4 Neon (High)'), 'gemini 4 neon');
+  assert.equal(normalizeModelLookupName('Gemini-4_Neon (Medium)'), 'gemini 4 neon');
+  assert.equal(
+    selectPrimaryQuotaBucket([
+      { remainingFraction: 0.9, resetTime: '2026-11-30T00:00:00Z' },
+      { remainingFraction: 0.4, resetTime: new Date(Date.now() + 2 * 3600e3).toISOString() }
+    ]).primaryBucket.remainingFraction,
+    0.4
+  );
+  const qSnap = buildModelQuotaSnapshot({
+    cascadeModelConfigs: [
+      { modelOrAlias: { model: 'MODEL_PLACEHOLDER_M532' }, label: 'Gemini 4 Neon (High)', quotaInfo: { remainingFraction: 0.8 } },
+      { modelOrAlias: { model: 'chat_123' }, label: 'internal', isInternal: true, quotaInfo: { remainingFraction: 0 } }
+    ]
+  });
+  const snapModels = (qSnap.pools || []).flatMap(p => p.models || []);
+  assert.ok(snapModels.some(m => m.productLabel === 'Gemini 4 Neon' && m.aliases?.includes('MODEL_PLACEHOLDER_M532')));
+  assert.ok(!snapModels.some(m => [...(m.modelIds || []), ...(m.aliases || [])].includes('chat_123')));
+  assert.equal(classifyModelQuotaAvailability({ tagTitle: 'New' }, { status: 'identified', tierKey: 'pro' }).noticeTitle, null);
+  assert.equal(classifyModelQuotaAvailability({ allowedTiers: ['g1-ultra-tier'] }, { status: 'unidentified' }).noPermission, false);
+  assert.equal(classifyModelQuotaAvailability({ allowedTiers: ['g1-ultra-tier'] }, { status: 'identified', tierKey: 'pro' }).noPermission, true);
+
+  // 2. PR #38 中性中断归类
+  const canceledErr = classifyRequestError('context canceled');
+  assert.equal(canceledErr.kind, 'canceled');
+  assert.equal(canceledErr.badgeText, '已中断');
+
+  // 3. 流式 TPS 短窗过滤 (< 1.0s || outputTokens < 30 不采样)
+  assert.equal(isValidSpeedSample({ status: 'final', durationSec: 0.5, outputTokens: 120 }), false);
+  assert.equal(isValidSpeedSample({ status: 'final', durationSec: 3.0, outputTokens: 20 }), false);
+  assert.equal(isValidSpeedSample({ status: 'final', durationSec: 3.0, outputTokens: 60 }), true);
+  const shortBurst = summarize(entry({ inputTokens: 1000, outputTokens: 15 }, { maxContextTokens: 256000 }));
+  assert.equal(shortBurst.speed?.tps ?? null, null);
+  const sShort = summarize({
+    chatModel: {
+      timeToFirstToken: '0.2s',
+      streamingDuration: '0.4s',
+      usage: { inputTokens: 1000, outputTokens: 150 },
+      chatStartMetadata: { contextWindowMetadata: { maxContextTokens: 256000 } }
+    }
+  });
+  assert.equal(sShort.speed?.streamingTps ?? null, null);
+
+  // 4. PR #48 analyzeSteps + buildPostCompactSummary + isCheckpointNewerThanGenerator
+  const stepsRes = analyzeSteps([
+    { type: 'CORTEX_STEP_TYPE_USER_INPUT', userInput: { userResponse: 'before compact' } },
+    { type: 'CORTEX_STEP_TYPE_CHECKPOINT', metadata: { createdAt: '2026-11-25T10:00:05Z' }, checkpoint: { modelUsage: { inputTokens: 2000, outputTokens: 200 }, stepIndices: [1] } },
+    { type: 'CORTEX_STEP_TYPE_PLANNER_RESPONSE', metadata: { createdAt: '2026-11-25T10:00:06Z', modelUsage: { inputTokens: 500, outputTokens: 80 } }, plannerResponse: { response: 'after compact' } }
+  ]);
+  assert.equal(stepsRes.checkpointCount, 1);
+  assert.equal(stepsRes.lastCheckpointIndex, 1);
+  assert.equal(isCheckpointNewerThanGenerator(stepsRes, { stepIndices: [0] }), true);
+  const postSummary = buildPostCompactSummary({ session: stepsRes });
+  assert.ok(postSummary);
+
+  // 5. 6 档 × 14 国参考价与 planTierOverride
+  assert.equal(Object.keys(SUBSCRIPTION_TIER_SPECS).length, 6);
+  assert.ok(SUBSCRIPTION_TIER_REGION_PRICES.TW);
+  assert.equal(resolvePlanSpecKey({ tierKey: 'pro', planTierOverride: 'ultra_5x' }), 'ultra_5x');
+  assert.equal(resolvePlanSpecKey('ultra', 20, null), 'ultra_20x');
+  const twPlus = getRegionPlanReferencePrice('TW', 'plus');
+  assert.equal(twPlus.available, true);
+  assert.equal(twPlus.currency, 'TWD');
+  const effOverride = resolveEffectivePlanStatus(
+    { status: 'identified', tierKey: 'pro', tierName: 'Google AI Pro', email: 'a@example.com' },
+    { email: 'a@example.com', planTierOverride: 'ultra_20x', ultraSubTier: '20x', region: 'JP 日本' }
+  );
+  assert.equal(effOverride.tierKey, 'ultra');
+  assert.equal(effOverride.ultraSubTier, '20x');
+  assert.equal(effOverride.sources.tier, 'custom');
 });

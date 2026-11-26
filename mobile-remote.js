@@ -7163,7 +7163,6 @@ const REMOTE_TW_COPY = new Map([
 ]);
 
 const REMOTE_TW_PHRASES = {
-  '配對口令': '配對碼',
   '未發訊息': '尚未傳送的訊息',
   '發訊息': '傳送訊息',
   '已直發': '已傳送',
@@ -19509,8 +19508,8 @@ function printRemoteCli({ resetToken = false, jsonMode = false, tunnelAction = '
     saveRemoteTunnelConfig({ enabled: tunnelAction === 'on' });
     if (!jsonMode) {
       console.log(tunnelAction === 'on'
-        ? '✅ 已开启 Cloudflare 远程公网隧道（若桌面端正在运行，点弹窗刷新或在弹窗开关切换即可生效）'
-        : '⭕ 已关闭 Cloudflare 远程公网隧道');
+        ? '✅ 已開啟 Cloudflare 遠端公開網路通道（若桌面版正在執行，點彈出視窗重新整理或在彈出視窗開關切換即可生效）'
+        : '⭕ 已關閉 Cloudflare 遠端公開網路通道');
     }
   }
   const info = buildRemoteInfo({ resetToken });
@@ -19520,22 +19519,22 @@ function printRemoteCli({ resetToken = false, jsonMode = false, tunnelAction = '
   }
 
   console.log('');
-  console.log(`📱 Antigravity 手机远程操作面板（多通道融合 · ${info.deviceName}）`);
-  if (resetToken) console.log('🔑 已重置并生成新的配对 Token（旧链接将自动失效）');
+  console.log(`📱 Antigravity 手機遠端操作面板（多通道融合 · ${info.deviceName}）`);
+  if (resetToken) console.log('🔑 已重設並生成新的配對 Token（舊連結將自動失效）');
   console.log('');
 
   for (const ch of (info.channels || [])) {
     if (ch.available) {
       console.log(`✅ ${ch.label.padEnd(14, ' ')} ${ch.displayHost} (${ch.iface || 'auto'})`);
     } else {
-      console.log(`⭕ ${ch.label.padEnd(14, ' ')} ${ch.key === 'tunnel' ? ch.displayHost : '未就绪'}`);
+      console.log(`⭕ ${ch.label.padEnd(14, ' ')} ${ch.key === 'tunnel' ? ch.displayHost : '未就緒'}`);
     }
   }
   console.log('');
-  console.log(`🔗 配对链接: ${info.fusedUrl}`);
-  console.log(`🖥️ 本机调试地址: ${info.localUrl}`);
+  console.log(`🔗 配對連結: ${info.fusedUrl}`);
+  console.log(`🖥️ 本機除錯位址: ${info.localUrl}`);
   console.log('');
-  console.log('📷 用 iPhone 相机扫描下方二维码即可打开：');
+  console.log('📷 用 iPhone 相機掃描下方 QR Code 即可開啟：');
   console.log('');
   if (info.primaryUrl) {
     try {
@@ -19546,16 +19545,16 @@ function printRemoteCli({ resetToken = false, jsonMode = false, tunnelAction = '
         : info.primaryUrl;
       console.log(renderTerminalQr(qrForTerminal));
     } catch (err) {
-      console.log(`⚠️ 融合二维码字符过长已降级，请直接复制上方融合链接或缩短主机名后重试 (${err?.message || err})`);
+      console.log(`⚠️ 融合 QR Code 字元過長已降級，請直接複製上方融合連結或縮短主機名後重試 (${err?.message || err})`);
     }
   } else {
-    console.log('⚠️ 所有连接通道均已停用，请启用至少一种连接方式。');
+    console.log('⚠️ 所有連線通道均已停用，請啟用至少一種連線方式。');
   }
   console.log('');
   console.log('💡 使用提示：');
-  console.log('   1. 扫码在 Safari 打开后，点击底部「分享」→「添加到主屏幕」');
-  console.log('   2. 支持 ag-context-meter remote --tunnel on|off 开关 Cloudflare 公网隧道（免装 Tailscale）');
-  console.log('   3. 在聊天区右滑即可拉出左侧会话抽屉，底部可直接切换模型/权限与拍照传图');
+  console.log('   1. 掃碼在 Safari 開啟後，點選底部「分享」→「新增到主螢幕」');
+  console.log('   2. 支援 ag-context-meter remote --tunnel on|off 開關 Cloudflare 公開網路通道（免裝 Tailscale）');
+  console.log('   3. 在聊天區右滑即可拉出左側工作階段抽屜，底部可直接切換模型/權限與拍照傳圖');
   console.log('');
 }
 

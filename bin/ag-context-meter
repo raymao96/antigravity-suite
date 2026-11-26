@@ -154,7 +154,7 @@ relaunch_antigravity_with_cdp() {
     printf '%s %s\n' "$(date +%s)" "$bare_pid" > "$RELAUNCH_LOCK_FILE" 2>/dev/null || true
   fi
   if [ -n "${bare_pid:-}" ]; then
-    echo "正在优雅重启 Antigravity（补充 --remote-debugging-port=0）..."
+    echo "正在平滑重新啟動 Antigravity（補充 --remote-debugging-port=0）..."
     osascript -e 'tell application "Antigravity" to quit' >/dev/null 2>&1 || true
     for i in $(seq 1 16); do
       if ! kill -0 "$bare_pid" 2>/dev/null; then
@@ -167,12 +167,12 @@ relaunch_antigravity_with_cdp() {
       sleep 0.5
     done
     if [ -n "${bare_pid:-}" ] && kill -0 "$bare_pid" 2>/dev/null; then
-      echo "❌ 等待原 Antigravity 进程 (PID: $bare_pid) 退出超时，请手动按 ⌘Q 退出后再试。" >&2
+      echo "❌ 等待原 Antigravity 處理程序 (PID: $bare_pid) 退出逾時，請手動按 ⌘Q 退出後再試。" >&2
       return 1
     fi
     sleep 0.3
   else
-    echo "正在带调试端口启动 Antigravity..."
+    echo "正在帶偵錯連接埠啟動 Antigravity..."
   fi
 
   open -a "$ag_app" --args --remote-debugging-port=0
@@ -186,7 +186,7 @@ relaunch_antigravity_with_cdp() {
     sleep 0.5
   done
   if [ "$ready" -eq 0 ]; then
-    echo "❌ 已重启 Antigravity，但等待调试端口就绪超时。" >&2
+    echo "❌ 已重新啟動 Antigravity，但等待偵錯連接埠就緒逾時。" >&2
     return 1
   fi
 
@@ -217,9 +217,9 @@ install_macos_launcher() {
 <plist version="1.0">
 <dict>
   <key>CFBundleName</key>
-  <string>Antigravity 增强启动器</string>
+  <string>Antigravity 增強啟動器</string>
   <key>CFBundleDisplayName</key>
-  <string>Antigravity 增强启动器</string>
+  <string>Antigravity 增強啟動器</string>
   <key>CFBundleIdentifier</key>
   <string>com.antigravity-suite.cdp-launcher</string>
   <key>CFBundleVersion</key>
@@ -249,42 +249,42 @@ LOG_FILE="\$HOME/Library/Logs/antigravity-hans.log"
 mkdir -p "\$HOME/Library/Logs"
 
 notify() {
-  osascript -e "display notification \"\$1\" with title \"Antigravity 增强启动器\"" >/dev/null 2>&1 || true
+  osascript -e "display notification \"\$1\" with title \"Antigravity 增強啟動器\"" >/dev/null 2>&1 || true
 }
 
 if "\$BIN" status --json 2>/dev/null | grep -q '"running": true'; then
   open -a "\$TARGET_APP"
-  notify "已检测到增强模式运行中，正在刷新挂载..."
+  notify "已偵測到增強模式執行中，正在重新整理掛載..."
   "\$BIN" live >> "\$LOG_FILE" 2>&1 || true
   exit 0
 fi
 
 if pgrep -f "/Antigravity\\.app/Contents/MacOS/Antigravity" >/dev/null 2>&1; then
-  choice=\$(osascript -e 'button returned of (display dialog "Antigravity 当前正在运行，但未开启增强所需的调试端口（2.33.0+ 默认关闭）。\n\n是否现在重启 Antigravity 并自动开启全部增强功能？" with title "Antigravity 增强启动器" buttons {"取消", "重启并开启增强"} default button "重启并开启增强")' 2>/dev/null || echo "取消")
-  if [ "\$choice" != "重启并开启增强" ]; then
+  choice=\$(osascript -e 'button returned of (display dialog "Antigravity 目前正在執行，但未開啟增強所需的偵錯連接埠（2.33.0+ 預設關閉）。\n\n是否現在重新啟動 Antigravity 並自動開啟全部增強功能？" with title "Antigravity 增強啟動器" buttons {"取消", "重新啟動並開啟增強"} default button "重新啟動並開啟增強")' 2>/dev/null || echo "取消")
+  if [ "\$choice" != "重新啟動並開啟增強" ]; then
     exit 0
   fi
-  notify "正在重启 Antigravity 并加载增强功能，请稍候..."
+  notify "正在重新啟動 Antigravity 並載入增強功能，請稍候..."
   "\$BIN" restart --force >> "\$LOG_FILE" 2>&1
   if [ \$? -eq 0 ]; then
-    notify "全部增强功能已加载完成！"
+    notify "全部增強功能已載入完成！"
   else
-    notify "重启挂载未完成，请打开终端运行 ag-context-meter status 确认原因。"
+    notify "重新啟動掛載未完成，請開啟終端機執行 ag-context-meter status 確認原因。"
   fi
   exit 0
 fi
 
-notify "正在启动 Antigravity 增强版，请稍候..."
+notify "正在啟動 Antigravity 增強版，請稍候..."
 "\$BIN" open >> "\$LOG_FILE" 2>&1
 if [ \$? -eq 0 ]; then
-  notify "全部增强功能已加载完成！"
+  notify "全部增強功能已載入完成！"
 else
-  notify "启动后未完成自动挂载，请在终端运行 ag-context-meter live。"
+  notify "啟動後未完成自動掛載，請在終端機執行 ag-context-meter live。"
 fi
 EOF
   chmod +x "$macos_dir/launch"
-  echo "✅ 已创建 macOS 零改包启动器: $launcher_dir"
-  echo "   以后可直接从 Spotlight / 访达（~/Applications）打开它，或拖到程序坞代替原图标。"
+  echo "✅ 已建立 macOS 零改包啟動器: $launcher_dir"
+  echo "   以後可直接從 Spotlight / 訪達（~/Applications）開啟它，或拖到Dock代替原圖示。"
 }
 
 has_live_antigravity() {
@@ -322,7 +322,7 @@ try_auto_relaunch_fresh_bare() {
     if [ "${last_pid:-}" != "skip:${bare_pid}" ]; then
       mkdir -p "$LOG_DIR" "$(dirname "$RELAUNCH_LOCK_FILE")" 2>/dev/null || true
       printf '0 skip:%s\n' "$bare_pid" > "$RELAUNCH_LOCK_FILE" 2>/dev/null || true
-      echo "[$(date '+%Y-%m-%d %H:%M:%S')] [_auto-trigger] 检测到 Antigravity (PID: $bare_pid, 已运行 ${bare_elapsed}s > 30s) 未带调试端口，为保护当前会话跳过自动重拉。" >> "$LOG_FILE"
+      echo "[$(date '+%Y-%m-%d %H:%M:%S')] [_auto-trigger] 偵測到 Antigravity (PID: $bare_pid, 已執行 ${bare_elapsed}s > 30s) 未帶偵錯連接埠，為保護目前工作階段略過自動重拉。" >> "$LOG_FILE"
     fi
     return 11
   fi
@@ -339,7 +339,7 @@ try_auto_relaunch_fresh_bare() {
 
   mkdir -p "$LOG_DIR" "$(dirname "$RELAUNCH_LOCK_FILE")" 2>/dev/null || true
   printf '%s %s\n' "$now_ts" "$bare_pid" > "$RELAUNCH_LOCK_FILE" 2>/dev/null || true
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] [_auto-trigger] 检测到 Antigravity (PID: $bare_pid, 启动 ${bare_elapsed}s) 未带调试端口，自动补参重拉..." >> "$LOG_FILE"
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] [_auto-trigger] 偵測到 Antigravity (PID: $bare_pid, 啟動 ${bare_elapsed}s) 未帶偵錯連接埠，自動補參重拉..." >> "$LOG_FILE"
   relaunch_antigravity_with_cdp >> "$LOG_FILE" 2>&1 || true
   return 10
 }
@@ -356,7 +356,7 @@ stop_live() {
         if echo "$cmdline" | grep -q "live-host.js"; then
           kill "$pid" 2>/dev/null || true
           stopped=1
-          echo "已停止后台桥接服务 (PID: $pid)"
+          echo "已停止背景橋接服務 (PID: $pid)"
         fi
       fi
       rm -f "$f"
@@ -366,7 +366,7 @@ stop_live() {
   # 兜底清理残留的本项目 live-host.js 进程，避免 3 秒巡检重新注入
   pkill -f "$APP_DIR/live-host.js" 2>/dev/null && stopped=1 || true
   if [ "$stopped" -eq 0 ]; then
-    echo "未发现运行中的后台桥接服务"
+    echo "未發現執行中的背景橋接服務"
   else
     sleep 0.2
   fi
@@ -442,7 +442,7 @@ const { resolveActiveCdpTarget } = require(process.env.APP_DIR + "/asar-engine")
 ' 2>/dev/null || echo "0")
 
   if [ "${unload_count:-0}" -gt 0 ] 2>/dev/null; then
-    echo "已从当前窗口卸载中文汉化与上下文看板（已恢复英文原样）"
+    echo "已從目前視窗解除安裝中文介面與上下文面板（已恢復英文原樣）"
   fi
 }
 
@@ -534,8 +534,8 @@ case "$cmd" in
     bare_info="$(get_bare_antigravity_info || true)"
     if [ -n "${bare_info:-}" ]; then
       if is_inside_antigravity_agent; then
-        echo "⚠️ 检测到当前 Antigravity (v2.33.0+) 未带调试端口运行，且脚本正在客户端内部会话中执行。" >&2
-        echo "   已为你避开强制关闭当前窗口；请在外部终端执行: ag-context-meter restart（或按 ⌘Q 退出后重新点开 Antigravity，自启守护会自动注入）。" >&2
+        echo "⚠️ 偵測到目前 Antigravity (v2.33.0+) 未帶偵錯連接埠執行，且指令碼正在用戶端內部工作階段中執行。" >&2
+        echo "   已為你避開強制關閉目前視窗；請在外部終端機執行: ag-context-meter restart（或按 ⌘Q 退出後重新點開 Antigravity，自動啟動服務會自動注入）。" >&2
         exit 1
       fi
       relaunch_antigravity_with_cdp "${@:2}"
@@ -554,15 +554,15 @@ case "$cmd" in
     done
     if is_inside_antigravity_agent; then
       if [ "$force_restart" -eq 1 ]; then
-        echo "⏳ 将在 1 秒后于后台平滑重启 Antigravity 并挂载插件…"
+        echo "⏳ 將在 1 秒後於背景平滑重新啟動 Antigravity 並掛載外掛…"
         nohup bash -c 'sleep 1; exec "$1" "$2" "${@:3}"' _ "$0" restart ${forward_args[@]:+"${forward_args[@]}"} >/dev/null 2>&1 &
         exit 0
       fi
       bare_info="$(get_bare_antigravity_info || true)"
       if [ -n "${bare_info:-}" ] || has_active_cdp_target; then
-        echo "⚠️ 当前处于 Antigravity 内部会话，直接重启会中断当前对话。" >&2
-        echo "   请在外部终端执行: ag-context-meter restart，或按 ⌘Q 退出后重新点击 Dock 图标（自启守护将自动挂载）。" >&2
-        echo "   若确定要立刻重拉当前客户端，请运行: ag-context-meter restart --force" >&2
+        echo "⚠️ 目前處於 Antigravity 內部工作階段，直接重新啟動會中斷目前對話。" >&2
+        echo "   請在外部終端機執行: ag-context-meter restart，或按 ⌘Q 退出後重新點選 Dock 圖示（自動啟動服務將自動掛載）。" >&2
+        echo "   若確定要立刻重拉目前用戶端，請執行: ag-context-meter restart --force" >&2
         exit 1
       fi
     fi
@@ -576,7 +576,7 @@ case "$cmd" in
     ;;
   auto-on)
     if [ ! -f "$PLIST" ]; then
-      echo "未找到 LaunchAgent 配置文件: $PLIST" >&2
+      echo "未找到 LaunchAgent 設定檔: $PLIST" >&2
       exit 1
     fi
     node_bin_dir="$(resolve_real_node_bin_dir)"
@@ -606,12 +606,12 @@ if (xml.includes(escLockPath)) {
   } else {
     xml = xml.replace(escLockPath, escSockPath);
   }
-  notes.push("WatchPaths 已由 SingletonLock 升级为 SingletonSocket");
+  notes.push("WatchPaths 已由 SingletonLock 升級為 SingletonSocket");
 } else if (!xml.includes(escSockPath)) {
   const next = xml.replace(/(<key>WatchPaths<\/key>\s*<array>)/, `$1\n    <string>${escSockPath}</string>`);
   if (next !== xml) {
     xml = next;
-    notes.push("WatchPaths 已新增 SingletonSocket 监听");
+    notes.push("WatchPaths 已新增 SingletonSocket 監聽");
   }
 }
 
@@ -622,7 +622,7 @@ if (/<key>EnvironmentVariables<\/key>\s*<dict>/.test(xml)) {
       (m, pre, cur, post) => {
         const parts = unescXml(cur).split(":").filter(Boolean);
         if (nodeBin && !parts.includes(nodeBin)) {
-          notes.push("EnvironmentVariables.PATH 已补充 Node 路径");
+          notes.push("EnvironmentVariables.PATH 已補充 Node 路徑");
           return `${pre}${escXml([nodeBin, ...parts].join(":"))}${post}`;
         }
         return m;
@@ -633,7 +633,7 @@ if (/<key>EnvironmentVariables<\/key>\s*<dict>/.test(xml)) {
       /(<key>EnvironmentVariables<\/key>\s*<dict>)/,
       `$1\n    <key>PATH</key>\n    <string>${escXml(fullPath)}</string>`
     );
-    notes.push("EnvironmentVariables 已补充 PATH");
+    notes.push("EnvironmentVariables 已補充 PATH");
   }
 } else {
   const envBlock = `  <key>EnvironmentVariables</key>\n  <dict>\n    <key>PATH</key>\n    <string>${escXml(fullPath)}</string>\n  </dict>\n`;
@@ -647,7 +647,7 @@ if (/<key>EnvironmentVariables<\/key>\s*<dict>/.test(xml)) {
 if (/<key>StartInterval<\/key>\s*<integer>(\d+)<\/integer>/.test(xml)) {
   xml = xml.replace(/(<key>StartInterval<\/key>\s*<integer>)(\d+)(<\/integer>)/, (m, pre, val, post) => {
     if (val !== "5") {
-      notes.push(`StartInterval 已由 ${val} 更新为 5`);
+      notes.push(`StartInterval 已由 ${val} 更新為 5`);
       return `${pre}5${post}`;
     }
     return m;
@@ -657,13 +657,13 @@ if (/<key>StartInterval<\/key>\s*<integer>(\d+)<\/integer>/.test(xml)) {
   const next = xml.replace(/(^[ \t]*<key>RunAtLoad<\/key>\s*<true\/>\r?\n)/m, `$1${intervalBlock}`);
   if (next !== xml) {
     xml = next;
-    notes.push("已新增 StartInterval=5 轻量轮询");
+    notes.push("已新增 StartInterval=5 輕量輪詢");
   }
 }
 if (/<key>ThrottleInterval<\/key>\s*<integer>(\d+)<\/integer>/.test(xml)) {
   xml = xml.replace(/(<key>ThrottleInterval<\/key>\s*<integer>)(\d+)(<\/integer>)/, (m, pre, val, post) => {
     if (val !== "5") {
-      notes.push(`ThrottleInterval 已由 ${val} 更新为 5`);
+      notes.push(`ThrottleInterval 已由 ${val} 更新為 5`);
       return `${pre}5${post}`;
     }
     return m;
@@ -683,28 +683,28 @@ if (notes.length > 0) {
 }
 ')"
     if [ -n "${upgraded_msg:-}" ]; then
-      echo "✅ 已升级 LaunchAgent 配置（${upgraded_msg}）"
+      echo "✅ 已升級 LaunchAgent 設定（${upgraded_msg}）"
     fi
     uid="$(id -u)"
     launchctl bootout "gui/$uid/$LABEL" 2>/dev/null || true
     launchctl bootstrap "gui/$uid" "$PLIST"
     if has_active_cdp_target; then
-      node "$APP_DIR/cli.js" live "${@:2}" || echo "提示：当前未能立即挂载，下次启动 Antigravity 时将自动挂载。"
+      node "$APP_DIR/cli.js" live "${@:2}" || echo "提示：目前未能立即掛載，下次啟動 Antigravity 時將自動掛載。"
     elif [ -n "$(get_bare_antigravity_info || true)" ]; then
       if is_inside_antigravity_agent; then
-        echo "提示：已开启 v2.33.0+ 自启守护；当前窗口未开启调试端口且正在会话中，按 ⌘Q 重新点开 Antigravity 或在外部终端执行 ag-context-meter restart 后插件将自动恢复。"
+        echo "提示：已開啟 v2.33.0+ 自動啟動服務；目前視窗未開啟偵錯連接埠且正在工作階段中，按 ⌘Q 重新點開 Antigravity 或在外部終端機執行 ag-context-meter restart 後外掛將自動恢復。"
       else
-        relaunch_antigravity_with_cdp "${@:2}" || echo "提示：未能自动重启，请退出后重新点开 Antigravity。"
+        relaunch_antigravity_with_cdp "${@:2}" || echo "提示：未能自動重新啟動，請退出後重新點開 Antigravity。"
       fi
     else
-      echo "提示：当前未检测到运行中的 Antigravity 窗口，待下次启动客户端时将自动挂载。"
+      echo "提示：目前未偵測到執行中的 Antigravity 視窗，待下次啟動用戶端時將自動掛載。"
     fi
-    echo "已开启“启动 Antigravity 时自动加载”"
+    echo "已開啟“啟動 Antigravity 時自動載入”"
     ;;
   auto-off)
     uid="$(id -u)"
     launchctl bootout "gui/$uid/$LABEL" 2>/dev/null || true
-    echo "已关闭“启动 Antigravity 时自动加载”"
+    echo "已關閉“啟動 Antigravity 時自動載入”"
     stop_live
     ;;
   status)
@@ -720,7 +720,7 @@ if (notes.length > 0) {
     status_rc=0
     status_out="$(node "$APP_DIR/cli.js" status 2>&1)" || status_rc=$?
     if [ "$status_rc" -ne 0 ]; then
-      echo "获取运行状态失败：" >&2
+      echo "取得執行狀態失敗：" >&2
       echo "$status_out" >&2
       exit "$status_rc"
     fi
@@ -731,34 +731,34 @@ const autoOn = process.env.AUTO_ON === "1";
 const lw = data.liveWindow || {};
 const ver = data.antigravityVersion ? ` (v${data.antigravityVersion})` : "";
 
-console.log(`官方安装包${ver}：${data.asarPatched ? "⚠️ 检测到 app.asar 已被修改" : "✅ 未修改（官方签名完好）"}`);
+console.log(`官方安裝包${ver}：${data.asarPatched ? "⚠️ 偵測到 app.asar 已被修改" : "✅ 未修改（官方簽名完好）"}`);
 
 if (!lw.running) {
   if (lw.cdpDisabled) {
-    console.log("中文汉化：⭕ 未生效（客户端已运行但未开启调试端口；请按 ⌘Q 重开一次或在外部终端运行 ag-context-meter restart）");
-    console.log("上下文看板：⭕ 未生效（等待调试端口就绪）");
-    console.log("配额双胶囊：⭕ 未生效（等待调试端口就绪）");
-    console.log("输入框快捷栏：⭕ 未生效（等待调试端口就绪）");
-    console.log("底部能量胶囊：⭕ 未生效（等待调试端口就绪）");
+    console.log("中文介面：⭕ 未生效（用戶端已執行但未開啟偵錯連接埠；請按 ⌘Q 重開一次或在外部終端機執行 ag-context-meter restart）");
+    console.log("上下文面板：⭕ 未生效（等待偵錯連接埠就緒）");
+    console.log("配額雙膠囊：⭕ 未生效（等待偵錯連接埠就緒）");
+    console.log("輸入欄快捷列：⭕ 未生效（等待偵錯連接埠就緒）");
+    console.log("底部能量膠囊：⭕ 未生效（等待偵錯連接埠就緒）");
   } else {
-    console.log("中文汉化：⭕ 未生效（客户端未运行或调试端口未开启）");
-    console.log("上下文看板：⭕ 未生效（客户端未运行或调试端口未开启）");
-    console.log("配额双胶囊：⭕ 未生效（客户端未运行或调试端口未开启）");
-    console.log("输入框快捷栏：⭕ 未生效（客户端未运行或调试端口未开启）");
-    console.log("底部能量胶囊：⭕ 未生效（客户端未运行或调试端口未开启）");
+    console.log("中文介面：⭕ 未生效（用戶端未執行或偵錯連接埠未開啟）");
+    console.log("上下文面板：⭕ 未生效（用戶端未執行或偵錯連接埠未開啟）");
+    console.log("配額雙膠囊：⭕ 未生效（用戶端未執行或偵錯連接埠未開啟）");
+    console.log("輸入欄快捷列：⭕ 未生效（用戶端未執行或偵錯連接埠未開啟）");
+    console.log("底部能量膠囊：⭕ 未生效（用戶端未執行或偵錯連接埠未開啟）");
   }
 } else {
-  console.log(`中文汉化：${lw.hansActive ? "✅ 已生效" : "⭕ 未启用"}`);
-  const badge = lw.badgeText ? `（当前显示: ${lw.badgeText}）` : "";
-  console.log(`上下文看板：${lw.active ? "✅ 已生效" + badge : "⭕ 未启用"}`);
-  const quotaBadge = lw.quotaBadgeText ? `（当前显示: ${lw.quotaBadgeText}）` : "";
-  console.log(`配额双胶囊：${lw.enhancerActive ? "✅ 已生效" + quotaBadge : "⭕ 未启用"}`);
-  console.log(`输入框快捷栏：${lw.quickBarActive ? "✅ 已生效" : "⭕ 未启用"}`);
-  const pulseBadge = lw.pulseText ? `（当前显示: ${lw.pulseText}）` : "";
-  console.log(`底部能量胶囊：${lw.pulseActive ? "✅ 已生效" + pulseBadge : "⭕ 未启用"}`);
+  console.log(`中文介面：${lw.hansActive ? "✅ 已生效" : "⭕ 未啟用"}`);
+  const badge = lw.badgeText ? `（目前顯示: ${lw.badgeText}）` : "";
+  console.log(`上下文面板：${lw.active ? "✅ 已生效" + badge : "⭕ 未啟用"}`);
+  const quotaBadge = lw.quotaBadgeText ? `（目前顯示: ${lw.quotaBadgeText}）` : "";
+  console.log(`配額雙膠囊：${lw.enhancerActive ? "✅ 已生效" + quotaBadge : "⭕ 未啟用"}`);
+  console.log(`輸入欄快捷列：${lw.quickBarActive ? "✅ 已生效" : "⭕ 未啟用"}`);
+  const pulseBadge = lw.pulseText ? `（目前顯示: ${lw.pulseText}）` : "";
+  console.log(`底部能量膠囊：${lw.pulseActive ? "✅ 已生效" + pulseBadge : "⭕ 未啟用"}`);
 }
 
-console.log(`随客户端自启：${autoOn ? "✅ 已开启" : "⭕ 未开启"}`);
+console.log(`隨用戶端自動啟動：${autoOn ? "✅ 已開啟" : "⭕ 未開啟"}`);
 const remoteDisabled = "${AG_DISABLE_MOBILE_REMOTE:-0}" === "1" || (() => {
   const fs = require("fs"), path = require("path"), os = require("os");
   const candidates = [
@@ -770,7 +770,7 @@ const remoteDisabled = "${AG_DISABLE_MOBILE_REMOTE:-0}" === "1" || (() => {
   }
   return false;
 })();
-console.log(remoteDisabled ? "手机远程操作：⚪ 已通过 --no-remote / AG_DISABLE_MOBILE_REMOTE=1 禁用" : "手机远程操作：✅ 已就绪（运行 ag-context-meter remote 扫码连接）");
+console.log(remoteDisabled ? "手機遠端操作：⚪ 已透過 --no-remote / AG_DISABLE_MOBILE_REMOTE=1 停用" : "手機遠端操作：✅ 已就緒（執行 ag-context-meter remote 掃碼連線）");
 '
     ;;
   remote)
@@ -842,29 +842,29 @@ console.log(remoteDisabled ? "手机远程操作：⚪ 已通过 --no-remote / A
     fi
     ;;
   install|restore|uninstall|unlock|unlock-restore|chinese:*|proxy:enable|proxy:disable|proxy:set)
-    echo "已禁用 '$cmd'：为保护 macOS 官方应用签名与账号合规，本命令禁止改盘注入 app.asar 及二进制补丁操作。" >&2
+    echo "已停用 '$cmd'：為保護 macOS 官方應用簽名與帳號合規，本命令禁止改盤注入 app.asar 及二進位補丁操作。" >&2
     exit 1
     ;;
   -h|--help|help)
     cat <<'EOF'
-用法: ag-context-meter [命令] [选项]
+用法: ag-context-meter [命令] [選項]
 
 常用命令:
-  start / live   免改盘挂载「中文汉化 + 上下文看板」到当前窗口（默认；加 --no-remote 可禁用手机远程端口）
-  open / restart 以带远程调试端口方式启动或平滑重启 Antigravity（适配 v2.33.0+）并热注入插件
-  install-launcher [可选] 在 ~/Applications 创建「Antigravity 增强启动器.app」独立图标入口（适合 --no-auto 无守护场景）
-  stop           停止后台守护进程，并卸载当前窗口的中文汉化与看板（恢复英文原样）
-  auto-on        开启“启动 Antigravity 时自动加载”（含 v2.33.0+ 自动补参自愈）并立即尝试挂载
-  auto-off       关闭“启动 Antigravity 时自动加载”，并停止/卸载当前挂载
-  status         显示当前各项核心状态（加 --json 可输出原始 JSON 数据）
-  update         从 GitHub 拉取最新版本并自动热刷新运行中窗口
-  remote         打印手机极速版 PWA 远程操作链接与终端二维码（支持 --reset-token / --json）
-  check          执行本地运行环境预检
-  upstreams      检查 6 个参考上游项目的 GitHub 更新并与基线比对（支持 --json）
+  start / live   免改包熱掛載「中文介面 + 上下文面板」到目前視窗（預設；加 --no-remote 可停用手機遠端連接埠）
+  open / restart 開啟遠端偵錯連接埠並啟動或平滑重新啟動 Antigravity（支援 v2.33.0+）並熱注入外掛
+  install-launcher [選用] 在 ~/Applications 建立獨立的「Antigravity 增強啟動器」（適合 --no-auto 無守護場景）
+  stop           停止背景服務，並移除目前視窗的中文介面與上下文面板（恢復英文原樣）
+  auto-on        開啟“啟動 Antigravity 時自動載入”（含 v2.33.0+ 偵錯參數自動補啟動）並立即嘗試掛載
+  auto-off       關閉“啟動 Antigravity 時自動載入”，並停止/解除安裝目前掛載
+  status         顯示目前各項核心狀態（加 --json 可輸出原始 JSON 資料）
+  update         從 GitHub 拉取最新版本並更新目前開啟的視窗
+  remote         顯示手機極速版 PWA 遠端操作連結與終端機 QR Code（支援 --reset-token / --json）
+  check          檢查本機執行環境
+  upstreams      檢查 6 個參考上游專案的 GitHub 更新並與基線比對（支援 --json）
 EOF
     ;;
   *)
-    echo "未知命令: $cmd（请运行 ag-context-meter --help 以列出可用命令）" >&2
+    echo "未知命令: $cmd（請執行 ag-context-meter --help 以列出可用命令）" >&2
     exit 1
     ;;
 esac

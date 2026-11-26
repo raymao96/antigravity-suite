@@ -293,3 +293,91 @@ test('meter-proxy: 统一配置探测、禁用与优先级解析', () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test('PR #51 async file lock, PR #50 backup rotation, PR #36 incremental JSONL & PR #90 token-history revision', async () => {
+  const { withFileLockAsync } = require('../meter-storage');
+  const {
+    listLedgerRepairBackups,
+    pruneLedgerRepairBackups,
+    cleanupUpgradeLedgerBackups,
+    loadIncrementalTranscriptRecords,
+    shouldSkipTokenHistoryRefresh,
+    getTokenHistoryResponse,
+    recordModelCallsAsync
+  } = require('../meter-collector');
+
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-sync-storage-'));
+  try {
+    // 1. PR #51 异步文件锁串行与 stale lock 自动回收
+    const lockTarget = path.join(tmp, 'ledger.json');
+    const staleLockFile = `${lockTarget}.lock`;
+    fs.writeFileSync(staleLockFile, JSON.stringify({ pid: 99999999, nonce: 'stale', createdAtMs: Date.now() - 60000 }));
+    const order = [];
+    await Promise.all([
+      withFileLockAsync(lockTarget, async () => {
+        order.push('a-start');
+        await new Promise(r => setTimeout(r, 20));
+        order.push('a-end');
+      }),
+      withFileLockAsync(lockTarget, async () => {
+        order.push('b-start');
+        order.push('b-end');
+      })
+    ]);
+    assert.deepEqual(order, ['a-start', 'a-end', 'b-start', 'b-end']);
+
+    // 2. PR #50 备份列表、裁剪与升级清理
+    const ledgerPath = path.join(tmp, 'pricing_ledger_v1.json');
+    fs.writeFileSync(ledgerPath, JSON.stringify({ version: '1.0.0', calls: {} }));
+    for (let i = 1; i <= 5; i++) {
+      fs.writeFileSync(`${ledgerPath}.bak-pre-elv89-${1700000000000 + i}`, `{"idx":${i}}`);
+    }
+    assert.equal(listLedgerRepairBackups(ledgerPath).length, 5);
+    const pruned = pruneLedgerRepairBackups(ledgerPath, { keep: 3 });
+    assert.equal(pruned.keptCount, 3);
+    assert.equal(pruned.removedCount, 2);
+    const cleaned = cleanupUpgradeLedgerBackups({ ledgerPath, keep: 1, force: true });
+    assert.equal(cleaned.keptCount, 1);
+
+    // 3. recordModelCallsAsync 异步入账
+    const asyncRec = await recordModelCallsAsync([{
+      callId: 'async-call-1',
+      model: 'MODEL_PLACEHOLDER_M532',
+      inputTokens: 1000,
+      outputTokens: 100,
+      cacheReadTokens: 0,
+      status: 'final',
+      created_at: '2026-11-25T10:00:00Z'
+    }], { ledgerPath, useWorker: false, allowSynthetic: true });
+    assert.equal(asyncRec.ok, true);
+    assert.equal(asyncRec.changed, true);
+
+    // 4. PR #36 增量 JSONL 读取与截断回退
+    const jPath = path.join(tmp, 'session-1.jsonl');
+    const ev1 = JSON.stringify({ callId: 'e1', model: 'MODEL_PLACEHOLDER_M532', input_tokens: 100, output_tokens: 50, created_at: '2026-11-25T10:00:00Z' });
+    const ev2 = JSON.stringify({ callId: 'e2', model: 'MODEL_PLACEHOLDER_M532', input_tokens: 200, output_tokens: 60, created_at: '2026-11-25T10:01:00Z' });
+    fs.writeFileSync(jPath, ev1 + '\n');
+    const localCache = new Map();
+    const r1 = loadIncrementalTranscriptRecords(jPath, fs.statSync(jPath), localCache);
+    assert.equal(r1.mode, 'full');
+    assert.equal(r1.records.length, 1);
+
+    fs.appendFileSync(jPath, ev2 + '\n');
+    const r2 = loadIncrementalTranscriptRecords(jPath, fs.statSync(jPath), localCache);
+    assert.equal(r2.mode, 'incremental');
+    assert.equal(r2.records.length, 2);
+
+    fs.writeFileSync(jPath, ev2 + '\n');
+    const r3 = loadIncrementalTranscriptRecords(jPath, fs.statSync(jPath), localCache);
+    assert.equal(r3.mode, 'full');
+    assert.equal(r3.records.length, 1);
+
+    // 5. PR #90 /token-history revision 判重
+    assert.equal(shouldSkipTokenHistoryRefresh({ force: false, knownRevision: 'rev1', revision: 'rev1', knownAccountKey: 'u@x', accountKey: 'u@x' }), true);
+    assert.equal(shouldSkipTokenHistoryRefresh({ force: false, knownRevision: 'rev1', revision: 'rev1', knownAccountKey: 'u@x', accountKey: 'u@y' }), false);
+    assert.equal(shouldSkipTokenHistoryRefresh({ force: true, knownRevision: 'rev1', revision: 'rev1', knownAccountKey: 'u@x', accountKey: 'u@x' }), false);
+    assert.equal(typeof getTokenHistoryResponse, 'function');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});

@@ -3,14 +3,29 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { execFile, spawn } = require('child_process');
-const { getStateDir } = require('./asar-engine');
+const net = require('net');
+const os = require('os');
+const { execFile } = require('child_process');
+const { findAsarPath, getStateDir } = require('./asar-engine');
 
 const DEFAULT_TTL_MS = 15000;
 const DEFAULT_TEST_PREVIEW_MS = 5000;
 const MAX_UNREAD_TOTAL = 999;
 const MAX_APPROVAL_TOTAL = 99;
-const CACHE_BINARY_PREFIX = 'ag-dock-overlay-';
+const DOCK_HELPER_ID = 'com.antigravity.suite.dock-overlay';
+const DOCK_HELPER_NAME = 'Antigravity Suite Dock 提醒';
+const DOCK_HELPER_EXECUTABLE = 'ag-dock-overlay';
+const DOCK_HELPER_ICON_FILE = 'Antigravity.icns';
+
+function readAntigravityIcon() {
+  try {
+    const resources = path.dirname(findAsarPath());
+    const icon = fs.readFileSync(path.join(resources, 'icon.icns'));
+    return icon.length ? icon : null;
+  } catch {
+    return null;
+  }
+}
 
 function isDockOverlaySupportedPlatform(platform = process.platform) {
   return platform === 'darwin';
@@ -150,7 +165,6 @@ function createMacosDockBadgeManager(options = {}) {
     : DEFAULT_TTL_MS;
   const disableSpawn = options.disableSpawn === true;
   const hasCustomExecFile = typeof options.execFile === 'function';
-  const spawnFn = typeof options.spawn === 'function' ? options.spawn : spawn;
   const execFileFn = hasCustomExecFile ? options.execFile : execFile;
 
   const initialUiPrefs = options.uiPreferences !== undefined ? options.uiPreferences : loadInitialUiPrefsSafe();
@@ -184,49 +198,30 @@ function createMacosDockBadgeManager(options = {}) {
     compileErrorDetail = String(detail || '').trim().slice(0, 400);
   }
 
-  let helperChild = null;
+  const helperAppPath = path.join(binDir, `${DOCK_HELPER_NAME}.app`);
+  const binaryRelativePath = path.join('Contents', 'MacOS', DOCK_HELPER_EXECUTABLE);
+  let helperSocket = null;
+  let helperPid = null;
+  let helperLaunchPromise = null;
+  let cancelHelperLaunch = null;
   let helperStoppingPromise = null;
-  let helperStdoutBuf = '';
-  let helperStderrTail = '';
-  let helperStartedAt = 0;
   let restartAttempts = 0;
   let restartTimer = null;
   let lastSentFrameJson = '';
-
   let axTrusted = null;
   let dockFound = null;
   let iconSide = 0;
 
-  function computeSourceHash8() {
+  function computeSourceHash8(hasIcon) {
     const src = fs.readFileSync(swiftSourcePath);
-    return crypto.createHash('sha256').update(src).digest('hex').slice(0, 8);
-  }
-
-  function cleanupOldBinaries(keepFilename) {
-    try {
-      if (!fs.existsSync(binDir)) return;
-      const entries = fs.readdirSync(binDir, { withFileTypes: true });
-      for (const ent of entries) {
-        if (!ent.isFile()) continue;
-        if (!ent.name.startsWith(CACHE_BINARY_PREFIX)) continue;
-        if (ent.name === keepFilename) continue;
-        // 跳过同进程或别的进程正在临时编译中的文件（超过 5 分钟再清理）
-        if (ent.name.includes('.tmp-')) {
-          try {
-            const st = fs.statSync(path.join(binDir, ent.name));
-            if (Date.now() - st.mtimeMs < 300000) continue;
-          } catch {}
-        }
-        try {
-          fs.unlinkSync(path.join(binDir, ent.name));
-        } catch {}
-      }
-    } catch {}
+    const bundleFormat = hasIcon ? ':app-v2-icon' : ':app-v1';
+    return crypto.createHash('sha256').update(DOCK_HELPER_ID + bundleFormat).update(src).digest('hex').slice(0, 8);
   }
 
   async function ensureCompiled() {
     if (!supported || disableSpawn || stopped) return false;
 
+    const icon = readAntigravityIcon();
     let hash8 = '';
     try {
       if (!fs.existsSync(swiftSourcePath)) {
@@ -238,7 +233,7 @@ function createMacosDockBadgeManager(options = {}) {
         compiled = false;
         return false;
       }
-      hash8 = computeSourceHash8();
+      hash8 = computeSourceHash8(Boolean(icon));
     } catch (err) {
       setCompileError(
         'READ_SOURCE_FAILED',
@@ -249,12 +244,12 @@ function createMacosDockBadgeManager(options = {}) {
       return false;
     }
 
-    const expectedFilename = 'ag-dock-overlay';
-    const expectedPath = path.join(binDir, expectedFilename);
-    const hashFilePath = path.join(binDir, `${expectedFilename}.hash`);
+    const expectedPath = path.join(helperAppPath, binaryRelativePath);
+    const hashFilePath = path.join(binDir, 'ag-dock-overlay-app.hash');
 
     try {
-      if (fs.existsSync(expectedPath) && fs.existsSync(hashFilePath)) {
+      if (fs.existsSync(expectedPath) && fs.existsSync(hashFilePath) &&
+          fs.existsSync(path.join(helperAppPath, 'Contents', 'Info.plist'))) {
         const st = fs.statSync(expectedPath);
         const savedHash = String(fs.readFileSync(hashFilePath, 'utf8') || '').trim();
         if (st.isFile() && st.size > 0 && savedHash === hash8) {
@@ -264,7 +259,6 @@ function createMacosDockBadgeManager(options = {}) {
           compiled = true;
           clearCompileError();
           swiftcAvailable = true;
-          cleanupOldBinaries(expectedFilename);
           return true;
         }
       }
@@ -306,41 +300,74 @@ function createMacosDockBadgeManager(options = {}) {
 
         if (stopped) return false;
         fs.mkdirSync(binDir, { recursive: true });
-        const tmpOut = path.join(binDir, `${expectedFilename}.tmp-${process.pid}-${Date.now()}`);
-        const compRes = await execFileAsync(
-          execFileFn,
-          'swiftc',
-          ['-O', swiftSourcePath, '-o', tmpOut],
-          { timeout: 60000 }
-        );
-        if (!compRes.ok || !fs.existsSync(tmpOut)) {
-          try { if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut); } catch {}
-          const detail = (compRes.stderr || compRes.error?.message || 'swiftc 编译失败').trim().split(/\r?\n/)[0];
-          setCompileError(
-            'COMPILE_FAILED',
-            'Dock 图标提醒组件编译未通过（原有功能不受影响），请确认系统开发工具版本兼容后重试',
-            detail
-          );
-          compiled = false;
-          return false;
-        }
-        try { fs.chmodSync(tmpOut, 0o755); } catch {}
+        const stagingDir = fs.mkdtempSync(path.join(binDir, 'dock-build-'));
         try {
-          await execFileAsync(
+          const stagedApp = path.join(stagingDir, path.basename(helperAppPath));
+          const tmpOut = path.join(stagedApp, binaryRelativePath);
+          fs.mkdirSync(path.dirname(tmpOut), { recursive: true });
+          if (icon) {
+            const resources = path.join(stagedApp, 'Contents', 'Resources');
+            fs.mkdirSync(resources, { recursive: true });
+            fs.writeFileSync(path.join(resources, DOCK_HELPER_ICON_FILE), icon);
+          }
+          fs.writeFileSync(path.join(stagedApp, 'Contents', 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>${DOCK_HELPER_ID}</string>
+<key>CFBundleName</key><string>${DOCK_HELPER_NAME}</string>
+<key>CFBundleDisplayName</key><string>${DOCK_HELPER_NAME}</string>
+<key>CFBundleExecutable</key><string>${DOCK_HELPER_EXECUTABLE}</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+${icon ? `<key>CFBundleIconFile</key><string>${DOCK_HELPER_ICON_FILE}</string>\n` : ''}<key>CFBundleVersion</key><string>1</string>
+<key>LSUIElement</key><true/>
+</dict></plist>
+  `);
+          const compRes = await execFileAsync(
             execFileFn,
-            'codesign',
-            ['--force', '--sign', '-', '--identifier', 'com.antigravity.suite.dock-overlay', tmpOut],
+            'swiftc',
+            ['-O', swiftSourcePath, '-o', tmpOut],
+            { timeout: 60000 }
+          );
+          if (!compRes.ok || !fs.existsSync(tmpOut)) {
+            const detail = (compRes.stderr || compRes.error?.message || 'swiftc 编译失败').trim().split(/\r?\n/)[0];
+            setCompileError(
+              'COMPILE_FAILED',
+              'Dock 图标提醒组件编译未通过（原有功能不受影响），请确认系统开发工具版本兼容后重试',
+              detail
+            );
+            compiled = false;
+            return false;
+          }
+          fs.chmodSync(tmpOut, 0o755);
+          const signRes = await execFileAsync(
+            execFileFn,
+            '/usr/bin/codesign',
+            ['--force', '--sign', '-', '--identifier', DOCK_HELPER_ID, stagedApp],
             { timeout: 10000 }
           );
-        } catch {}
-        fs.renameSync(tmpOut, expectedPath);
-        try { fs.writeFileSync(hashFilePath, hash8, 'utf8'); } catch {}
-        compiledBinPath = expectedPath;
-        compiledHash = hash8;
-        compiled = true;
-        clearCompileError();
-        cleanupOldBinaries(expectedFilename);
-        return true;
+          if (!signRes.ok) {
+            setCompileError('SIGN_FAILED', '无法签署 Dock 图标提醒组件，请重试', signRes.stderr || signRes.error?.message);
+            compiled = false;
+            return false;
+          }
+
+          const previousApp = path.join(stagingDir, 'previous.app');
+          if (fs.existsSync(helperAppPath)) fs.renameSync(helperAppPath, previousApp);
+          try {
+            fs.renameSync(stagedApp, helperAppPath);
+          } catch (error) {
+            if (fs.existsSync(previousApp)) fs.renameSync(previousApp, helperAppPath);
+            throw error;
+          }
+          fs.writeFileSync(hashFilePath, hash8, 'utf8');
+          compiledBinPath = expectedPath;
+          compiledHash = hash8;
+          compiled = true;
+          clearCompileError();
+          return true;
+        } finally {
+          fs.rmSync(stagingDir, { recursive: true, force: true });
+        }
       } catch (err) {
         setCompileError(
           'COMPILE_FAILED',
@@ -381,30 +408,23 @@ function createMacosDockBadgeManager(options = {}) {
   }
 
   function writeFrameToHelper(frameObj, force = false) {
-    if (!helperChild || helperChild.killed || helperChild.exitCode !== null) return false;
-    if (!helperChild.stdin || helperChild.stdin.destroyed || !helperChild.stdin.writable) return false;
+    if (!helperSocket?.writable) return false;
     const line = JSON.stringify(frameObj);
     if (!force && line === lastSentFrameJson) return true;
-    try {
-      helperChild.stdin.write(line + '\n');
-      lastSentFrameJson = line;
-      return true;
-    } catch {
-      return false;
-    }
+    helperSocket.write(line + '\n');
+    lastSentFrameJson = line;
+    return true;
   }
 
-  function handleHelperStdoutLine(line) {
-    const trimmed = line.trim();
-    if (!trimmed) return;
+  function handleHelperStatus(line) {
     try {
-      const msg = JSON.parse(trimmed);
-      if (msg && msg.type === 'status') {
-        if (typeof msg.axTrusted === 'boolean') axTrusted = msg.axTrusted;
-        if (typeof msg.dockFound === 'boolean') dockFound = msg.dockFound;
-        if (typeof msg.iconSide === 'number' && Number.isFinite(msg.iconSide)) {
-          iconSide = Math.max(0, Math.round(msg.iconSide));
-        }
+      const msg = JSON.parse(line);
+      if (msg?.type !== 'status') return;
+      if (Number.isInteger(msg.pid) && msg.pid > 0) helperPid = msg.pid;
+      if (typeof msg.axTrusted === 'boolean') axTrusted = msg.axTrusted;
+      if (typeof msg.dockFound === 'boolean') dockFound = msg.dockFound;
+      if (typeof msg.iconSide === 'number' && Number.isFinite(msg.iconSide)) {
+        iconSide = Math.max(0, Math.round(msg.iconSide));
       }
     } catch {}
   }
@@ -416,158 +436,135 @@ function createMacosDockBadgeManager(options = {}) {
     }
   }
 
-  function spawnHelperIfReady() {
-    if (!supported || disableSpawn || stopped || !prefs.enabled) return false;
-    if (!compiled || !compiledBinPath) return false;
-    if (helperStoppingPromise) return false;
-    if (helperChild && !helperChild.killed && helperChild.exitCode === null) return true;
+  function scheduleHelperRestart() {
+    if (stopped || !prefs.enabled || helperStoppingPromise || restartTimer || restartAttempts >= 5) return;
+    restartAttempts += 1;
+    const delayMs = Math.min(10000, 1000 * Math.pow(2, restartAttempts - 1));
+    restartTimer = setTimeout(() => {
+      restartTimer = null;
+      void ensureHelperRunning();
+    }, delayMs);
+    restartTimer.unref?.();
+  }
 
-    clearRestartTimer();
-    lastSentFrameJson = '';
-    helperStdoutBuf = '';
-    helperStderrTail = '';
-
-    let child;
-    try {
-      child = spawnFn(compiledBinPath, [], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        windowsHide: true
-      });
-    } catch (err) {
-      setCompileError(
-        'SPAWN_FAILED',
-        '无法启动 Dock 图标提醒后台组件（其他功能不受影响），请重试或重启 Antigravity',
-        err?.message || '拉起 Dock 浮层进程失败'
-      );
-      return false;
-    }
-
-    clearCompileError();
-    helperChild = child;
-    helperStartedAt = Date.now();
-
-    child.stdout?.on('data', (chunk) => {
-      helperStdoutBuf += chunk.toString('utf8');
-      let nlIdx;
-      while ((nlIdx = helperStdoutBuf.indexOf('\n')) !== -1) {
-        const line = helperStdoutBuf.slice(0, nlIdx);
-        helperStdoutBuf = helperStdoutBuf.slice(nlIdx + 1);
-        handleHelperStdoutLine(line);
+  function launchHelper() {
+    const socketDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-dock-'));
+    const socketPath = path.join(socketDir, 'ipc');
+    const server = net.createServer();
+    return new Promise((resolve) => {
+      let settled = false;
+      const timer = setTimeout(() => finish(false, 'Dock helper connection timed out'), 5000);
+      function finish(ok, detail = '') {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        cancelHelperLaunch = null;
+        server.close();
+        try { fs.rmSync(socketDir, { recursive: true, force: true }); } catch {}
+        if (detail) setCompileError('SPAWN_FAILED', '无法启动 Dock 图标提醒后台组件，请重试', detail);
+        resolve(ok);
       }
-    });
-
-    child.stderr?.on('data', (chunk) => {
-      const text = chunk.toString('utf8');
-      helperStderrTail = (helperStderrTail + text).slice(-600);
-    });
-
-    child.stdin?.on('error', () => {});
-
-    child.on('exit', () => {
-      const uptimeMs = Date.now() - helperStartedAt;
-      if (helperChild === child) {
-        helperChild = null;
-        lastSentFrameJson = '';
-      }
-      if (uptimeMs >= 15000) {
-        restartAttempts = 0;
-      }
-      if (!stopped && prefs.enabled && !helperStoppingPromise) {
-        if (restartAttempts < 5) {
-          restartAttempts += 1;
-          const delayMs = Math.min(10000, 1000 * Math.pow(2, restartAttempts - 1));
-          restartTimer = setTimeout(() => {
-            restartTimer = null;
-            void ensureHelperRunning();
-          }, delayMs);
-          restartTimer.unref?.();
+      cancelHelperLaunch = () => finish(false);
+      server.on('error', (error) => finish(false, error.message));
+      server.on('connection', (socket) => {
+        socket.on('error', () => {});
+        if (settled || stopped || !prefs.enabled) {
+          socket.destroy();
+          finish(false);
+          return;
         }
-      }
+        helperSocket = socket;
+        helperPid = null;
+        axTrusted = null;
+        dockFound = null;
+        lastSentFrameJson = '';
+        clearCompileError();
+        const startedAt = Date.now();
+        let pending = '';
+        socket.setEncoding('utf8');
+        socket.on('data', (chunk) => {
+          pending += chunk;
+          let newline;
+          while ((newline = pending.indexOf('\n')) !== -1) {
+            handleHelperStatus(pending.slice(0, newline));
+            pending = pending.slice(newline + 1);
+          }
+          if (pending.length > 8192) socket.destroy();
+        });
+        socket.on('close', () => {
+          if (helperSocket !== socket) return;
+          helperSocket = null;
+          helperPid = null;
+          axTrusted = null;
+          dockFound = null;
+          lastSentFrameJson = '';
+          if (Date.now() - startedAt >= 15000) restartAttempts = 0;
+          scheduleHelperRestart();
+        });
+        writeFrameToHelper(buildFramePayload(), true);
+        finish(true);
+      });
+      server.listen(socketPath, () => {
+        if (settled) return;
+        void execFileAsync(execFileFn, '/usr/bin/open',
+          ['-n', '-g', '-a', helperAppPath, '--args', '--socket', socketPath], { timeout: 5000 })
+          .then((result) => {
+            if (!result.ok) finish(false, result.stderr || result.error?.message || 'LaunchServices refused the helper');
+          });
+      });
     });
-
-    writeFrameToHelper(buildFramePayload(), true);
-    return true;
   }
 
   async function ensureHelperRunning() {
     if (!supported || disableSpawn || stopped || !prefs.enabled) return false;
-    if (helperStoppingPromise) {
-      await helperStoppingPromise;
-    }
+    if (helperStoppingPromise) await helperStoppingPromise;
     if (stopped || !prefs.enabled) return false;
-    const ok = await ensureCompiled();
-    if (!ok || stopped || !prefs.enabled) return false;
-    return spawnHelperIfReady();
+    if (helperSocket?.writable) return true;
+    if (!helperLaunchPromise) {
+      helperLaunchPromise = (async () => {
+        if (!await ensureCompiled() || stopped || !prefs.enabled) return false;
+        try {
+          const ok = await launchHelper();
+          if (!ok) scheduleHelperRestart();
+          return ok;
+        } catch (error) {
+          setCompileError('SPAWN_FAILED', '无法启动 Dock 图标提醒后台组件，请重试', error.message);
+          scheduleHelperRestart();
+          return false;
+        }
+      })().finally(() => { helperLaunchPromise = null; });
+    }
+    return await helperLaunchPromise;
   }
 
   function stopHelperProcess() {
     clearRestartTimer();
+    cancelHelperLaunch?.();
     if (helperStoppingPromise) return helperStoppingPromise;
-    const child = helperChild;
-    if (!child || child.exitCode !== null) {
-      helperChild = null;
-      lastSentFrameJson = '';
-      return Promise.resolve();
-    }
-
+    const socket = helperSocket;
+    if (!socket) return Promise.resolve();
+    helperSocket = null;
+    helperPid = null;
+    axTrusted = null;
+    dockFound = null;
+    lastSentFrameJson = '';
     helperStoppingPromise = new Promise((resolve) => {
-      let done = false;
-      let termTimer = null;
-      let killTimer = null;
-
-      const finish = () => {
-        if (done) return;
-        done = true;
-        if (termTimer) clearTimeout(termTimer);
-        if (killTimer) clearTimeout(killTimer);
-        if (helperChild === child) {
-          helperChild = null;
-        }
-        lastSentFrameJson = '';
+      const timer = setTimeout(() => socket.destroy(), 500);
+      socket.once('close', () => {
+        clearTimeout(timer);
         helperStoppingPromise = null;
         resolve();
-      };
-
-      child.once('exit', finish);
-
-      try {
-        const hideFrame = JSON.stringify({
-          visible: false,
-          unread: 0,
-          approval: 0,
-          highRisk: false,
-          running: false,
-          style: prefs.style,
-          colorTier: prefs.colorTier,
-          locale: 'zh-CN'
-        });
-        if (child.stdin && !child.stdin.destroyed && child.stdin.writable) {
-          child.stdin.write(hideFrame + '\n');
-          child.stdin.end();
-        }
-      } catch {}
-
-      termTimer = setTimeout(() => {
-        if (done) return;
-        try { child.kill('SIGTERM'); } catch {}
-        killTimer = setTimeout(() => {
-          if (done) return;
-          try { child.kill('SIGKILL'); } catch {}
-          finish();
-        }, 250);
-        killTimer.unref?.();
-      }, 400);
-      termTimer.unref?.();
+      });
+      socket.end(JSON.stringify({ visible: false }) + '\n');
     });
-
     return helperStoppingPromise;
   }
 
   function syncOverlayFrame() {
     if (!supported || disableSpawn || stopped || !prefs.enabled) return;
-    if (helperChild && !helperChild.killed && helperChild.exitCode === null) {
-      writeFrameToHelper(buildFramePayload(), false);
-    } else if (!compilePromise && !helperStoppingPromise && !restartTimer) {
+    if (helperSocket?.writable) {
+      writeFrameToHelper(buildFramePayload());
+    } else if (!helperLaunchPromise && !helperStoppingPromise && !restartTimer) {
       void ensureHelperRunning();
     }
   }
@@ -665,7 +662,7 @@ function createMacosDockBadgeManager(options = {}) {
       previewState = null;
       void stopHelperProcess();
     } else if (supported && !disableSpawn) {
-      if (!prevEnabled || !helperChild || helperChild.exitCode !== null) {
+      if (!prevEnabled || !helperSocket?.writable) {
         restartAttempts = 0;
         void ensureHelperRunning();
       } else {
@@ -753,18 +750,16 @@ function createMacosDockBadgeManager(options = {}) {
     if (disableSpawn) {
       return { ok: true, dryRun: true };
     }
-    try {
-      const wasEnabled = prefs.enabled;
-      if (!wasEnabled) {
-        await ensureCompiled();
-      } else {
-        await ensureHelperRunning();
+    if (prefs.enabled) {
+      if (!await ensureHelperRunning() || !writeFrameToHelper({ promptAccessibility: true }, true)) {
+        return { ok: false, errorCode: 'HELPER_START_FAILED', error: compileError };
       }
-      if (helperChild && !helperChild.killed && helperChild.exitCode === null && helperChild.stdin?.writable) {
-        helperChild.stdin.write(JSON.stringify({ promptAccessibility: true }) + '\n');
-        await new Promise((r) => setTimeout(r, 150));
-      }
-    } catch {}
+    } else {
+      if (!await ensureCompiled()) return { ok: false, errorCode: 'HELPER_START_FAILED', error: compileError };
+      const launched = await execFileAsync(execFileFn, '/usr/bin/open',
+        ['-n', '-g', '-a', helperAppPath, '--args', '--request-accessibility'], { timeout: 5000 });
+      if (!launched.ok) return { ok: false, errorCode: 'HELPER_START_FAILED', error: '无法启动 Dock 图标提醒助手' };
+    }
     const res = await execFileAsync(
       execFileFn,
       'open',
@@ -775,7 +770,7 @@ function createMacosDockBadgeManager(options = {}) {
       return {
         ok: false,
         errorCode: 'OPEN_AX_FAILED',
-        error: '未能自动打开「系统设置」，请手动前往「系统设置 → 隐私与安全性 → 辅助功能」开启 Antigravity 的权限'
+        error: '未能自动打开「系统设置」，请手动前往「系统设置 → 隐私与安全性 → 辅助功能」允许 Antigravity Suite Dock 提醒'
       };
     }
     return { ok: true };
@@ -783,7 +778,7 @@ function createMacosDockBadgeManager(options = {}) {
 
   function getStatus() {
     const agg = aggregateDockStates(windows, Date.now(), ttlMs);
-    const helperRunning = Boolean(helperChild && !helperChild.killed && helperChild.exitCode === null);
+    const helperRunning = Boolean(helperSocket?.writable);
     return {
       ok: true,
       supported,
@@ -801,14 +796,15 @@ function createMacosDockBadgeManager(options = {}) {
       binaryHash: compiledHash,
       binaryPath: compiled ? compiledBinPath : '',
       helperRunning,
-      helperPid: helperRunning ? (helperChild?.pid || null) : null,
+      helperPid: helperRunning ? helperPid : null,
       axTrusted,
       dockFound,
       iconSide,
       previewActive: Boolean(previewState && Date.now() < previewState.expiresAt),
       windowCount: agg.windowCount,
       aggregated: agg,
-      lastStderr: helperStderrTail || ''
+      helperAppPath: compiled ? helperAppPath : '',
+      lastStderr: ''
     };
   }
 

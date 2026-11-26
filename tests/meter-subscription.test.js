@@ -154,8 +154,9 @@ test('参考价模式下连续切换多个订阅国家与修改账号地区隔�
   h.elements.get('direct-region-trigger').click();
   let directMenu = h.elements.get('direct-region-menu');
   let listContainer = directMenu.children.find(c => c.className === 'ag-dropdown-list-container');
-  let twItem = listContainer.children.find(it => it.textContent.includes('台湾') || it.textContent.includes('TW') || it.children?.some(c => c.textContent.includes('台湾')));
+  let twItem = listContainer.children.find(it => it.getAttribute('data-value') === 'TW');
   assert.ok(twItem, 'Taiwan item exists in dropdown');
+  assert.match(twItem.children[0].textContent, /台灣 \(TWD\)/);
   twItem.click();
   await h.flush();
 
@@ -168,7 +169,7 @@ test('参考价模式下连续切换多个订阅国家与修改账号地区隔�
   h.elements.get('direct-region-trigger').click();
   directMenu = h.elements.get('direct-region-menu');
   listContainer = directMenu.children.find(c => c.className === 'ag-dropdown-list-container');
-  let jpItem = listContainer.children.find(it => it.textContent.includes('日本') || it.children?.some(c => c.textContent.includes('日本')));
+  let jpItem = listContainer.children.find(it => it.getAttribute('data-value') === 'JP');
   assert.ok(jpItem, 'Japan item exists in dropdown');
   jpItem.click();
   await h.flush();
@@ -184,7 +185,7 @@ test('参考价模式下连续切换多个订阅国家与修改账号地区隔�
   h.elements.get('direct-region-trigger').click();
   directMenu = h.elements.get('direct-region-menu');
   listContainer = directMenu.children.find(c => c.className === 'ag-dropdown-list-container');
-  let krItem = listContainer.children.find(it => it.textContent.includes('韩国') || it.children?.some(c => c.textContent.includes('韩国')));
+  let krItem = listContainer.children.find(it => it.getAttribute('data-value') === 'KR');
   assert.ok(krItem, 'Korea item exists in dropdown');
   krItem.click();
   await h.flush();
@@ -199,7 +200,7 @@ test('参考价模式下连续切换多个订阅国家与修改账号地区隔�
   h.elements.get('direct-region-trigger').click();
   directMenu = h.elements.get('direct-region-menu');
   listContainer = directMenu.children.find(c => c.className === 'ag-dropdown-list-container');
-  let auItem = listContainer.children.find(it => it.textContent.includes('澳大利亚') || it.children?.some(c => c.textContent.includes('澳大利亚')));
+  let auItem = listContainer.children.find(it => it.getAttribute('data-value') === 'AU');
   assert.ok(auItem, 'Australia item exists in dropdown');
   auItem.click();
   await h.flush();
@@ -281,7 +282,7 @@ test('自定义实付模式下非零金额、0 元与不同周期，且切换订
   h.elements.get('direct-region-trigger').click();
   const directMenu = h.elements.get('direct-region-menu');
   const listContainer = directMenu.children.find(c => c.className === 'ag-dropdown-list-container');
-  const jpItem = listContainer.children.find(it => it.textContent.includes('日本') || it.children?.some(c => c.textContent.includes('日本')));
+  const jpItem = listContainer.children.find(it => it.getAttribute('data-value') === 'JP');
   assert.ok(jpItem, 'Japan item exists');
   jpItem.click();
   await h.flush();
@@ -352,7 +353,7 @@ test('并发 restoreSettingsFromHost 与倒序回包防护，控件立即可操�
   h.elements.get('direct-region-trigger').click();
   const directMenu = h.elements.get('direct-region-menu');
   const listContainer = directMenu.children.find(c => c.className === 'ag-dropdown-list-container');
-  const krItem = listContainer.children.find(it => it.textContent.includes('韩国') || it.children?.some(c => c.textContent.includes('韩国')));
+  const krItem = listContainer.children.find(it => it.getAttribute('data-value') === 'KR');
   krItem.click();
   await h.flush();
 
@@ -583,6 +584,83 @@ test('Google AI Ultra 子档自定义下拉支持 5x / 20x 数据展示、自定
     const resolvedUnknown = core.resolveEffectivePlanStatus(ultraRaw, loadedCleared.customPlan, { currentEmail: 'ultra_user@enterprise.invalid' });
     assert.equal(resolvedUnknown.tierName, 'Google AI Ultra（子档未知）');
     assert.equal(resolvedUnknown.ultraSubTier, null);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+
+  api.dispose();
+});
+
+test('6-tier planTierOverride persistence, renderer switching & 14-country reference price sync', async () => {
+  const h = harness();
+  const api = h.sandbox.__AGContextMeter;
+
+  api.setTokenHistoryForTest({
+    summary: {
+      grandTotalTokens: 1000,
+      totalConversations: 1,
+      costEstimate: { pricedCostUSD: 1, unpricedCount: 0, coveragePercent: 100, byModel: {} },
+      costEstimateCurrentMonth: { pricedCostUSD: 1, unpricedCount: 0, coveragePercent: 100, byModel: {} }
+    },
+    planStatus: core.resolveEffectivePlanStatus({
+      status: 'identified',
+      tierKey: 'pro',
+      tierName: 'Google AI Pro',
+      email: 'tier_user@example.com'
+    }, null),
+    dailyMap: { '2026-11-25': { total: 1000, input: 800, output: 100, cache: 100, steps: 1 } }
+  });
+  await h.flush();
+
+  // 手动切换为 Google AI Plus
+  api.setPlanTierOverride('plus');
+  await h.flush();
+  const priceVal = h.elements.get('plan-summary-price-val');
+  assert.ok(priceVal);
+  assert.equal(api.getPlanSettings().planTierOverride, 'plus');
+  assert.equal(api.getPlanSettings().tierKey, 'plus');
+  assert.match(priceVal.textContent, /\$4\.99\/月/);
+
+  h.sandbox.localStorage = { getItem: key => key === 'ag_suite_base_currency' ? 'TWD' : null, setItem() {}, removeItem() {} };
+  h.elements.get('direct-region-trigger').click();
+  const regionMenu = h.elements.get('direct-region-menu');
+  const regionList = regionMenu.children.find(node => node.className === 'ag-dropdown-list-container');
+  const japan = regionList.children.find(node => node.getAttribute('data-value') === 'JP');
+  assert.equal(japan.children[1].textContent, '¥750/月 · ≈ NT$151.8 TWD');
+  const taiwan = regionList.children.find(node => node.getAttribute('data-value') === 'TW');
+  assert.equal(taiwan.children[1].textContent, 'NT$160/月');
+
+  // 切换为免费版
+  api.setPlanTierOverride('free');
+  await h.flush();
+  assert.equal(api.getPlanSettings().tierKey, 'free');
+  assert.match(priceVal.textContent, /\$0\/月/);
+
+  // 恢复自动检测
+  api.setPlanTierOverride('auto');
+  await h.flush();
+  assert.equal(api.getPlanSettings().planTierOverride, 'auto');
+  assert.equal(api.getPlanSettings().tierKey, 'pro');
+
+  // 独立目录验证 planTierOverride 落盘与清除
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-tier-ov-'));
+  try {
+    const s1 = savePluginSettings({
+      email: 'tier_user@example.com',
+      customPlan: { planTierOverride: 'ultra_5x' }
+    }, { agDir: tmpDir });
+    assert.equal(s1.ok, true);
+    const g1 = getPluginSettings({ agDir: tmpDir, email: 'tier_user@example.com' });
+    assert.equal(g1.customPlan.planTierOverride, 'ultra_5x');
+    assert.equal(g1.customPlan.ultraSubTier, '5x');
+
+    const s2 = savePluginSettings({
+      email: 'tier_user@example.com',
+      customPlan: { planTierOverride: 'auto' }
+    }, { agDir: tmpDir });
+    assert.equal(s2.ok, true);
+    const g2 = getPluginSettings({ agDir: tmpDir, email: 'tier_user@example.com' });
+    assert.equal(g2.customPlan.planTierOverride, undefined);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

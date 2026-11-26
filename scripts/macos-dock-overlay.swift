@@ -571,7 +571,7 @@ final class OverlayController {
         lastDockFound = dockFound
         lastReportedIconSide = roundedSide
 
-        let payload = "{\"type\":\"status\",\"axTrusted\":\(axTrusted ? "true" : "false"),\"dockFound\":\(dockFound ? "true" : "false"),\"iconSide\":\(Int(roundedSide))}\n"
+        let payload = "{\"type\":\"status\",\"pid\":\(getpid()),\"axTrusted\":\(axTrusted ? "true" : "false"),\"dockFound\":\(dockFound ? "true" : "false"),\"iconSide\":\(Int(roundedSide))}\n"
         fputs(payload, stdout)
         fflush(stdout)
     }
@@ -768,13 +768,46 @@ final class OverlayController {
     }
 }
 
+private func attachControlSocket(_ path: String) -> Bool {
+    var address = sockaddr_un()
+    let bytes = Array(path.utf8CString)
+    guard bytes.count <= MemoryLayout.size(ofValue: address.sun_path) else { return false }
+    address.sun_family = sa_family_t(AF_UNIX)
+    address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+    withUnsafeMutableBytes(of: &address.sun_path) { destination in
+        bytes.withUnsafeBytes { destination.copyBytes(from: $0) }
+    }
+    let fd = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
+    guard fd >= 0 else { return false }
+    defer { Darwin.close(fd) }
+    let connected = withUnsafePointer(to: &address) { pointer in
+        pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+            Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+        }
+    }
+    guard connected == 0 else { return false }
+    return dup2(fd, STDIN_FILENO) >= 0 && dup2(fd, STDOUT_FILENO) >= 0
+}
+
 @MainActor
 private func runOverlayMain() {
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
 
+    let args = CommandLine.arguments
+    if args.contains("--request-accessibility") {
+        let opts = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
+        _ = AXIsProcessTrustedWithOptions(opts)
+        return
+    }
+    if let index = args.firstIndex(of: "--socket") {
+        guard args.indices.contains(index + 1), attachControlSocket(args[index + 1]) else {
+            Darwin.exit(1)
+        }
+    }
     signal(SIGTERM, SIG_IGN)
     signal(SIGINT, SIG_IGN)
+    signal(SIGPIPE, SIG_IGN)
 
     let sigterm = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
     sigterm.setEventHandler {

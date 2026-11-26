@@ -17,7 +17,7 @@ const origFsMethods = {
   statSync: fs.statSync,
   existsSync: fs.existsSync
 };
-const { safeWriteJsonSync, safeReadJsonSync, withFileLockSync } = require('./meter-storage');
+const { safeWriteJsonSync, safeReadJsonSync, withFileLockSync, withFileLockAsync } = require('./meter-storage');
 const { buildCliProxyEnv, detectProxyConfig, parseAndValidateProxyUrl, matchesNoProxy } = require('./meter-proxy');
 const {
   conversationWorkspaces,
@@ -46,6 +46,9 @@ const {
 } = require('./meter-context-unlock');
 const {
   analyzeSteps,
+  extractGeneratorMaxStep,
+  isCheckpointNewerThanGenerator,
+  buildPostCompactSummary,
   summarize,
   add,
   empty,
@@ -461,6 +464,25 @@ function getImageDimensions(buf) {
     if (buf.length >= 26 && buf[0] === 0x42 && buf[1] === 0x4D) {
       return { width: Math.abs(buf.readInt32LE(18)), height: Math.abs(buf.readInt32LE(22)) };
     }
+    if (buf.length >= 16 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') {
+      const chunk = buf.toString('ascii', 12, 16);
+      if (chunk === 'VP8 ' && buf.length >= 30) {
+        if ((buf[20] & 0x01) === 0 && buf[23] === 0x9D && buf[24] === 0x01 && buf[25] === 0x2A) {
+          const width = buf.readUInt16LE(26) & 0x3FFF;
+          const height = buf.readUInt16LE(28) & 0x3FFF;
+          if (width > 0 && height > 0) return { width, height };
+        }
+      } else if (chunk === 'VP8L' && buf.length >= 25 && buf[20] === 0x2F) {
+        const packed = buf.readUInt32LE(21);
+        const width = (packed & 0x3FFF) + 1;
+        const height = ((packed >>> 14) & 0x3FFF) + 1;
+        if (width > 0 && height > 0) return { width, height };
+      } else if (chunk === 'VP8X' && buf.length >= 30) {
+        const width = buf.readUIntLE(24, 3) + 1;
+        const height = buf.readUIntLE(27, 3) + 1;
+        if (width > 0 && height > 0) return { width, height };
+      }
+    }
     if (buf.length >= 4 && buf[0] === 0xFF && buf[1] === 0xD8) {
       let offset = 2;
       while (offset < buf.length - 8) {
@@ -476,6 +498,53 @@ function getImageDimensions(buf) {
     }
   } catch { }
   return { width: null, height: null };
+}
+
+const INLINE_IMAGE_DIMS_CACHE = new Map();
+const MAX_INLINE_IMAGE_DIMS_CACHE = 512;
+
+/**
+ * 解析并缓存内联 Base64 图片尺寸与字节长度，优先仅解码前 128 个字符以降低大图片内存分配（来自 PR #36）
+ */
+function inspectInlineImageMeta(uri, mime, b64) {
+  const safeUri = String(uri || '');
+  const safeMime = String(mime || '').toLowerCase();
+  const raw = String(b64 || '');
+  const cacheKey = raw.length <= 256
+    ? `${safeMime}|${raw}`
+    : `${safeUri}|${safeMime}|${raw.length}|${raw.slice(0, 64)}|${raw.slice(-64)}`;
+
+  if (INLINE_IMAGE_DIMS_CACHE.has(cacheKey)) {
+    return { ...INLINE_IMAGE_DIMS_CACHE.get(cacheKey), cacheHit: true };
+  }
+
+  let dims = { width: null, height: null };
+  let bytes = 0;
+  const hasWhitespace = raw.indexOf('\n') !== -1 || raw.indexOf('\r') !== -1 || raw.indexOf(' ') !== -1 || raw.indexOf('\t') !== -1;
+
+  if (!hasWhitespace && raw.length > 128) {
+    const headDims = getImageDimensions(Buffer.from(raw.slice(0, 128), 'base64'));
+    if (headDims.width && headDims.height) {
+      dims = headDims;
+      bytes = Buffer.byteLength(raw, 'base64');
+    } else {
+      const fullBuf = Buffer.from(raw, 'base64');
+      dims = getImageDimensions(fullBuf);
+      bytes = fullBuf.length;
+    }
+  } else {
+    const fullBuf = Buffer.from(raw, 'base64');
+    dims = getImageDimensions(fullBuf);
+    bytes = fullBuf.length;
+  }
+
+  const meta = { width: dims.width, height: dims.height, bytes };
+  if (INLINE_IMAGE_DIMS_CACHE.size >= MAX_INLINE_IMAGE_DIMS_CACHE && !INLINE_IMAGE_DIMS_CACHE.has(cacheKey)) {
+    const oldest = INLINE_IMAGE_DIMS_CACHE.keys().next().value;
+    if (oldest !== undefined) INLINE_IMAGE_DIMS_CACHE.delete(oldest);
+  }
+  INLINE_IMAGE_DIMS_CACHE.set(cacheKey, meta);
+  return { ...meta, cacheHit: false };
 }
 
 function calcImageTokens(w, h) {
@@ -494,23 +563,24 @@ async function scanFiles(media, scanOptions = {}) {
     try {
       if (item.inlineData) {
         const mime = String(item.mime || '').toLowerCase();
-        const buf = Buffer.from(item.inlineData, 'base64');
         if (mime.startsWith('image/')) {
-          const dims = getImageDimensions(buf);
-          const [low, high] = calcImageTokens(dims.width, dims.height);
+          const meta = inspectInlineImageMeta(item.uri, mime, item.inlineData);
+          const [low, high] = calcImageTokens(meta.width, meta.height);
           results.set(item.uri, {
             status: 'parsed',
-            width: dims.width,
-            height: dims.height,
+            width: meta.width,
+            height: meta.height,
             chars: 0,
-            dimensions: dims.width ? `${dims.width}×${dims.height}` : null,
-            bytes: buf.length,
+            dimensions: meta.width ? `${meta.width}×${meta.height}` : null,
+            bytes: meta.bytes,
             low,
             high,
             unknownParts: []
           });
           continue;
-        } else if (mime.startsWith('text/') || mime === 'application/json' || mime === 'text/csv') {
+        }
+        const buf = Buffer.from(item.inlineData, 'base64');
+        if (mime.startsWith('text/') || mime === 'application/json' || mime === 'text/csv') {
           const text = buf.toString('utf8');
           const m = measure(text);
           results.set(item.uri, {
@@ -649,6 +719,34 @@ function resolveOriginCsrfToken(origin, html, options = {}) {
   return token;
 }
 
+async function resolveCollectCsrfToken(origin, signal, options = {}, isSuperseded = null) {
+  let html = '';
+  let htmlFetchErr = null;
+  try {
+    html = await request(origin, null, null, null, signal);
+    if (typeof isSuperseded === 'function' && isSuperseded()) return '';
+  } catch (err) {
+    if (err?.name === 'AbortError' || signal?.aborted) throw err;
+    htmlFetchErr = err;
+  }
+
+  const canFallback = !htmlFetchErr || /HTTP 40[13]\b/.test(String(htmlFetchErr.message || ''));
+  if (canFallback) {
+    try {
+      const tok = resolveOriginCsrfToken(origin, html, options);
+      if (tok) return tok;
+    } catch { }
+    try {
+      const { resolveOriginCsrfToken: resolveLocalApiToken } = require('./local-api');
+      const apiTok = resolveLocalApiToken(origin, options);
+      if (apiTok) return apiTok;
+    } catch { }
+  }
+
+  if (htmlFetchErr) throw htmlFetchErr;
+  throw new Error('后台鉴权信息尚未就绪');
+}
+
 async function collect(origin, id, options = {}) {
   if (!/^https:\/\/127\.0\.0\.1:\d+$/.test(origin) || !/^[a-f\d-]{36}$/i.test(id)) throw new Error('无效本机会话');
   const key = `${origin}/${id}`;
@@ -676,9 +774,8 @@ async function collect(origin, id, options = {}) {
     try {
       let token = !options.force ? csrfTokenByOrigin.get(origin) : null;
       if (!token) {
-        const html = await request(origin, null, null, null, signal);
+        token = await resolveCollectCsrfToken(origin, signal, options, isSuperseded);
         if (isSuperseded()) return { version: '0.8.5', conversation: id, abortedStale: true, scannedAt: Date.now(), errors: [] };
-        token = resolveOriginCsrfToken(origin, html, options);
         csrfTokenByOrigin.set(origin, token);
       }
       const reqOpts = { maxBytes: options.maxResponseBytes, timeoutMs: options.requestTimeoutMs };
@@ -688,8 +785,8 @@ async function collect(origin, id, options = {}) {
         } catch (err) {
           if (err && /HTTP 40[13]/.test(String(err.message || '')) && !signal?.aborted) {
             csrfTokenByOrigin.delete(origin);
-            const html = await request(origin, null, null, null, signal);
-            token = resolveOriginCsrfToken(origin, html, options);
+            token = await resolveCollectCsrfToken(origin, signal, options, isSuperseded);
+            if (isSuperseded()) return { version: '0.8.5', conversation: id, abortedStale: true, scannedAt: Date.now(), errors: [] };
             csrfTokenByOrigin.set(origin, token);
             return await request(origin, method, body, token, signal, reqOpts);
           }
@@ -715,6 +812,7 @@ async function collect(origin, id, options = {}) {
       let stepCapabilities = {};
       let attachments = [];
       const attachmentTotal = empty();
+      const postCheckpointAttachmentTotal = empty();
       let total = null;
       let count = 0;
       let tail = null;
@@ -738,6 +836,16 @@ async function collect(origin, id, options = {}) {
         attachments = await scanFiles(session.media, { signal });
         if (isSuperseded()) return { version: '0.8.5', conversation: id, abortedStale: true, scannedAt: Date.now(), errors: [] };
         for (const a of attachments) { const n = a.references || 1; add(attachmentTotal, Object.fromEntries(['chars', 'bytes', 'low', 'high'].map(k => [k, (a[k] || 0) * n]))); }
+        if (session.postCheckpoint?.mediaRefs) {
+          for (let idx = 0; idx < attachments.length; idx++) {
+            const origMedia = session.media[idx];
+            const a = attachments[idx];
+            const postRefs = origMedia?.uri ? (session.postCheckpoint.mediaRefs[origMedia.uri] || 0) : 0;
+            if (postRefs > 0 && a) {
+              add(postCheckpointAttachmentTotal, Object.fromEntries(['chars', 'bytes', 'low', 'high'].map(k => [k, (a[k] || 0) * postRefs])));
+            }
+          }
+        }
         total = add({ ...session.total }, attachmentTotal);
         count = Number(full.numTotalGeneratorMetadata ?? trajectory.generatorMetadata?.length ?? 0);
         tail = await call('GetCascadeTrajectoryGeneratorMetadata', { cascadeId: id, generatorMetadataOffset: Math.max(0, count - 3), includeMessages: false });
@@ -781,20 +889,60 @@ async function collect(origin, id, options = {}) {
         stepCapabilities
       );
       let latestModel = null;
+      let latestGeneratorMeta = null;
       let latestCallId = null;
-      for (const m of (tail.generatorMetadata || []).slice().reverse()) {
+      const reversedTail = (tail.generatorMetadata || []).slice().reverse();
+      for (const m of reversedTail) {
         latest = summarize(m, { cascadeModelConfigs: mergedCascadeConfigs });
         if (latest) {
+          latestGeneratorMeta = m;
           latestModel = m.chatModel;
           const callMeta = parseGeneratorCall(m, id, 'desktop', { cascadeModelConfigs: mergedCascadeConfigs });
           latestCallId = callMeta?.callId || null;
           break;
         }
       }
-      const system = latestModel ? measure((latestModel.promptSections || []).map(p => p.content || '').join('\n') || latestModel.systemPrompt || '') : empty();
-      const definitions = latestModel ? measure(JSON.stringify(latestModel.tools || [])) : empty();
+      const referenceLatest = latest ? { ...latest } : null;
+      let referenceChatModel = latestModel;
+      if (!largeTrajectoryFallbackReason && session.lastCheckpointIndex >= 0 && reversedTail.length > 1) {
+        const isSummarizerMeta = latestGeneratorMeta && extractGeneratorMaxStep(latestGeneratorMeta) === session.lastCheckpointIndex;
+        for (const m of reversedTail) {
+          if (m === latestGeneratorMeta) continue;
+          const candSum = summarize(m, { cascadeModelConfigs: mergedCascadeConfigs });
+          if (!candSum) continue;
+          if (referenceLatest && !referenceLatest.budget && candSum.budget) {
+            referenceLatest.budget = candSum.budget;
+          }
+          if (isSummarizerMeta) {
+            if (candSum.model) {
+              referenceLatest.model = candSum.model;
+              referenceLatest.modelId = candSum.modelId || referenceLatest.modelId;
+              referenceLatest.modelRaw = candSum.modelRaw || referenceLatest.modelRaw;
+            }
+            if (m.chatModel && (!referenceChatModel?.tools?.length && m.chatModel.tools?.length)) {
+              referenceChatModel = m.chatModel;
+            }
+          }
+          if (referenceLatest?.budget && (!isSummarizerMeta || referenceChatModel?.tools?.length)) break;
+        }
+      }
+      const systemSourceModel = referenceChatModel || latestModel;
+      const system = systemSourceModel ? measure((systemSourceModel.promptSections || []).map(p => p.content || '').join('\n') || systemSourceModel.systemPrompt || '') : empty();
+      const definitions = systemSourceModel ? measure(JSON.stringify(systemSourceModel.tools || [])) : empty();
       session.groups.system = system; session.groups.definitions = definitions;
       add(total, system); add(total, definitions);
+      const postCompactActiveTotal = (!largeTrajectoryFallbackReason && session.postCheckpoint)
+        ? add(add(add({ ...session.postCheckpoint.textTotal }, postCheckpointAttachmentTotal), system), definitions)
+        : null;
+      if (!largeTrajectoryFallbackReason && !session.currentError && isCheckpointNewerThanGenerator(session, latestGeneratorMeta, latest)) {
+        latest = buildPostCompactSummary({
+          session: { ...session, postCompactActiveTotal },
+          postCheckpointAttachmentTotal,
+          system,
+          definitions,
+          previousLatest: referenceLatest || latest
+        });
+      }
       if (session.currentError) {
         const fromStep = summarize({ chatModel: { retryInfos: [{ error: session.currentError.text }] } }, {
           currentModel: latest?.model || latestModel?.modelDisplayName || latestModel?.model || '',
@@ -827,6 +975,7 @@ async function collect(origin, id, options = {}) {
       conversation: id,
       workspacePath: wsPath || null,
       latest,
+      preCompactLatest: referenceLatest || null,
       latestCallId,
       generatorCount: count,
       cascadeModelConfigs: compactCascadeConfigs,
@@ -835,6 +984,8 @@ async function collect(origin, id, options = {}) {
         ...session,
         media: undefined,
         attachmentTotal,
+        postCheckpointAttachmentTotal,
+        postCompactActiveTotal,
         total,
         attachments,
         unknownFiles,
@@ -1017,6 +1168,7 @@ function loadPricingLedger(overridePathOrDir, options = {}) {
   const readRes = safeReadJsonSync(p, null, {
     fs: fsImpl,
     backupPath: bakPath,
+    quarantineCorrupt: !options?.readOnly,
     validate: (data) => data && typeof data === 'object' && typeof data.calls === 'object'
   });
 
@@ -1046,7 +1198,7 @@ function loadPricingLedger(overridePathOrDir, options = {}) {
       break;
     }
   }
-  if (hasSynthetic) {
+  if (hasSynthetic && !options?.readOnly) {
     quarantineSyntheticCalls(overridePathOrDir, options);
     const cleanedRes = safeReadJsonSync(p, null, { fs: fsImpl });
     if (cleanedRes.exists && cleanedRes.ok && cleanedRes.data && typeof cleanedRes.data === 'object') {
@@ -1060,10 +1212,19 @@ function loadPricingLedger(overridePathOrDir, options = {}) {
     Object.defineProperty(ledger, '__hadDuplicateStepKeys', { value: true, configurable: true });
   }
 
-  // 正常落盘数据建立自动滚动备份，供损坏时恢复
-  if (!readRes.corrupted) {
+  // 正常落盘数据建立自动滚动备份（限 10 分钟以上且文件实际变化才更新 .bak；只读模式绝不写盘）
+  if (!readRes.corrupted && !options?.readOnly) {
     try {
-      if (!fsImpl.existsSync(bakPath) || Math.random() < 0.1) {
+      let shouldCopyBak = !fsImpl.existsSync(bakPath);
+      if (!shouldCopyBak && st) {
+        const bakSt = fsImpl.statSync(bakPath);
+        const bakAgeMs = Date.now() - (bakSt.mtimeMs || 0);
+        const fileChanged = (st.mtimeMs > (bakSt.mtimeMs || 0)) || (st.size !== bakSt.size);
+        if (bakAgeMs >= 600000 && fileChanged) {
+          shouldCopyBak = true;
+        }
+      }
+      if (shouldCopyBak) {
         fsImpl.copyFileSync(p, bakPath);
       }
     } catch { }
@@ -1120,6 +1281,140 @@ function savePricingLedger(ledger, overridePathOrDir, options = {}) {
     } catch { }
   }
   return res;
+}
+
+const MAX_LEDGER_REPAIR_BACKUPS = 3;
+const LEDGER_BACKUP_CLEANUP_MARKER_VERSION = '0.8.9';
+
+/**
+ * 列出指定账本对应的 .bak-pre-elv89-* 备份文件（仅普通文件、防符号链接并按时间从新到旧排序）
+ */
+function listLedgerRepairBackups(resolvedLedgerPath, fsImpl = fs) {
+  const dir = path.dirname(resolvedLedgerPath);
+  const prefix = `${path.basename(resolvedLedgerPath)}.bak-pre-elv89-`;
+  if (!fsImpl.existsSync(dir)) return [];
+  const entries = fsImpl.readdirSync(dir, { withFileTypes: true });
+  const items = [];
+  for (const entry of entries) {
+    const name = typeof entry === 'string' ? entry : entry.name;
+    if (typeof name !== 'string' || !name.startsWith(prefix) || path.basename(name) !== name) continue;
+    if (typeof entry !== 'string' && typeof entry.isFile === 'function' && !entry.isFile()) continue;
+    const fullPath = path.join(dir, name);
+    const suffix = name.slice(prefix.length);
+    const numericTs = /^\d{10,16}$/.test(suffix) ? Number(suffix) : NaN;
+    let mtimeMs = 0;
+    let size = 0;
+    try {
+      const lst = typeof fsImpl.lstatSync === 'function' ? fsImpl.lstatSync(fullPath) : fsImpl.statSync(fullPath);
+      if (lst && ((typeof lst.isSymbolicLink === 'function' && lst.isSymbolicLink()) || (typeof lst.isFile === 'function' && !lst.isFile()))) {
+        continue;
+      }
+      mtimeMs = Number(lst.mtimeMs) || 0;
+      size = Number(lst.size) || 0;
+    } catch {
+      continue;
+    }
+    items.push({ name, path: fullPath, numericTs, mtimeMs, size });
+  }
+  items.sort((a, b) => {
+    const aHasTs = Number.isFinite(a.numericTs);
+    const bHasTs = Number.isFinite(b.numericTs);
+    if (aHasTs && bHasTs && b.numericTs !== a.numericTs) return b.numericTs - a.numericTs;
+    if (b.mtimeMs !== a.mtimeMs) return b.mtimeMs - a.mtimeMs;
+    return b.name.localeCompare(a.name);
+  });
+  return items;
+}
+
+/**
+ * 裁剪同一账本的历史备份，只保留最新的 keep 份
+ */
+function pruneLedgerRepairBackups(resolvedLedgerPath, { keep = MAX_LEDGER_REPAIR_BACKUPS, fs: fsImpl = fs } = {}) {
+  const keepCount = Math.max(0, Number.isFinite(Number(keep)) ? Math.floor(Number(keep)) : MAX_LEDGER_REPAIR_BACKUPS);
+  const all = listLedgerRepairBackups(resolvedLedgerPath, fsImpl);
+  const kept = all.slice(0, keepCount);
+  const toRemove = all.slice(keepCount);
+  const removed = [];
+  let removedBytes = 0;
+  for (const item of toRemove) {
+    try {
+      fsImpl.unlinkSync(item.path);
+      removed.push(item.path);
+      removedBytes += item.size;
+    } catch { }
+  }
+  return {
+    totalBefore: all.length,
+    keptCount: kept.length,
+    keptPaths: kept.map(x => x.path),
+    removedCount: removed.length,
+    removedPaths: removed,
+    removedBytes
+  };
+}
+
+/**
+ * 升级时清理历史堆积的 .bak-pre-elv89-* 备份，只保留最新 1 份
+ */
+function cleanupUpgradeLedgerBackups({
+  agDir = null,
+  ledgerPath = null,
+  stateDir = null,
+  keep = 1,
+  force = false,
+  readOnly = false,
+  fs: fsImpl = fs
+} = {}) {
+  const targetDir = ledgerPath || agDir;
+  const resolvedLedgerPath = path.resolve(getPricingLedgerPath(targetDir));
+  if (readOnly) {
+    return { ok: true, skipped: true, reason: 'read_only', ledgerPath: resolvedLedgerPath, removedCount: 0 };
+  }
+  const markerDir = stateDir || path.dirname(resolvedLedgerPath);
+  const markerPath = path.join(markerDir, '.pricing_ledger_backup_cleanup_v1.json');
+
+  try {
+    if (!force && fsImpl.existsSync(markerPath)) {
+      const parsed = JSON.parse(fsImpl.readFileSync(markerPath, 'utf8'));
+      if (parsed && parsed.cleanedVersion === LEDGER_BACKUP_CLEANUP_MARKER_VERSION &&
+        parsed.ledgerPath === resolvedLedgerPath) {
+        return { ok: true, skipped: true, reason: 'already_cleaned', ledgerPath: resolvedLedgerPath, removedCount: 0 };
+      }
+    }
+  } catch { }
+
+  const existing = listLedgerRepairBackups(resolvedLedgerPath, fsImpl);
+  if (existing.length <= Math.max(1, keep) && !force) {
+    return {
+      ok: true,
+      skipped: false,
+      ledgerPath: resolvedLedgerPath,
+      totalBefore: existing.length,
+      keptCount: existing.length,
+      removedCount: 0,
+      removedPaths: [],
+      removedBytes: 0
+    };
+  }
+
+  const pruneRes = pruneLedgerRepairBackups(resolvedLedgerPath, { keep, fs: fsImpl });
+  try {
+    fsImpl.mkdirSync(markerDir, { recursive: true });
+    fsImpl.writeFileSync(markerPath, JSON.stringify({
+      cleanedVersion: LEDGER_BACKUP_CLEANUP_MARKER_VERSION,
+      ledgerPath: resolvedLedgerPath,
+      cleanedAt: new Date().toISOString(),
+      keptPaths: pruneRes.keptPaths,
+      removedCount: pruneRes.removedCount
+    }, null, 2));
+  } catch { }
+
+  return {
+    ok: true,
+    skipped: false,
+    ledgerPath: resolvedLedgerPath,
+    ...pruneRes
+  };
 }
 
 function createRecordResult(ok, changed, error, phase, code) {
@@ -1676,13 +1971,8 @@ function reconcileConfirmableDuplicateStepCalls(callsObj) {
   return reconciled;
 }
 
-function recordModelCalls(newCalls = [], options = {}) {
-  if (!Array.isArray(newCalls) || !newCalls.length) return createRecordResult(true, false);
-  const targetDir = typeof options === 'string' ? options : (options.ledgerPath || options.agDir);
-  const fsOpt = (options && typeof options === 'object' && options.fs) ? { fs: options.fs } : undefined;
-  const resolvedLedgerPath = path.resolve(getPricingLedgerPath(targetDir));
-
-  const executeLocked = () => {
+function buildRecordModelCallsExecutor(newCalls = [], options = {}, resolvedLedgerPath, targetDir, fsOpt) {
+  return () => {
     // 持锁期间强制失效内存缓存，确保跨进程场景读到前一进程刚落盘的最新账本状态
     if (!fsOpt) {
       ledgerCacheByPath.delete(normalizeLedgerKey(resolvedLedgerPath));
@@ -1823,6 +2113,14 @@ function recordModelCalls(newCalls = [], options = {}) {
 
     return createRecordResult(true, changed);
   };
+}
+
+function recordModelCalls(newCalls = [], options = {}) {
+  if (!Array.isArray(newCalls) || !newCalls.length) return createRecordResult(true, false);
+  const targetDir = typeof options === 'string' ? options : (options.ledgerPath || options.agDir);
+  const fsOpt = (options && typeof options === 'object' && options.fs) ? { fs: options.fs } : undefined;
+  const resolvedLedgerPath = path.resolve(getPricingLedgerPath(targetDir));
+  const executeLocked = buildRecordModelCallsExecutor(newCalls, options, resolvedLedgerPath, targetDir, fsOpt);
 
   if (fsOpt) {
     return executeLocked();
@@ -1947,6 +2245,16 @@ function sanitizeAccountPlanEntry(entry, accountKey = 'default') {
   } else {
     delete out.ultraSubTier;
     delete out.subTier;
+  }
+
+  const VALID_PLAN_TIER_OVERRIDES = new Set(['auto', 'free', 'plus', 'pro', 'ultra_5x', 'ultra_20x', 'ultra']);
+  if (out.planTierOverride !== undefined) {
+    const rawTier = String(out.planTierOverride || '').trim().toLowerCase();
+    if (!rawTier || rawTier === 'auto' || !VALID_PLAN_TIER_OVERRIDES.has(rawTier)) {
+      delete out.planTierOverride;
+    } else {
+      out.planTierOverride = rawTier;
+    }
   }
 
   return out;
@@ -2459,6 +2767,22 @@ function savePluginSettings(payload = {}, options = {}) {
         delete mergedRaw.subTier;
       }
     }
+    if (Object.prototype.hasOwnProperty.call(inputPlan, 'planTierOverride')) {
+      const rawOverride = inputPlan.planTierOverride == null ? '' : String(inputPlan.planTierOverride).trim().toLowerCase();
+      if (!rawOverride || rawOverride === 'auto') {
+        delete mergedRaw.planTierOverride;
+      } else {
+        mergedRaw.planTierOverride = rawOverride;
+        if (rawOverride === 'ultra_5x') {
+          mergedRaw.ultraSubTier = '5x';
+        } else if (rawOverride === 'ultra_20x') {
+          mergedRaw.ultraSubTier = '20x';
+        } else if (rawOverride === 'free' || rawOverride === 'plus' || rawOverride === 'pro' || rawOverride === 'ultra') {
+          delete mergedRaw.ultraSubTier;
+          delete mergedRaw.subTier;
+        }
+      }
+    }
 
     const sanitized = sanitizeAccountPlanEntry(mergedRaw, key);
     if (!sanitized) {
@@ -2942,6 +3266,401 @@ let currentScanSequence = 0;
 const TRANSCRIPT_SKIP_DIRS = new Set(['steps', 'tasks', 'scratch', 'media', 'artifacts', 'node_modules', '.git', '__pycache__']);
 const transcriptFileCache = new Map();
 
+function parseEventDurSec(rawDur) {
+  if (rawDur == null) return null;
+  if (typeof rawDur === 'number' && Number.isFinite(rawDur) && rawDur >= 0) return Number(rawDur.toFixed(4));
+  if (typeof rawDur === 'string') {
+    const m = rawDur.trim().match(/^(\d+(?:\.\d+)?)\s*s$/i);
+    if (m) return Number(Number(m[1]).toFixed(4));
+    const n = Number(rawDur);
+    if (Number.isFinite(n) && n >= 0) return Number(n.toFixed(4));
+  } else if (typeof rawDur === 'object') {
+    const sec = Number(rawDur.seconds || 0) + Number(rawDur.nanos || 0) / 1e9;
+    if (Number.isFinite(sec) && sec >= 0) return Number(sec.toFixed(4));
+  }
+  return null;
+}
+
+function extractRequestedModelRawCompat(val) {
+  if (!val) return '';
+  if (typeof val === 'string') return val.trim();
+  if (typeof val === 'object') {
+    return String(val.model || val.alias || val.modelOrAlias?.model || val.choice?.value || val.modelId || '').trim();
+  }
+  return '';
+}
+
+function parseTranscriptLineRecord(line, fallbackLineIdx, jobPath, brainMatch) {
+  if (!line) return null;
+  const cleanLine = line.charCodeAt(0) === 0xFEFF ? line.slice(1) : line;
+  if (!cleanLine.trim()) return null;
+  let event = null;
+  try {
+    event = JSON.parse(cleanLine);
+  } catch {
+    return null;
+  }
+
+  let hasValidCreatedAt = false;
+  if (event && event.created_at) {
+    const d = new Date(event.created_at);
+    if (!Number.isNaN(d.getTime())) {
+      hasValidCreatedAt = true;
+    }
+  }
+  if (!hasValidCreatedAt) return null;
+
+  let inp = 0, outp = 0, cap = 0, thinking = 0;
+  const model = event.chatModel?.modelDisplayName || event.chatModel?.responseModel || event.chatModel?.model || event.model || event.modelId || '';
+  const modelExactId = event.chatModel?.modelId || event.modelId || '';
+  const modelLabel = event.chatModel?.modelDisplayName || '';
+  const requestedModelRaw = extractRequestedModelRawCompat(
+    event.requestedModel
+    || event.requested_model
+    || event.metadata?.requestedModel
+    || event.chatModel?.requestedModel
+    || event.chatModel?.modelOrAlias
+    || ((event.chatModel?.model && event.chatModel?.responseModel && event.chatModel.model !== event.chatModel.responseModel) ? event.chatModel.model : '')
+  );
+
+  if (event.input_tokens != null || event.output_tokens != null || event.cache_read_tokens != null) {
+    inp = Number(event.input_tokens || 0);
+    outp = Number(event.output_tokens || 0);
+    cap = Number(event.cache_read_tokens || 0);
+    thinking = Number(event.thinking_output_tokens || 0);
+  } else if (event.chatModel?.usage) {
+    const u = event.chatModel.usage;
+    inp = Number(u.inputTokens || 0);
+    outp = Number(u.outputTokens || 0);
+    cap = Number(u.cacheReadTokens || 0);
+    thinking = Number(u.thinkingOutputTokens || 0);
+  }
+
+  const tot = inp + outp + cap;
+  const cascadeIdMeta = String(event.cascadeId || (brainMatch ? brainMatch[1] : path.basename(jobPath, '.jsonl')));
+  if (tot > 0) {
+    const cascadeId = cascadeIdMeta;
+    const rawStep = event.step_index ?? event.stepIndex;
+    const parsedStep = rawStep !== undefined && rawStep !== null && rawStep !== '' ? Number(rawStep) : NaN;
+    const stepIndex = Number.isInteger(parsedStep) && parsedStep >= 0 ? parsedStep : null;
+    const fallbackScope = (event.cascadeId || brainMatch) ? cascadeId : jobPath;
+    const eventId = extractCallId(event, fallbackScope, stepIndex ?? fallbackLineIdx);
+    const evTtft = parseEventDurSec(event.chatModel?.timeToFirstToken ?? event.ttftSec);
+    const evStream = parseEventDurSec(event.chatModel?.streamingDuration ?? event.streamingSec);
+    const evError = event.error ? String(event.error).slice(0, 200) : '';
+    const evStatus = event.status === 'RUNNING' ? 'streaming' : 'final';
+
+    return {
+      eventId,
+      cascadeId,
+      stepIndex,
+      ...(requestedModelRaw ? { requestedModel: requestedModelRaw } : {}),
+      model,
+      ...(modelExactId ? { modelExactId } : {}),
+      ...(modelLabel ? { modelLabel } : {}),
+      ...(evTtft !== null ? { ttftSec: evTtft } : {}),
+      ...(evStream !== null ? { streamingSec: evStream } : {}),
+      ...(evError ? { error: evError } : {}),
+      status: evStatus,
+      inp,
+      outp,
+      cap,
+      thinking,
+      tot,
+      created_at: event.created_at,
+      _hasExplicitId: !isStepFallbackCallId(eventId, cascadeId)
+    };
+  }
+
+  return {
+    tot: 0,
+    cascadeId: cascadeIdMeta,
+    created_at: event.created_at
+  };
+}
+
+function cloneStepStateMap(srcMap) {
+  const copy = new Map();
+  if (!srcMap || !(srcMap instanceof Map)) return copy;
+  for (const [step, list] of srcMap.entries()) {
+    copy.set(step, list.map(item => ({ ...item })));
+  }
+  return copy;
+}
+
+/**
+ * 为缺失显式 responseId/callId 的记录分配确定性 step 键：
+ * 同步重复镜像或流式增量更新复用原 eventId，而回退/编辑/重发在同 stepIndex 产生的独立调用则分配 @2/@3 后缀防止碰撞。
+ */
+function assignDeterministicStepEventId(rec, stepStateMap) {
+  if (!rec || !(rec.tot > 0) || rec.stepIndex === null || rec._hasExplicitId) return rec;
+  const normModel = String(normalizeModelId(rec.model) || rec.model || '').trim().toLowerCase();
+  const tsMs = Date.parse(rec.created_at);
+  let list = stepStateMap.get(rec.stepIndex);
+  let matchedPrev = null;
+
+  if (list) {
+    for (let i = list.length - 1; i >= 0; i--) {
+      const prev = list[i];
+      const exactSamePayload =
+        prev.normModel === normModel &&
+        prev.inp === rec.inp &&
+        prev.cap === rec.cap &&
+        prev.out === rec.outp &&
+        prev.created_at === rec.created_at;
+      if (exactSamePayload) {
+        matchedPrev = prev;
+        break;
+      }
+      const modelsCompat = !prev.normModel || !normModel || prev.normModel === normModel || areModelsCompatible(prev.rawModel, rec.model);
+      const timeClose = Number.isFinite(tsMs) && Number.isFinite(prev.tsMs)
+        ? Math.abs(tsMs - prev.tsMs) <= 120000
+        : prev.created_at === rec.created_at;
+      if (modelsCompat && timeClose) {
+        if (prev.status === 'streaming') {
+          matchedPrev = prev;
+          break;
+        }
+        if (rec.status === 'final' && prev.inp === rec.inp && prev.cap === rec.cap && rec.outp >= prev.out && prev.created_at === rec.created_at) {
+          matchedPrev = prev;
+          break;
+        }
+      }
+    }
+  }
+
+  if (matchedPrev) {
+    rec.eventId = matchedPrev.eventId;
+    if (rec.tot > matchedPrev.tot || (rec.tot === matchedPrev.tot && rec.outp >= matchedPrev.out) || rec.status === 'final') {
+      matchedPrev.inp = rec.inp;
+      matchedPrev.cap = rec.cap;
+      matchedPrev.out = rec.outp;
+      matchedPrev.tot = rec.tot;
+      matchedPrev.status = rec.status;
+      matchedPrev.created_at = rec.created_at;
+      if (Number.isFinite(tsMs)) matchedPrev.tsMs = tsMs;
+      if (normModel && (!matchedPrev.normModel || getCollectorModelRank(rec.model) > getCollectorModelRank(matchedPrev.rawModel))) {
+        matchedPrev.normModel = normModel;
+        matchedPrev.rawModel = rec.model;
+      }
+    }
+    return rec;
+  }
+
+  if (!list) {
+    list = [];
+    stepStateMap.set(rec.stepIndex, list);
+  }
+  const occ = list.length + 1;
+  rec.eventId = occ === 1
+    ? `${rec.cascadeId}#${rec.stepIndex}`
+    : `${rec.cascadeId}#${rec.stepIndex}@${occ}`;
+  list.push({
+    eventId: rec.eventId,
+    created_at: rec.created_at,
+    tsMs,
+    normModel,
+    rawModel: rec.model,
+    inp: rec.inp,
+    cap: rec.cap,
+    out: rec.outp,
+    tot: rec.tot,
+    status: rec.status
+  });
+  return rec;
+}
+
+function readFdExactRange(fd, offset, length) {
+  if (length <= 0) return Buffer.alloc(0);
+  const buf = Buffer.allocUnsafe(length);
+  let totalRead = 0;
+  while (totalRead < length) {
+    const n = fs.readSync(fd, buf, totalRead, length - totalRead, offset + totalRead);
+    if (!n) break;
+    totalRead += n;
+  }
+  return totalRead < length ? buf.subarray(0, totalRead) : buf;
+}
+
+/**
+ * 按字节偏移增量读取并结构化解析 JSONL transcript（整合 PR #36 + Issue #77 确定性防撞）
+ */
+function loadIncrementalTranscriptRecords(jobPath, st, cacheMap = transcriptFileCache) {
+  if (!st) return { records: [], mode: 'full', bytesRead: 0, cachedEntry: null };
+  const brainMatch = String(jobPath).match(/[\\/]brain[\\/]([^\\/]+)[\\/]/i);
+  if (isFsMonkeyPatched()) {
+    const content = fs.readFileSync(jobPath, 'utf8');
+    const stepStateMap = new Map();
+    const records = [];
+    const lines = content.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const rec = parseTranscriptLineRecord(lines[i], i, jobPath, brainMatch);
+      if (rec) {
+        assignDeterministicStepEventId(rec, stepStateMap);
+        records.push(rec);
+      }
+    }
+    return { records, mode: 'full', bytesRead: Buffer.byteLength(content, 'utf8'), cachedEntry: null };
+  }
+  const cachedFile = cacheMap.get(jobPath);
+  const sameIno = st.ino == null || cachedFile?.ino == null || cachedFile.ino === st.ino;
+  if (cachedFile && cachedFile.size === st.size && cachedFile.mtimeMs === st.mtimeMs && sameIno) {
+    return { records: cachedFile.records, mode: 'cache-hit', bytesRead: 0, cachedEntry: cachedFile };
+  }
+
+  let canResume = Boolean(
+    cachedFile &&
+    sameIno &&
+    Number.isFinite(cachedFile.parsedOffset) &&
+    cachedFile.parsedOffset >= 0 &&
+    st.size >= cachedFile.parsedOffset &&
+    Array.isArray(cachedFile.committedRecords) &&
+    (cachedFile.parsedOffset === 0 || (Buffer.isBuffer(cachedFile.anchorBuf) && cachedFile.anchorBuf.length > 0))
+  );
+
+  let committedRecords = canResume ? cachedFile.committedRecords : [];
+  let committedLineCount = canResume ? (cachedFile.committedLineCount || 0) : 0;
+  let committedStepState = canResume ? cloneStepStateMap(cachedFile.committedStepState) : new Map();
+  let startOffset = canResume ? cachedFile.parsedOffset : 0;
+  let newHeadBuf = (canResume && Buffer.isBuffer(cachedFile?.headBuf) && cachedFile.headBuf.length > 0)
+    ? cachedFile.headBuf
+    : Buffer.alloc(0);
+  let newAnchorBuf = (canResume && Buffer.isBuffer(cachedFile?.anchorBuf))
+    ? cachedFile.anchorBuf
+    : Buffer.alloc(0);
+
+  let bytesRead = 0;
+  let chunkBuf = Buffer.alloc(0);
+  let fullHeadCandidate = null;
+  let fullAnchorPrefix = null;
+
+  const fd = fs.openSync(jobPath, 'r');
+  try {
+    if (canResume && cachedFile.parsedOffset > 0) {
+      if (Buffer.isBuffer(cachedFile.headBuf) && cachedFile.headBuf.length > 0) {
+        const curHead = readFdExactRange(fd, 0, cachedFile.headBuf.length);
+        bytesRead += curHead.length;
+        if (!curHead.equals(cachedFile.headBuf)) {
+          canResume = false;
+        }
+      }
+      if (canResume) {
+        const anchorLen = cachedFile.anchorBuf.length;
+        const curAnchor = readFdExactRange(fd, cachedFile.parsedOffset - anchorLen, anchorLen);
+        bytesRead += curAnchor.length;
+        if (!curAnchor.equals(cachedFile.anchorBuf)) {
+          canResume = false;
+        } else {
+          fullAnchorPrefix = curAnchor;
+        }
+      }
+    }
+
+    if (canResume) {
+      chunkBuf = readFdExactRange(fd, startOffset, st.size - startOffset);
+      bytesRead += chunkBuf.length;
+      if (newHeadBuf.length === 0 && startOffset === 0 && chunkBuf.length > 0) {
+        fullHeadCandidate = Buffer.from(chunkBuf.subarray(0, Math.min(256, chunkBuf.length)));
+      }
+    } else {
+      startOffset = 0;
+      committedRecords = [];
+      committedLineCount = 0;
+      committedStepState = new Map();
+      newHeadBuf = Buffer.alloc(0);
+      newAnchorBuf = Buffer.alloc(0);
+      chunkBuf = readFdExactRange(fd, 0, st.size);
+      bytesRead += chunkBuf.length;
+      if (chunkBuf.length > 0) {
+        fullHeadCandidate = Buffer.from(chunkBuf.subarray(0, Math.min(256, chunkBuf.length)));
+      }
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  const lastNl = chunkBuf.lastIndexOf(0x0A);
+  const newCommittedRecords = committedRecords.slice();
+  const newCommittedStepState = committedStepState;
+  let newParsedOffset = startOffset;
+  let newCommittedLineCount = committedLineCount;
+
+  if (lastNl >= 0) {
+    const committedText = chunkBuf.subarray(0, lastNl + 1).toString('utf8');
+    const trimmedText = committedText.endsWith('\r\n') ? committedText.slice(0, -2) : committedText.slice(0, -1);
+    const committedLines = trimmedText.split(/\r?\n/);
+    for (let i = 0; i < committedLines.length; i++) {
+      const rec = parseTranscriptLineRecord(committedLines[i], newCommittedLineCount + i, jobPath, brainMatch);
+      if (rec) {
+        assignDeterministicStepEventId(rec, newCommittedStepState);
+        newCommittedRecords.push(rec);
+      }
+    }
+    newParsedOffset = startOffset + lastNl + 1;
+    newCommittedLineCount += committedLines.length;
+    if (fullHeadCandidate) {
+      newHeadBuf = fullHeadCandidate;
+    } else if (newHeadBuf.length === 0 && startOffset === 0) {
+      newHeadBuf = Buffer.from(chunkBuf.subarray(0, Math.min(256, chunkBuf.length)));
+    }
+    const committedSlice = chunkBuf.subarray(0, lastNl + 1);
+    if (committedSlice.length >= 32) {
+      newAnchorBuf = Buffer.from(committedSlice.subarray(committedSlice.length - 32));
+    } else if (fullAnchorPrefix && fullAnchorPrefix.length > 0) {
+      const combined = Buffer.concat([fullAnchorPrefix, committedSlice]);
+      newAnchorBuf = Buffer.from(combined.subarray(Math.max(0, combined.length - 32)));
+    } else {
+      newAnchorBuf = Buffer.from(committedSlice);
+    }
+  } else if (!canResume && fullHeadCandidate) {
+    newHeadBuf = fullHeadCandidate;
+  }
+
+  const tailStart = lastNl >= 0 ? lastNl + 1 : 0;
+  let fileRecords = newCommittedRecords;
+  if (tailStart < chunkBuf.length) {
+    const tailStr = chunkBuf.subarray(tailStart).toString('utf8');
+    const tailLines = tailStr.split(/\r?\n/);
+    const tailRecords = [];
+    const tailStepState = cloneStepStateMap(newCommittedStepState);
+    for (let i = 0; i < tailLines.length; i++) {
+      const rec = parseTranscriptLineRecord(tailLines[i], newCommittedLineCount + i, jobPath, brainMatch);
+      if (rec) {
+        assignDeterministicStepEventId(rec, tailStepState);
+        tailRecords.push(rec);
+      }
+    }
+    if (tailRecords.length > 0) {
+      fileRecords = [...newCommittedRecords, ...tailRecords];
+    }
+  }
+
+  if (cacheMap.size > 1000 && !cacheMap.has(jobPath)) {
+    const oldestKey = cacheMap.keys().next().value;
+    if (oldestKey) cacheMap.delete(oldestKey);
+  }
+  const cacheEntry = {
+    size: st.size,
+    mtimeMs: st.mtimeMs,
+    ino: st.ino ?? null,
+    headBuf: newHeadBuf,
+    parsedOffset: newParsedOffset,
+    committedLineCount: newCommittedLineCount,
+    anchorBuf: newAnchorBuf,
+    committedRecords: newCommittedRecords,
+    committedStepState: newCommittedStepState,
+    records: fileRecords
+  };
+  cacheMap.set(jobPath, cacheEntry);
+
+  return {
+    records: fileRecords,
+    mode: canResume ? 'incremental' : 'full',
+    bytesRead,
+    cachedEntry: cacheEntry
+  };
+}
+
 function getEffectiveScanScopeKey(options = {}) {
   const home = process.env.USERPROFILE || os.homedir();
   const agDir = path.resolve(options.agDir || process.env.AG_DIR || path.join(home, '.gemini', 'antigravity'));
@@ -3109,7 +3828,13 @@ async function recordModelCallsAsync(newCalls = [], options = {}) {
         return res;
       }
     }
-    const res = recordModelCalls(newCalls, optsObj);
+    const targetDir = typeof options === 'string' ? options : (optsObj.ledgerPath || optsObj.agDir);
+    const fsOpt = optsObj.fs ? { fs: optsObj.fs } : undefined;
+    const resolvedLedgerPath = path.resolve(getPricingLedgerPath(targetDir));
+    const executeLocked = buildRecordModelCallsExecutor(newCalls, optsObj, resolvedLedgerPath, targetDir, fsOpt);
+    const res = fsOpt
+      ? executeLocked()
+      : await withFileLockAsync(resolvedLedgerPath, executeLocked, optsObj.lockOptions);
     if (res && res.changed) {
       invalidateHostLedgerAndHistoryCaches();
     }
@@ -3312,86 +4037,8 @@ async function collectTokenHistoryCoreAsync(options = {}, extraContext = {}) {
     }
     try {
       const st = fs.statSync(job.path);
-      const cachedFile = transcriptFileCache.get(job.path);
-      let fileRecords = null;
-
-      if (cachedFile && cachedFile.size === st.size && cachedFile.mtimeMs === st.mtimeMs) {
-        fileRecords = cachedFile.records;
-      } else {
-        fileRecords = [];
-        const brainMatch = String(job.path).match(/[\\/]brain[\\/]([^\\/]+)[\\/]/i);
-        const content = fs.readFileSync(job.path, 'utf8');
-        const lines = content.split(/\r?\n/);
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i];
-          if (!line || !line.trim()) continue;
-          let event = null;
-          try {
-            event = JSON.parse(line);
-          } catch {
-            continue;
-          }
-
-          let hasValidCreatedAt = false;
-          if (event.created_at) {
-            const d = new Date(event.created_at);
-            if (!Number.isNaN(d.getTime())) {
-              hasValidCreatedAt = true;
-            }
-          }
-          if (!hasValidCreatedAt) continue;
-
-          let inp = 0, outp = 0, cap = 0, thinking = 0;
-          const model = event.chatModel?.model || event.chatModel?.responseModel || event.model || event.modelId || '';
-
-          if (event.input_tokens != null || event.output_tokens != null || event.cache_read_tokens != null) {
-            inp = Number(event.input_tokens || 0);
-            outp = Number(event.output_tokens || 0);
-            cap = Number(event.cache_read_tokens || 0);
-            thinking = Number(event.thinking_output_tokens || 0);
-          } else if (event.chatModel?.usage) {
-            const u = event.chatModel.usage;
-            inp = Number(u.inputTokens || 0);
-            outp = Number(u.outputTokens || 0);
-            cap = Number(u.cacheReadTokens || 0);
-            thinking = Number(u.thinkingOutputTokens || 0);
-          }
-
-          const tot = inp + outp + cap;
-          if (tot > 0) {
-            // 唯一事件标识去重 (避免复制/软链接/重复日志相加)
-            const cascadeId = String(event.cascadeId || (brainMatch ? brainMatch[1] : path.basename(job.path, '.jsonl')));
-            const rawStep = event.step_index ?? event.stepIndex;
-            const parsedStep = rawStep !== undefined && rawStep !== null && rawStep !== '' ? Number(rawStep) : NaN;
-            const stepIndex = Number.isInteger(parsedStep) && parsedStep >= 0 ? parsedStep : null;
-            const fallbackScope = (event.cascadeId || brainMatch) ? cascadeId : job.path;
-            const eventId = extractCallId(event, fallbackScope, stepIndex ?? i);
-
-            fileRecords.push({
-              eventId,
-              cascadeId,
-              stepIndex,
-              model,
-              inp,
-              outp,
-              cap,
-              thinking,
-              tot,
-              created_at: event.created_at
-            });
-          } else {
-            fileRecords.push({
-              tot: 0,
-              created_at: event.created_at
-            });
-          }
-        }
-        if (transcriptFileCache.size > 1000) {
-          const oldestKey = transcriptFileCache.keys().next().value;
-          if (oldestKey) transcriptFileCache.delete(oldestKey);
-        }
-        transcriptFileCache.set(job.path, { size: st.size, mtimeMs: st.mtimeMs, records: fileRecords });
-      }
+      const incRes = loadIncrementalTranscriptRecords(job.path, st, transcriptFileCache);
+      const fileRecords = incRes.records || [];
 
       for (let rIdx = 0; rIdx < fileRecords.length; rIdx++) {
         const rec = fileRecords[rIdx];
@@ -4203,12 +4850,49 @@ async function collectTokenHistoryCoreAsync(options = {}, extraContext = {}) {
     }
   } catch { }
 
+  const resolvedAccountKey = currentAccountKey ? String(currentAccountKey) : null;
+  out.accountKey = resolvedAccountKey;
+  const { updatedAt: _collectedAt, ...visibleHistory } = out;
+  out.revision = crypto
+    .createHash('sha256')
+    .update(String(resolvedAccountKey || '') + '|' + JSON.stringify(visibleHistory))
+    .digest('hex');
+
   return {
     out,
     archiveSig,
-    accountKey: currentAccountKey ? String(currentAccountKey) : null,
+    accountKey: resolvedAccountKey,
     stale: false
   };
+}
+
+/**
+ * PR #90：/token-history 重复回包跳过判据
+ */
+function shouldSkipTokenHistoryRefresh({ force, knownRevision, revision, knownAccountKey, accountKey } = {}) {
+  if (force === true) return false;
+  if (typeof knownRevision !== 'string' || !knownRevision) return false;
+  if (!revision || knownRevision !== revision) return false;
+  if (typeof knownAccountKey === 'string' && knownAccountKey) {
+    if (!accountKey) return false;
+    if (knownAccountKey !== accountKey) return false;
+  }
+  return true;
+}
+
+async function getTokenHistoryResponse({ force = false, knownRevision, knownAccountKey } = {}) {
+  const data = await collectTokenHistoryAsync({ force });
+  const accountKey = data?.accountKey ? String(data.accountKey) : null;
+  if (shouldSkipTokenHistoryRefresh({
+    force,
+    knownRevision,
+    revision: data?.revision,
+    knownAccountKey,
+    accountKey
+  })) {
+    return { ok: true, unchanged: true, revision: data.revision, accountKey };
+  }
+  return { ok: true, data };
 }
 
 /**
@@ -5700,6 +6384,15 @@ module.exports = {
   collect,
   collectTokenHistory,
   collectTokenHistoryAsync,
+  getTokenHistoryResponse,
+  shouldSkipTokenHistoryRefresh,
+  loadIncrementalTranscriptRecords,
+  INLINE_IMAGE_DIMS_CACHE,
+  inspectInlineImageMeta,
+  MAX_LEDGER_REPAIR_BACKUPS,
+  listLedgerRepairBackups,
+  pruneLedgerRepairBackups,
+  cleanupUpgradeLedgerBackups,
   scanFiles,
   pythonScan,
   resolvePython,

@@ -6,7 +6,15 @@
     </svg>
     <span id="badge-pct-val" class="badge-pct-val">--%</span>
     <span id="badge-speed" class="badge-inline-speed" aria-label="模型输出速度与耗时统计" aria-expanded="false">
-      <span class="speed-icon" aria-hidden="true">⚡</span>
+      <span id="badge-speed-icon" class="speed-icon" aria-hidden="true">⚡</span>
+      <span id="badge-speed-wait-svg" class="speed-wait-svg" hidden aria-hidden="true">
+        <svg class="ag-hourglass-svg" viewBox="0 0 14 14" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3.2 2.2h7.6M3.2 11.8h7.6M4 2.2c0 2.5 3 4.2 3 4.8s-3 2.3-3 4.8M10 2.2c0 2.5-3 4.2-3 4.8s3 2.3 3 4.8" opacity="0.88" />
+          <path class="ag-hourglass-sand-top" d="M4.8 3.2h4.4L7 6.1z" fill="currentColor" stroke="none" />
+          <line class="ag-hourglass-stream" x1="7" y1="6.7" x2="7" y2="9.4" stroke-dasharray="1 1.2" stroke-width="1.2" />
+          <path class="ag-hourglass-sand-bot" d="M4.8 11.1h4.4L7 8.4z" fill="currentColor" stroke="none" />
+        </svg>
+      </span>
       <span id="speed-amount">-- tok/s</span>
       <span id="speed-hover-extra" class="sr-only"></span>
     </span>
@@ -363,7 +371,28 @@
         </div>
         <dl class="plan-detail-dl">
           <dt>当前套餐：</dt>
-          <dd id="p-det-name" style="font-weight:600">Google AI Pro</dd>
+          <dd style="display:flex;align-items:center;gap:6px;flex-wrap:nowrap">
+            <span id="p-det-name" style="display:none;font-weight:600">Google AI Pro</span>
+            <select id="direct-tier-select" aria-label="订阅方案与档位覆盖" style="display:none">
+              <option value="auto">✨ 自动检测</option>
+              <option value="free">免费版 (Free)</option>
+              <option value="plus">Google AI Plus</option>
+              <option value="pro">Google AI Pro</option>
+              <option value="ultra_5x">Google AI Ultra 5x</option>
+              <option value="ultra_20x">Google AI Ultra 20x</option>
+              <option value="ultra">Google AI Ultra</option>
+            </select>
+            <div id="direct-tier-wrap" class="ag-dropdown-wrapper" style="flex:1;min-width:0;max-width:270px">
+              <div id="direct-tier-trigger" class="ag-dropdown-trigger" tabindex="0" title="订阅方案与档位覆盖 · 可手动指定套餐或保持自动检测">
+                <span id="direct-tier-label" class="ag-dropdown-label" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">✨ 自动检测</span>
+                <div class="ag-dropdown-arrow">
+                  <svg viewBox="0 0 10 6" width="10" height="6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l4 4 4-4"/></svg>
+                </div>
+              </div>
+              <div id="direct-tier-menu" class="ag-dropdown-menu"></div>
+            </div>
+            <span id="p-det-tier-tag" class="key-pill pill-muted" style="font-size:11px;padding:1px 5px;display:none;flex-shrink:0;white-space:nowrap">自定义</span>
+          </dd>
           <dt id="p-dt-subtier" style="display:none">套餐子档：</dt>
           <dd id="p-dd-subtier" style="display:none;align-items:center;gap:6px;flex-wrap:nowrap">
             <span id="p-det-subtier-readonly" style="display:none;font-weight:600">—</span>
@@ -639,7 +668,7 @@
           <!-- 3. 主要参考金额及常驻“非实付”标识 -->
           <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
             <div id="cost-grand-val" style="font-size:22px;font-weight:700;color:var(--ag-text-primary);letter-spacing:-0.5px">约 $0.00</div>
-            <span id="cost-non-paid-badge" class="key-pill pill-muted" style="font-size:11px;padding:1px 6px">API折算 · 非实付</span>
+            <span id="cost-non-paid-badge" class="key-pill pill-muted" style="font-size:11px;padding:1px 6px">API 折算 · 非实付</span>
           </div>
           <!-- 4. 一行参考模型/情景假设 -->
           <div id="cost-grand-sub" style="font-size:11px;color:var(--ag-text-secondary);margin-bottom:6px;line-height:1.35">统一按 Gemini 3.8 Flash 估算</div>
@@ -684,7 +713,7 @@
           <!-- 用量与参考差额指标条（注明包含缓存读取） -->
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;padding:6px 8px;background:var(--ag-bg-subcard);border-radius:6px;margin-bottom:8px">
             <span id="cost-usage-summary" style="font-size:11px;font-weight:600;color:var(--ag-text-primary)">累计处理 Token: -- (含 -- 缓存读取)</span>
-            <span id="cost-diff-summary" style="font-size:11px;color:var(--ag-text-muted)">参考差额约 +$0.00 (API折算 - 实际支出)</span>
+            <span id="cost-diff-summary" style="font-size:11px;color:var(--ag-text-muted)">参考差额约 +$0.00 (API 折算 - 实际支出)</span>
           </div>
 
           <!-- 分类单价与公式明细卡片（输入、缓存读取、输出） -->

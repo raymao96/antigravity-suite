@@ -10,12 +10,126 @@
     return Number.isFinite(num) && num >= 0 ? num : null;
   }
 
-  function getModelPoolKey(raw) {
-    if (!raw) return 'unknown';
-    const text = typeof raw === 'object'
-      ? [raw.modelId, raw.model, raw.label, raw.modelDisplayName, raw.modelOrAlias?.model, raw.poolKey].filter(Boolean).join(' ')
-      : String(raw);
-    const s = String(text || '').toLowerCase().trim().replace(/^word\//, '');
+  const MODEL_USAGE_ID_FALLBACK_LABELS = {
+    'gemini-flash-worker-agy': 'Gemini 4 Hydrogen (Orchestrator)',
+    'model_placeholder_m669': 'Gemini 4 Hydrogen (Orchestrator)',
+    'placeholder-m669': 'Gemini 4 Hydrogen (Orchestrator)',
+    'm669': 'Gemini 4 Hydrogen (Orchestrator)',
+    'model_placeholder_m667': 'Orchestrator (Carbon)',
+    'placeholder-m667': 'Orchestrator (Carbon)',
+    'm667': 'Orchestrator (Carbon)',
+    'model_placeholder_m681': 'Orchestrator (Argon)',
+    'placeholder-m681': 'Orchestrator (Argon)',
+    'm681': 'Orchestrator (Argon)',
+    'model_placeholder_m668': 'Orchestrator (Argon)',
+    'placeholder-m668': 'Orchestrator (Argon)',
+    'm668': 'Orchestrator (Argon)',
+    'model_placeholder_m670': 'Gemini 4 Carbon',
+    'placeholder-m670': 'Gemini 4 Carbon',
+    'm670': 'Gemini 4 Carbon',
+    'gemini-4-hydrogen-sonar': 'Gemini 4 Hydrogen',
+    'model_placeholder_m578': 'Gemini 4 Hydrogen',
+    'm578': 'Gemini 4 Hydrogen',
+    'gemini-4-hydrogen-tiered-high': 'Gemini 4 Hydrogen (High)',
+    'model_placeholder_m530': 'Gemini 4 Hydrogen (High)',
+    'm530': 'Gemini 4 Hydrogen (High)',
+    'gemini-4-hydrogen-tiered-xhigh': 'Gemini 4 Hydrogen (XHigh)',
+    'model_placeholder_m531': 'Gemini 4 Hydrogen (XHigh)',
+    'm531': 'Gemini 4 Hydrogen (XHigh)',
+    'model_placeholder_m525': 'Gemini 4 Hydrogen (High)',
+    'm525': 'Gemini 4 Hydrogen (High)',
+    'model_placeholder_m526': 'Gemini 4 Hydrogen (Medium)',
+    'm526': 'Gemini 4 Hydrogen (Medium)',
+    'model_placeholder_m527': 'Gemini 4 Hydrogen (Low)',
+    'm527': 'Gemini 4 Hydrogen (Low)',
+    'model_placeholder_m528': 'Gemini 4 Hydrogen (XHigh)',
+    'm528': 'Gemini 4 Hydrogen (XHigh)',
+    'model_placeholder_m532': 'Gemini 4 Neon (High)',
+    'placeholder-m532': 'Gemini 4 Neon (High)',
+    'm532': 'Gemini 4 Neon (High)',
+    'model_placeholder_m533': 'Gemini 4 Neon (Medium)',
+    'placeholder-m533': 'Gemini 4 Neon (Medium)',
+    'm533': 'Gemini 4 Neon (Medium)',
+    'model_placeholder_m534': 'Gemini 4 Neon (Low)',
+    'placeholder-m534': 'Gemini 4 Neon (Low)',
+    'm534': 'Gemini 4 Neon (Low)',
+    'model_placeholder_m535': 'Gemini 4 Neon (XHigh)',
+    'placeholder-m535': 'Gemini 4 Neon (XHigh)',
+    'm535': 'Gemini 4 Neon (XHigh)',
+    'model_placeholder_m537': 'Orchestrator (Neon)',
+    'placeholder-m537': 'Orchestrator (Neon)',
+    'm537': 'Orchestrator (Neon)',
+    'model_placeholder_m417': 'Gemini 4 Argon (High)',
+    'm417': 'Gemini 4 Argon (High)',
+    'model_placeholder_m418': 'Gemini 4 Argon (Medium)',
+    'm418': 'Gemini 4 Argon (Medium)',
+    'model_placeholder_m419': 'Gemini 4 Argon (Low)',
+    'm419': 'Gemini 4 Argon (Low)',
+    'model_placeholder_m427': 'Gemini 4 Carbon (High)',
+    'm427': 'Gemini 4 Carbon (High)',
+    'model_placeholder_m437': 'Gemini 4 Carbon (Medium)',
+    'm437': 'Gemini 4 Carbon (Medium)',
+    'model_placeholder_m438': 'Gemini 4 Carbon (Low)',
+    'm438': 'Gemini 4 Carbon (Low)',
+    'gemini-3.8-flash-tiered': 'Gemini 3.8 Flash',
+    'model_placeholder_m322': 'Gemini 3.8 Flash',
+    'm322': 'Gemini 3.8 Flash',
+    'model_placeholder_m318': 'Gemini 3.8 Flash (High)',
+    'm318': 'Gemini 3.8 Flash (High)',
+    'model_placeholder_m319': 'Gemini 3.8 Flash (Medium)',
+    'm319': 'Gemini 3.8 Flash (Medium)',
+    'model_placeholder_m320': 'Gemini 3.8 Flash (Low)',
+    'm320': 'Gemini 3.8 Flash (Low)',
+    'model_placeholder_m400': 'Claude Opus 5.5 (Low)',
+    'm400': 'Claude Opus 5.5 (Low)',
+    'model_placeholder_m401': 'Claude Opus 5.5 (Medium)',
+    'm401': 'Claude Opus 5.5 (Medium)',
+    'model_placeholder_m402': 'Claude Opus 5.5 (High)',
+    'm402': 'Claude Opus 5.5 (High)',
+    'model_placeholder_m403': 'Claude Sonnet 5.5 (Low)',
+    'm403': 'Claude Sonnet 5.5 (Low)',
+    'model_placeholder_m404': 'Claude Sonnet 5.5 (Medium)',
+    'm404': 'Claude Sonnet 5.5 (Medium)',
+    'model_placeholder_m405': 'Claude Sonnet 5.5 (High)',
+    'm405': 'Claude Sonnet 5.5 (High)',
+    'model_placeholder_m198': 'Gemini 3.5 Flash-Lite',
+    'm198': 'Gemini 3.5 Flash-Lite',
+    'gemini-3.1-flash-lite': 'Gemini 3.1 Flash-Lite',
+    'model_placeholder_m50': 'Gemini 3.1 Flash-Lite',
+    'm50': 'Gemini 3.1 Flash-Lite',
+    'gemini-3-flash': 'Gemini 3 Flash',
+    'model_placeholder_m18': 'Gemini 3 Flash',
+    'm18': 'Gemini 3 Flash'
+  };
+
+  function buildLookupKeysForModel(val) {
+    const clean = String(val || '').trim().toLowerCase().replace(/^word\//, '');
+    if (!clean) return [];
+    const stripped = clean.replace(/^model_/, '');
+    const keys = [clean, stripped];
+    const mPh = stripped.match(/placeholder[_-]?(m\d+)$/);
+    if (mPh) keys.push(`model_placeholder_${mPh[1]}`, `placeholder-${mPh[1]}`, mPh[1]);
+    return Array.from(new Set(keys));
+  }
+
+  function getModelPoolKey(raw, extraHint = '') {
+    if (!raw && !extraHint) return 'unknown';
+    const rawParts = (raw && typeof raw === 'object')
+      ? [raw.modelExactId, raw.modelId, raw.model, raw.label, raw.modelDisplayName, raw.modelLabel, raw.responseModel, raw.modelOrAlias?.model, raw.poolKey, extraHint]
+      : [raw, extraHint];
+    const tokens = rawParts.filter(v => typeof v === 'string' && v.trim()).map(v => v.trim());
+    if (!tokens.length) return 'unknown';
+    const expanded = [...tokens];
+    for (const tok of tokens) {
+      for (const lk of buildLookupKeysForModel(tok)) {
+        const mapped = MODEL_USAGE_ID_FALLBACK_LABELS[lk];
+        if (mapped) {
+          expanded.push(mapped);
+          break;
+        }
+      }
+    }
+    const s = expanded.join(' ').toLowerCase().trim().replace(/^word\//, '');
     if (!s) return 'unknown';
     if (s.includes('carbon') || s.includes('gemini-4-carbon') || s.includes('m670')) {
       return 'gemini-4-carbon';
@@ -23,6 +137,9 @@
     // 优先匹配 Argon / Orchestrator (Argon)，允许裸 gemini-pro-orchestrator 与已知变体但不吞并未知后缀
     if (s.includes('argon') || s.includes('gemini-4-argon') || s.includes('m668') || /\bgemini-pro-orchestrator(?:-(?:argon|g1(?:-pro)?))?(?![a-z0-9-])/.test(s)) {
       return 'gemini-4-argon';
+    }
+    if (s.includes('neon') || s.includes('gemini-4-neon')) {
+      return 'gemini-4-neon';
     }
     if (s.includes('hydrogen') || s.includes('gemini-4-hydrogen')) {
       return 'gemini-4-hydrogen';
@@ -40,9 +157,9 @@
     return s.replace(/[^a-z0-9_-]/g, '') || 'unknown';
   }
 
-  function getSharedQuotaGroupKey(raw) {
-    const pk = getModelPoolKey(raw);
-    if (pk === 'gemini-4-hydrogen' || pk === 'gemini-3.8-flash') return 'shared_gemini_main';
+  function getSharedQuotaGroupKey(raw, extraHint = '') {
+    const pk = getModelPoolKey(raw, extraHint);
+    if (pk === 'gemini-4-neon' || pk === 'gemini-4-hydrogen' || pk === 'gemini-3.8-flash') return 'shared_gemini_main';
     if (pk === 'claude-opus-5-5' || pk === 'claude-sonnet-5-5' || pk === 'gpt-oss-120b') return 'shared_3p_pool';
     if (pk === 'gemini-4-argon') return 'shared_gemini_argon';
     if (pk === 'gemini-4-carbon') return 'shared_gemini_carbon';
@@ -203,23 +320,62 @@
   }
 
   function buildAllowedTierMatchSet(planStatus) {
-    const out = new Set();
-    if (!planStatus || typeof planStatus !== 'object') return out;
-    const rawIds = [planStatus.tierId, planStatus.teamsTier, planStatus.tierKey];
-    for (const raw of rawIds) {
-      if (!raw) continue;
-      const val = String(raw).trim().toLowerCase();
-      if (!val) continue;
-      out.add(val);
-      out.add(val.replace(/^g1-/, '').replace(/-tier$/, ''));
-      if (val.includes('ultra')) out.add('ultra');
-      else if (val.includes('pro')) out.add('pro');
-      else if (val.includes('plus')) out.add('plus');
-      else if (val.includes('teams') || val.includes('team')) out.add('teams');
-      else if (val.includes('enterprise')) out.add('enterprise');
-      else if (val.includes('free')) out.add('free');
+    if (!planStatus || typeof planStatus !== 'object') return null;
+    const rawTierKey = typeof planStatus.tierKey === 'string' ? planStatus.tierKey.trim().toLowerCase() : '';
+    const rawTierId = typeof planStatus.tierId === 'string' ? planStatus.tierId.trim().toLowerCase() : '';
+    const rawTeamsTier = typeof planStatus.teamsTier === 'string' ? planStatus.teamsTier.trim().toLowerCase() : '';
+
+    // 套餐尚未识别且无任何具体层级标识时，不执行 allowedTiers 猜测拦截
+    if (planStatus.status === 'unidentified' || ((!rawTierKey || rawTierKey === 'unknown') && !rawTierId && !rawTeamsTier)) {
+      return null;
     }
-    return out;
+
+    const tokens = new Set();
+    if (rawTierId) tokens.add(rawTierId);
+    if (rawTeamsTier) tokens.add(rawTeamsTier);
+    if (rawTierKey && rawTierKey !== 'unknown' && rawTierKey !== 'custom') tokens.add(rawTierKey);
+
+    const isUltraTier = rawTierKey === 'ultra' ||
+      rawTierId === 'g1-ultra-tier' ||
+      rawTeamsTier === 'teams_tier_pro_ultimate' ||
+      rawTeamsTier === 'teams_tier_ultra';
+    const isProTier = !isUltraTier && (
+      rawTierKey === 'pro' ||
+      rawTierId === 'g1-pro-tier' ||
+      rawTeamsTier === 'teams_tier_pro'
+    );
+    const isPlusTier = rawTierKey === 'plus' ||
+      rawTierId === 'g1-plus-tier' ||
+      rawTeamsTier === 'teams_tier_plus';
+    const isFreeTier = rawTierKey === 'free' ||
+      rawTierId === 'free-tier' ||
+      rawTeamsTier === 'teams_tier_free';
+
+    if (isUltraTier) {
+      // Ultra 账号向上覆盖 Ultimate，并兼容上游可能回传或缺失 TEAMS_TIER_PRO 的情况；不放行未声明的企业专享档位
+      tokens.add('ultra');
+      tokens.add('g1-ultra-tier');
+      tokens.add('teams_tier_pro_ultimate');
+      tokens.add('teams_tier_ultra');
+      tokens.add('ultimate');
+      tokens.add('teams_tier_pro');
+      tokens.add('g1-pro-tier');
+      tokens.add('pro');
+    } else if (isProTier) {
+      tokens.add('pro');
+      tokens.add('g1-pro-tier');
+      tokens.add('teams_tier_pro');
+    } else if (isPlusTier) {
+      tokens.add('plus');
+      tokens.add('g1-plus-tier');
+      tokens.add('teams_tier_plus');
+    } else if (isFreeTier) {
+      tokens.add('free');
+      tokens.add('free-tier');
+      tokens.add('teams_tier_free');
+    }
+
+    return tokens.size > 0 ? tokens : null;
   }
 
   function classifyModelQuotaAvailability(config, planStatus = null) {
@@ -235,17 +391,20 @@
 
     let tierBlocked = false;
     let tierReason = null;
-    if (Array.isArray(config.allowedTiers) && config.allowedTiers.length > 0 && planStatus && (planStatus.tierId || planStatus.teamsTier || planStatus.tierKey)) {
-      const myMatchSet = buildAllowedTierMatchSet(planStatus);
-      const hit = myMatchSet.size > 0 && config.allowedTiers.some(v => {
-        const a = String(v || '').trim().toLowerCase();
-        if (!a) return false;
-        const stripped = a.replace(/^g1-/, '').replace(/-tier$/, '');
-        return myMatchSet.has(a) || myMatchSet.has(stripped);
-      });
-      if (!hit) {
-        tierBlocked = true;
-        tierReason = `仅限 ${config.allowedTiers.join(' / ')} 套餐可用`;
+    if (Array.isArray(config.allowedTiers) && config.allowedTiers.length > 0) {
+      const allowedTokens = buildAllowedTierMatchSet(planStatus);
+      if (allowedTokens) {
+        const hit = config.allowedTiers.some(v => {
+          const norm = String(v || '').trim().toLowerCase();
+          if (!norm) return false;
+          return allowedTokens.has(norm)
+            || allowedTokens.has(norm.replace(/-/g, '_'))
+            || allowedTokens.has(norm.replace(/_/g, '-'));
+        });
+        if (!hit) {
+          tierBlocked = true;
+          tierReason = `仅限 ${config.allowedTiers.join(' / ')} 套餐可用`;
+        }
       }
     }
 
@@ -263,12 +422,20 @@
     const noticeText = isTagNotice
       ? (tagDesc || (!isDecorativeBadgeTag ? tagTitle : null))
       : (hasConfigNotice ? config.notice.trim() : null);
-    const fallbackTagReason = isDecorativeBadgeTag ? null : (tagTitle || null);
+
+    // 清洗服务端或上游缓存中可能被装饰角标污染的 reason，确保真实故障原因不被 New 等角标覆盖
+    const rawConfigReason = typeof config.unavailabilityReason === 'string' ? config.unavailabilityReason.trim() : '';
+    const cleanConfigReason = (rawConfigReason && !isDecorativeBadgeTagTitle(rawConfigReason)) ? rawConfigReason : '';
+    const nonDecorativeTagTitle = (!isDecorativeBadgeTag && tagTitle) ? tagTitle : null;
+
+    const unavailabilityReason = tierBlocked
+      ? (cleanConfigReason || tierReason || tagDesc || nonDecorativeTagTitle || '当前套餐无权访问该模型')
+      : (cleanConfigReason || tagDesc || nonDecorativeTagTitle || tierReason || '当前套餐无权访问该模型');
 
     return {
       noPermission: explicitlyDisabled,
       unavailable: explicitlyDisabled,
-      reason: explicitlyDisabled ? (config.unavailabilityReason || tagDesc || fallbackTagReason || tierReason || '当前套餐无权访问该模型') : null,
+      reason: explicitlyDisabled ? unavailabilityReason : null,
       noticeTitle: (noticeText && (isTagNotice || hasConfigNotice)) ? (tagTitle || 'Notice') : null,
       noticeText: noticeText || null
     };
@@ -309,6 +476,7 @@
     const parsed = parseQuotaFraction(qi, { unavailable: avail.noPermission, schemaKind: 'codeium_quota_info' });
     const poolNames = {
       'gemini-4-argon': 'Gemini 4 Argon 配额池（周限额）',
+      'gemini-4-neon': 'Gemini 4 Neon / Hydrogen / 3.8 Flash 共享池',
       'gemini-4-hydrogen': 'Gemini 4 Hydrogen / 3.8 Flash 共享池',
       'gemini-3.8-flash': 'Gemini 3.8 Flash / Hydrogen 共享池',
       'gemini-4-carbon': 'Gemini 4 Carbon 配额池',
@@ -380,8 +548,9 @@
     }
 
     // 2. 模型或额度池耗尽 (Quota Exhausted)
+    const canceledMatch = /(?:\bcontext cancel(?:l)?ed\b|\buser cancel(?:l)?ed\b|request was aborted|AbortError)/i.test(error);
     const explicitQuotaMatch = /(?:quota\s*(?:exceeded|reached|limit|exhausted)|out\s+of\s+quota|exhausted.*(?:capacity|quota)|resource_exhausted.*(?:quota|capacity|billing)|free\s+tier\s+quota|daily\s+quota|weekly\s+quota)/i.test(error);
-    const quotaZeroEvidence = Boolean(modelQuota && typeof modelQuota.remainingFraction === 'number' && modelQuota.remainingFraction <= 0.0001);
+    const quotaZeroEvidence = !canceledMatch && Boolean(modelQuota && typeof modelQuota.remainingFraction === 'number' && modelQuota.remainingFraction <= 0.0001);
 
     if (explicitQuotaMatch || quotaZeroEvidence) {
       const resetTimeZh = modelQuota?.resetTime ? formatResetTimeZh(modelQuota.resetTime) : null;
@@ -418,14 +587,13 @@
       };
     }
 
-    // 4. 用户主动取消或请求中断 (Canceled)
-    const canceledMatch = /(?:context canceled by user|user cancelled|request was aborted|AbortError)/i.test(error);
+    // 4. 请求中断 (Canceled)
     if (canceledMatch) {
       return {
         kind: 'canceled',
-        title: '已取消',
-        badgeText: '已取消',
-        detail: '本次生成请求已由用户或系统主动取消',
+        title: '请求中断',
+        badgeText: '已中断',
+        detail: '最近一次生成请求已中断，无法仅凭此记录确定取消来源或当前请求状态',
         serviceLimit: null,
         retryAfterSec: null,
         resetTime: null,
@@ -524,8 +692,13 @@
     const serviceLimit = classification.serviceLimit || null;
 
     const usage = lastRetry ? lastRetry.usage : m.usage;
-    const input = number(usage?.inputTokens), cached = number(usage?.cacheReadTokens), output = number(usage?.outputTokens);
+    const input = number(usage?.inputTokens), cached = number(usage?.cacheReadTokens);
     const thinking = number(usage?.thinkingOutputTokens), responseTokens = number(usage?.responseOutputTokens);
+    const rawOutput = number(usage?.outputTokens);
+    const combinedOutput = (thinking !== null || responseTokens !== null) ? ((thinking || 0) + (responseTokens || 0)) : null;
+    const output = (rawOutput !== null && rawOutput > 0)
+      ? rawOutput
+      : ((combinedOutput !== null && combinedOutput > 0) ? combinedOutput : (rawOutput ?? responseTokens));
     const hasInput = (input || 0) + (cached || 0) > 0;
 
     // 解耦维度：错误发生时不强制归零已有上下文用量
@@ -546,7 +719,7 @@
     const estimate = number(context?.estimatedTokensUsed) || prevContext?.estimate || null;
     const budget = number(context?.maxContextTokens) || prevContext?.budget || null;
 
-    // 计算生成耗时与输出速度 (Tokens Per Second)
+    // 计算生成耗时与输出速度 (Tokens Per Second)，过滤 < 1.0s 或 < 30 tokens 的短窗噪音
     const ttft = parseDurationSec(m.timeToFirstToken);
     const streamingSec = parseDurationSec(m.streamingDuration);
     const duration = (ttft !== null && streamingSec !== null) ? (ttft + streamingSec) : (ttft ?? streamingSec ?? null);
@@ -555,7 +728,7 @@
       tps = Number((output / duration).toFixed(1));
     }
     let streamingTps = null;
-    if (output && streamingSec && streamingSec > 0.05) {
+    if (output !== null && output >= 30 && streamingSec !== null && streamingSec >= 1.0) {
       streamingTps = Number((output / streamingSec).toFixed(1));
     }
     const speed = (tps !== null || duration !== null || output !== null) ? {
@@ -651,9 +824,17 @@
     const groups = { user: empty(), assistant: empty(), thinking: empty(), tools: empty(), summaries: empty() };
     const media = new Map();
     let userMessages = 0, assistantMessages = 0, latestStepError = null, lastUserAt = -1, lastAssistantAt = -1;
+    let checkpointCount = 0, lastCheckpointIndex = -1, lastCheckpointFailed = false, inProgressCheckpointIndex = -1, lastModelStepAt = -1;
+    let postCheckpointText = empty();
+    let postCheckpointMediaRefs = new Map();
     const skip = new Set(['metadata', 'userConfig', 'lastUserConfig', 'userAgentSpec', 'activeUserState', 'thinkingSignature', 'thumbnail', 'inlineData', 'media', 'modelUsage', 'tokenUsage', 'mendelExperimentIds']);
     // 直接按与原 content()+measure() 等价的逻辑流式累计 chars/bytes/cjk，避免分配巨型中间拼接字符串
     const toolAcc = { chars: 0, bytes: 0, cjk: 0 };
+    function recordPostCheckpointMedia(uriKey) {
+      if (lastCheckpointIndex >= 0 && uriKey) {
+        postCheckpointMediaRefs.set(uriKey, (postCheckpointMediaRefs.get(uriKey) || 0) + 1);
+      }
+    }
     function accumulateContent(value, acc) {
       if (typeof value === 'string') { measure(value, acc); return; }
       if (typeof value === 'number' || typeof value === 'boolean') { measure(String(value), acc); return; }
@@ -683,21 +864,29 @@
       if (Array.isArray(value)) { for (const v of value) attachments(v, source, withinStep); return; }
       if (value.uri && (value.mimeType || value.inlineData !== undefined)) {
         const key = String(value.uri);
-        if (!withinStep.has(key)) { withinStep.add(key); const prior = media.get(key); if (prior) prior.references++; else media.set(key, { uri: key, name: String(value.description || key.split(/[\\/]/).pop()), mime: String(value.mimeType || ''), references: 1, source }); }
+        if (!withinStep.has(key)) {
+          withinStep.add(key);
+          const prior = media.get(key);
+          if (prior) prior.references++;
+          else media.set(key, { uri: key, name: String(value.description || key.split(/[\\/]/).pop()), mime: String(value.mimeType || ''), references: 1, source });
+          recordPostCheckpointMedia(key);
+        }
       } else if (value.inlineData && !value.uri) {
         const key = `inline-${media.size}`;
         const rawData = typeof value.inlineData === 'string' ? value.inlineData : (value.inlineData.data || '');
         const mime = String(value.mimeType || value.inlineData.mimeType || '');
         if (!withinStep.has(key)) {
           withinStep.add(key);
+          const inlineUri = `inline:${key}`;
           media.set(key, {
-            uri: `inline:${key}`,
+            uri: inlineUri,
             inlineData: rawData,
             name: String(value.description || (mime.startsWith('image/') ? '内嵌图像' : '内嵌附件')),
             mime,
             references: 1,
             source
           });
+          recordPostCheckpointMedia(inlineUri);
         }
       }
       for (const [key, v] of Object.entries(value)) if (!skip.has(key) || key === 'media') attachments(v, source, withinStep);
@@ -707,19 +896,48 @@
       if (s.userInput) {
         userMessages++; lastUserAt = i;
         const u = s.userInput;
-        add(groups.user, measure(u.userResponse || (u.items || []).map(item => item.text || '').join('\n')));
+        const uMeasured = measure(u.userResponse || (u.items || []).map(item => item.text || '').join('\n'));
+        add(groups.user, uMeasured);
+        if (lastCheckpointIndex >= 0) add(postCheckpointText, uMeasured);
         // Canonical media and item inline previews represent the same upload.
         attachments(u.media?.length ? u.media : u.items, 'user');
       } else if (s.plannerResponse) {
-        assistantMessages++; lastAssistantAt = i;
-        add(groups.assistant, measure(s.plannerResponse.modifiedResponse || s.plannerResponse.response || ''));
-        add(groups.thinking, measure(s.plannerResponse.thinking || ''));
+        assistantMessages++; lastAssistantAt = i; lastModelStepAt = i;
+        const aMeasured = measure(s.plannerResponse.modifiedResponse || s.plannerResponse.response || '');
+        const tMeasured = measure(s.plannerResponse.thinking || '');
+        add(groups.assistant, aMeasured);
+        add(groups.thinking, tMeasured);
+        if (lastCheckpointIndex >= 0) {
+          add(postCheckpointText, aMeasured);
+          add(postCheckpointText, tMeasured);
+        }
         attachments(s.plannerResponse, 'assistant');
       } else if (s.errorMessage) {
         const e = s.errorMessage.error || {};
         latestStepError = { index: i, text: e.modelErrorMessage || e.shortError || e.fullError || '', id: e.errorId || '' };
       } else if (s.checkpoint) {
-        add(groups.summaries, measure(s.checkpoint.sessionSummary || ''));
+        const cp = s.checkpoint;
+        const rawStepStatus = String(s.status || s.metadata?.status || '').trim().toUpperCase();
+        const isCpInProgress = Boolean(rawStepStatus && /(?:^|_)(?:RUNNING|PENDING|GENERATING|IN_PROGRESS|STREAMING|QUEUED)$/.test(rawStepStatus));
+        const isCpStepFailed = Boolean(rawStepStatus && /(?:^|_)(?:ERROR|FAILED|CANCELED|CANCELLED|ABORTED)$/.test(rawStepStatus));
+        const cpText = [cp.sessionSummary, cp.codeChangeSummary, cp.userIntent, cp.memorySummary]
+          .filter(v => typeof v === 'string' && v.length > 0)
+          .join('\n');
+        const cpMeasured = measure(cpText);
+        add(groups.summaries, cpMeasured);
+        if (isCpInProgress) {
+          inProgressCheckpointIndex = i;
+        } else if (cp.modelSummarizationFailed === true || isCpStepFailed) {
+          lastCheckpointFailed = true;
+          inProgressCheckpointIndex = -1;
+        } else {
+          checkpointCount++;
+          lastCheckpointIndex = i;
+          lastCheckpointFailed = false;
+          inProgressCheckpointIndex = -1;
+          postCheckpointText = { ...cpMeasured };
+          postCheckpointMediaRefs = new Map();
+        }
       } else {
         toolAcc.chars = 0; toolAcc.bytes = 0; toolAcc.cjk = 0;
         const stepKeys = Object.keys(s);
@@ -741,19 +959,175 @@
           }
         }
         if (toolAcc.chars > 0 || toolAcc.bytes > 0) {
+          lastModelStepAt = i;
           const middle = (toolAcc.chars - toolAcc.cjk) / 4 + toolAcc.cjk * 1.2;
-          add(groups.tools, {
+          const toolMeasured = {
             chars: toolAcc.chars,
             bytes: toolAcc.bytes,
             low: Math.ceil(middle * .7),
             high: Math.ceil(Math.max(middle * 1.6, toolAcc.bytes / 2))
-          });
+          };
+          add(groups.tools, toolMeasured);
+          if (lastCheckpointIndex >= 0) add(postCheckpointText, toolMeasured);
         }
       }
     }
     const total = Object.values(groups).reduce(add, empty());
-    const currentError = latestStepError && latestStepError.index > Math.max(lastUserAt, lastAssistantAt) ? latestStepError : null;
-    return { groups, total, media: [...media.values()], steps: steps.length, userMessages, assistantMessages, currentError };
+    const currentError = latestStepError && latestStepError.index > Math.max(lastUserAt, lastAssistantAt, lastCheckpointIndex) ? latestStepError : null;
+    const postCheckpoint = lastCheckpointIndex >= 0 ? {
+      checkpointIndex: lastCheckpointIndex,
+      textTotal: postCheckpointText,
+      mediaRefs: Object.fromEntries(postCheckpointMediaRefs)
+    } : null;
+    return {
+      groups,
+      total,
+      media: [...media.values()],
+      steps: steps.length,
+      userMessages,
+      assistantMessages,
+      lastUserAt,
+      lastAssistantAt,
+      lastModelStepAt,
+      checkpointCount,
+      lastCheckpointIndex,
+      lastCheckpointFailed,
+      inProgressCheckpointIndex,
+      postCheckpoint,
+      currentError
+    };
+  }
+
+  /**
+   * 提取单条 CortexStepGeneratorMetadata 关联的最大步序号；缺失时返回 -1
+   */
+  function extractGeneratorMaxStep(metadata) {
+    if (!metadata || typeof metadata !== 'object') return -1;
+    let maxStep = -1;
+    if (Array.isArray(metadata.stepIndices)) {
+      for (const raw of metadata.stepIndices) {
+        const n = Number(raw);
+        if (Number.isInteger(n) && n >= 0 && n > maxStep) maxStep = n;
+      }
+    }
+    for (const cand of [metadata.stepIndex, metadata.step_index, metadata.chatModel?.chatStartMetadata?.startStepIndex]) {
+      if (cand !== undefined && cand !== null && cand !== '') {
+        const n = Number(cand);
+        if (Number.isInteger(n) && n >= 0 && n > maxStep) maxStep = n;
+      }
+    }
+    return maxStep;
+  }
+
+  /**
+   * 判定会话最新成功的压缩检查点是否晚于（或恰好对应）最近一次模型调用
+   */
+  function isCheckpointNewerThanGenerator(session, latestGeneratorMeta = null, summarizedLatest = null) {
+    const cpIdx = Number.isInteger(session?.lastCheckpointIndex) ? session.lastCheckpointIndex : -1;
+    if (cpIdx < 0) return false;
+    if (!latestGeneratorMeta) return true;
+    const genMaxStep = extractGeneratorMaxStep(latestGeneratorMeta);
+    if (genMaxStep >= 0) {
+      if (genMaxStep <= cpIdx) return true;
+      const hasPostCompactOutcome = Boolean(
+        summarizedLatest && (summarizedLatest.actual !== null || Boolean(summarizedLatest.error))
+      );
+      return !hasPostCompactOutcome;
+    }
+    const lastModelStep = Number.isInteger(session?.lastModelStepAt)
+      ? session.lastModelStepAt
+      : (Number.isInteger(session?.lastAssistantAt) ? session.lastAssistantAt : -1);
+    return lastModelStep <= cpIdx;
+  }
+
+  /**
+   * 构建压缩后（Post-Compact）上下文窗口状态快照
+   */
+  function buildPostCompactSummary(options = {}) {
+    const session = options.session || null;
+    const prev = options.previousLatest || null;
+    const hCwu = options.hostContextWindowUsage || null;
+    const cpIdx = Number.isInteger(session?.lastCheckpointIndex) ? session.lastCheckpointIndex : -1;
+
+    let activeRange = null;
+    if (session?.postCompactActiveTotal) {
+      activeRange = { ...session.postCompactActiveTotal };
+    } else if (session?.postCheckpoint?.textTotal) {
+      activeRange = add(
+        add(
+          add({ ...session.postCheckpoint.textTotal }, options.postCheckpointAttachmentTotal || empty()),
+          options.system || session?.groups?.system || empty()
+        ),
+        options.definitions || session?.groups?.definitions || empty()
+      );
+    }
+
+    let localMidpoint = null;
+    if (activeRange) {
+      const low = Number(activeRange.low) || 0;
+      const high = Number(activeRange.high) || 0;
+      const mid = Math.round((low + high) / 2);
+      localMidpoint = (activeRange.chars > 0 && mid <= 0) ? 1 : mid;
+    }
+
+    const hostUsed = number(hCwu?.estimatedTokensUsed ?? hCwu?.estimated_tokens_used);
+    const hostStep = Number.isInteger(Number(hCwu?.lastStepIndex ?? hCwu?.last_step_index))
+      ? Number(hCwu.lastStepIndex ?? hCwu.last_step_index)
+      : -1;
+    const hostAfterCompact = Boolean(hCwu?.estimatedAfterCompaction ?? hCwu?.estimated_after_compaction);
+    const canUseHostUsage = hostUsed !== null && hostUsed > 0 && (
+      hostAfterCompact || (cpIdx >= 0 && hostStep >= cpIdx)
+    );
+
+    const estimatedUsed = canUseHostUsage ? Math.round(hostUsed) : localMidpoint;
+    const estimateSource = canUseHostUsage
+      ? 'host_context_window_usage'
+      : (localMidpoint !== null ? 'local_post_checkpoint_midpoint' : 'unknown');
+
+    const hostBudget = number(hCwu?.maxContextTokens ?? hCwu?.max_context_tokens);
+    const budget = (hostBudget && hostBudget > 0)
+      ? hostBudget
+      : ((prev?.budget && prev.budget > 0)
+        ? prev.budget
+        : (number(options.defaultBudgetFallback) > 0 ? number(options.defaultBudgetFallback) : null));
+
+    const percentVal = (estimatedUsed !== null && budget && budget > 0)
+      ? (estimatedUsed / budget * 100)
+      : null;
+
+    const effectiveCpIdx = Math.max(cpIdx, hostAfterCompact ? hostStep : -1);
+    const resolvedCpIndex = effectiveCpIdx >= 0 ? effectiveCpIdx : null;
+    const resolvedCpCount = Number(session?.checkpointCount) > 0
+      ? Number(session.checkpointCount) + (cpIdx >= 0 && hostAfterCompact && hostStep > cpIdx ? 1 : 0)
+      : (hostAfterCompact || resolvedCpIndex !== null ? 1 : 0);
+
+    return {
+      used: estimatedUsed,
+      actual: null,
+      estimate: estimatedUsed,
+      postCompactEstimate: estimatedUsed,
+      postCompactRange: activeRange,
+      postCompactSource: estimateSource,
+      compacted: true,
+      checkpointIndex: resolvedCpIndex,
+      checkpointCount: resolvedCpCount,
+      budget: budget && budget > 0 ? budget : null,
+      serviceLimit: null,
+      exceeded: false,
+      network: false,
+      error: '',
+      errorClassification: { kind: 'none' },
+      estimated: true,
+      input: null,
+      cached: 0,
+      output: null,
+      percent: percentVal,
+      model: prev?.model || '',
+      modelId: prev?.modelId || null,
+      modelRaw: prev?.modelRaw || '',
+      status: 'compacted',
+      speed: prev?.speed || null
+    };
   }
 
   // 官方 Developer API Standard 公开费率表 (USD / 百万 Token)
@@ -782,6 +1156,14 @@
         inputPerMillion: 1.50,
         outputPerMillion: 7.50,
         cacheReadPerMillion: 0.075
+      }
+    ],
+    // Gemini 4 Neon 参考定价（来源：Google Gemini API 官方定价表，2026-11-18 生效：$3.00 / $15.00 / $0.15 per 1M tokens）
+    'gemini-4-neon': [
+      {
+        inputPerMillion: 3.00,
+        outputPerMillion: 15.00,
+        cacheReadPerMillion: 0.15
       }
     ],
     'gemini-4-carbon': [
@@ -873,16 +1255,17 @@
   function normalizeModelId(raw) {
     if (!raw || typeof raw !== 'string') return null;
     const str = raw.trim().toLowerCase().replace(/^word\//, '');
-    if (str.includes('3.8-flash') || str.includes('3.8 flash') || str.includes('flash-n')) return 'gemini-3.8-flash';
-    if (str.includes('4-hydrogen') || str.includes('4 hydrogen') || str.includes('hydrogen')) return 'gemini-4-hydrogen';
-    // 注：2.32.1 客户端已将 gemini-pro-orchestrator 明确归为 Orchestrator (Argon)，仅明确的 carbon / m670 归为 gemini-4-carbon；未知 orchestrator 后缀保持未计价
-    if (str.includes('4-carbon') || str.includes('4 carbon') || str.includes('carbon') || str.includes('m670')) return 'gemini-4-carbon';
-    if (str.includes('4-argon') || str.includes('4 argon') || str.includes('argon') || /\bgemini-pro-orchestrator(?:-(?:argon|g1(?:-pro)?))?(?![a-z0-9-])/.test(str) || str.includes('m668')) return 'gemini-4-argon';
+    if (str.includes('3.8-flash') || str.includes('3.8 flash') || str.includes('flash-n') || /(?:^|[^a-z0-9])(?:(?:model_)?placeholder[_-]?)?m(?:318|319|320|322)(?=$|[^a-z0-9])/.test(str)) return 'gemini-3.8-flash';
+    if (str.includes('4-hydrogen') || str.includes('4 hydrogen') || str.includes('hydrogen') || str.includes('worker-agy') || /(?:^|[^a-z0-9])(?:(?:model_)?placeholder[_-]?)?m(?:525|526|527|528|530|531|578|669)(?=$|[^a-z0-9])/.test(str)) return 'gemini-4-hydrogen';
+    if (str.includes('4-neon') || str.includes('4 neon') || /\bneon\b/.test(str) || /(?:^|[^a-z0-9])(?:(?:model_)?placeholder[_-]?)?m(?:532|533|534|535|537)(?=$|[^a-z0-9])/.test(str)) return 'gemini-4-neon';
+    // 注：2.32.1 客户端已将 gemini-pro-orchestrator 明确归为 Orchestrator (Argon)，而 M667/M670/carbon 归为 gemini-4-carbon；未知 orchestrator 后缀保持未计价
+    if (str.includes('4-carbon') || str.includes('4 carbon') || str.includes('carbon') || /(?:^|[^a-z0-9])(?:(?:model_)?placeholder[_-]?)?m(?:427|437|438|667|670)(?=$|[^a-z0-9])/.test(str)) return 'gemini-4-carbon';
+    if (str.includes('4-argon') || str.includes('4 argon') || str.includes('argon') || /\bgemini-pro-orchestrator(?:-(?:argon|g1(?:-pro)?))?(?![a-z0-9-])/.test(str) || /(?:^|[^a-z0-9])(?:(?:model_)?placeholder[_-]?)?m(?:417|418|419|668|681)(?=$|[^a-z0-9])/.test(str)) return 'gemini-4-argon';
     if (str.includes('3.1-pro') || str.includes('3.1 pro')) return 'gemini-3.1-pro-preview';
     if (str.includes('3.5-flash-lite') || str.includes('3.5 flash-lite') || str.includes('flash-lite')) return 'gemini-3.5-flash-lite';
     if (str.includes('2.5-pro') || str.includes('2.5 pro')) return 'gemini-2.5-pro';
-    if (/(?:opus[-_ ]5[._-]5(?![0-9]|\.[0-9]|[-_](?!20\d{6}(?![0-9]))[0-9])|5[._-]5(?![0-9]|\.[0-9]|[-_](?!20\d{6}(?![0-9]))[0-9])[-_ ]opus)/.test(str)) return 'claude-opus-5-5';
-    if (/(?:sonnet[-_ ]5[._-]5(?![0-9]|\.[0-9]|[-_](?!20\d{6}(?![0-9]))[0-9])|5[._-]5(?![0-9]|\.[0-9]|[-_](?!20\d{6}(?![0-9]))[0-9])[-_ ]sonnet)/.test(str)) return 'claude-sonnet-5-5';
+    if (/(?:opus[-_ ]5[._-]5(?![0-9]|\.[0-9]|[-_](?!20\d{6}(?![0-9]))[0-9])|5[._-]5(?![0-9]|\.[0-9]|[-_](?!20\d{6}(?![0-9]))[0-9])[-_ ]opus)/.test(str) || /(?:^|[^a-z0-9])(?:(?:model_)?placeholder[_-]?)?m(?:400|401|402)(?=$|[^a-z0-9])/.test(str)) return 'claude-opus-5-5';
+    if (/(?:sonnet[-_ ]5[._-]5(?![0-9]|\.[0-9]|[-_](?!20\d{6}(?![0-9]))[0-9])|5[._-]5(?![0-9]|\.[0-9]|[-_](?!20\d{6}(?![0-9]))[0-9])[-_ ]sonnet)/.test(str) || /(?:^|[^a-z0-9])(?:(?:model_)?placeholder[_-]?)?m(?:403|404|405)(?=$|[^a-z0-9])/.test(str)) return 'claude-sonnet-5-5';
     return null;
   }
 
@@ -1131,8 +1514,11 @@
     return Math.round(num).toLocaleString('en-US');
   }
 
+  const MIN_STREAMING_TPS_SEC = 1.0;
+  const MIN_STREAMING_TPS_TOKENS = 30;
+
   /**
-   * 判定单条记录是否为有效的实测速度样本
+   * 判定单条记录是否为有效的实测速度样本（过滤 < 1.0s 或 < 30 outputTokens 的短窗噪音）
    */
   function isValidSpeedSample(call) {
     if (!call || typeof call !== 'object') return false;
@@ -1140,8 +1526,15 @@
     if (call.isEstimated === true || call.isSynthetic === true) return false;
     const out = Number(call.outputTokens);
     const dur = Number(call.durationSec);
-    if (!Number.isFinite(out) || out <= 0) return false;
+    if (!Number.isFinite(out) || out < MIN_STREAMING_TPS_TOKENS) return false;
     if (!Number.isFinite(dur) || dur <= 0) return false;
+    const streamRaw = call.streamingSec;
+    if (streamRaw !== null && streamRaw !== undefined && streamRaw !== '') {
+      const streamSec = Number(streamRaw);
+      if (!Number.isFinite(streamSec) || streamSec < MIN_STREAMING_TPS_SEC) return false;
+    } else if (dur < MIN_STREAMING_TPS_SEC) {
+      return false;
+    }
     return true;
   }
 
@@ -1497,6 +1890,7 @@
 
     const input = Number(u.inputTokens ?? row.inputTokens ?? row.input_tokens ?? 0);
     const cached = Number(u.cacheReadTokens ?? row.cacheTokens ?? row.cacheReadTokens ?? row.cache_read_tokens ?? 0);
+    const cacheCreation = Number(u.cacheCreationTokens ?? row.cacheCreationTokens ?? row.cache_creation_tokens ?? 0);
     const output = Number(u.outputTokens ?? row.outputTokens ?? row.output_tokens ?? 0);
     const thinking = Number(u.thinkingOutputTokens ?? row.thinkingTokens ?? row.thinking_output_tokens ?? 0);
     const responseTokens = Number(u.responseOutputTokens ?? row.responseTokens ?? (output - thinking > 0 ? output - thinking : output));
@@ -1611,6 +2005,7 @@
       inputTokens: input,
       cacheTokens: cached,
       cacheReadTokens: cached,
+      ...(Number.isFinite(cacheCreation) && cacheCreation > 0 ? { cacheCreationTokens: cacheCreation } : {}),
       outputTokens: output,
       thinkingTokens: thinking,
       responseTokens,
@@ -1670,7 +2065,9 @@
       return {
         status: 'unidentified',
         tierKey: 'unknown',
+        tierSpecKey: 'unknown',
         tierName: '未知',
+        multiplier: null,
         tierId: null,
         teamsTier: null,
         ultraSubTier: null,
@@ -1697,6 +2094,7 @@
     const email = us.email || null;
     const rawTierName = String(userTier.name || planInfo.planName || '').trim();
     const teamsTier = userTier.teamsTier || us.teamsTier || planInfo.teamsTier || null;
+    const rawTeamsTier = typeof teamsTier === 'string' ? teamsTier.trim() : '';
 
     // 只有具备明确权益证据时才识别套餐，避免空对象或缺省状态被当成 Free
     const hasTierEvidence = Boolean(
@@ -1711,7 +2109,9 @@
       return {
         status: 'unidentified',
         tierKey: 'unknown',
+        tierSpecKey: 'unknown',
         tierName: '未知',
+        multiplier: null,
         tierId: null,
         teamsTier: null,
         ultraSubTier: null,
@@ -1733,26 +2133,48 @@
     }
 
     let tierKey = 'unknown';
+    let tierSpecKey = 'unknown';
     let tierDisplayName = '未知';
     let officialPrice = null;
     let priceRange = null;
     let ultraSubTier = null;
     let ultraSubTierSource = 'unknown';
 
-    if (/ultra/i.test(rawTierName) || /ultra/i.test(userTier.id || '')) {
+    let multiplier = null;
+    if (Number.isFinite(Number(userTier.multiplier)) && Number(userTier.multiplier) > 0) {
+      multiplier = Number(userTier.multiplier);
+    } else if (Number.isFinite(Number(planInfo.multiplier)) && Number(planInfo.multiplier) > 0) {
+      multiplier = Number(planInfo.multiplier);
+    } else if (Number.isFinite(Number(planStatus.quotaMultiplier)) && Number(planStatus.quotaMultiplier) > 0) {
+      multiplier = Number(planStatus.quotaMultiplier);
+    } else if (Number.isFinite(Number(userTier.tierMultiplier)) && Number(userTier.tierMultiplier) > 0) {
+      multiplier = Number(userTier.tierMultiplier);
+    }
+
+    if (/ultra/i.test(rawTierName) || /ultra/i.test(userTier.id || '') || /pro_ultimate|teams_tier_ultra/i.test(rawTeamsTier)) {
       tierKey = 'ultra';
-      const tierHintText = `${rawTierName} ${userTier.id || ''} ${userTier.description || ''}`;
-      const explicitMultiplierMatch = tierHintText.match(/\b(20x|5x)\b/i);
-      const normalizedHit = explicitMultiplierMatch ? normalizeUltraSubTier(explicitMultiplierMatch[1]) : null;
+      const tierHintText = `${rawTierName} ${userTier.id || ''} ${userTier.description || ''} ${rawTeamsTier}`;
+      const explicitMultiplierMatch = tierHintText.match(/(?:ultra)?[_\-\s]*(\d+x)\b/i);
+      let normalizedHit = explicitMultiplierMatch ? normalizeUltraSubTier(explicitMultiplierMatch[1]) : null;
+      if (!normalizedHit && (multiplier === 5 || multiplier === 20)) {
+        normalizedHit = `${multiplier}x`;
+      }
+      if (!multiplier && explicitMultiplierMatch) {
+        const parsedM = parseInt(explicitMultiplierMatch[1], 10);
+        if (Number.isFinite(parsedM) && parsedM > 0) multiplier = parsedM;
+      }
       if (normalizedHit && ULTRA_SUB_TIER_PRESETS[normalizedHit]) {
         const spec = ULTRA_SUB_TIER_PRESETS[normalizedHit];
         ultraSubTier = normalizedHit;
         ultraSubTierSource = 'live';
+        if (!multiplier) multiplier = spec.quotaMultiplier;
+        tierSpecKey = normalizedHit === '5x' ? 'ultra_5x' : 'ultra_20x';
         tierDisplayName = spec.tierName;
         officialPrice = spec.officialPriceMonthly;
         priceRange = `$${officialPrice}/月（${spec.quotaMultiplierText} · 公开参考）`;
       } else {
         const subTierMatch = rawTierName.match(/ultra\s*([0-9a-zA-Z\-_]+)/i);
+        tierSpecKey = 'ultra';
         if (subTierMatch && !['plan', 'tier'].includes(subTierMatch[1].toLowerCase())) {
           tierDisplayName = `Google AI Ultra (${subTierMatch[1]})`;
           officialPrice = null;
@@ -1763,24 +2185,28 @@
           priceRange = '参考区间 $99.99 ~ $199.99/月（子档未知）';
         }
       }
-    } else if (/pro/i.test(rawTierName) || /pro/i.test(userTier.id || '')) {
+    } else if (/pro/i.test(rawTierName) || /pro/i.test(userTier.id || '') || /^teams_tier_pro$/i.test(rawTeamsTier)) {
       tierKey = 'pro';
+      tierSpecKey = 'pro';
       tierDisplayName = 'Google AI Pro';
       officialPrice = 19.99;
       priceRange = '$19.99/月（公开参考）';
-    } else if (/plus/i.test(rawTierName) || /plus/i.test(userTier.id || '')) {
+    } else if (/plus/i.test(rawTierName) || /plus/i.test(userTier.id || '') || /^teams_tier_plus$/i.test(rawTeamsTier)) {
       tierKey = 'plus';
+      tierSpecKey = 'plus';
       tierDisplayName = 'Google AI Plus';
       officialPrice = 4.99;
       priceRange = '$4.99/月（公开参考）';
-    } else if (/free/i.test(rawTierName) || /free/i.test(userTier.id || '')) {
+    } else if (/free/i.test(rawTierName) || /free/i.test(userTier.id || '') || /^teams_tier_free$/i.test(rawTeamsTier)) {
       tierKey = 'free';
+      tierSpecKey = 'free';
       tierDisplayName = 'Free';
       officialPrice = 0;
       priceRange = '$0/月（公开参考）';
     } else {
       tierKey = 'custom';
-      tierDisplayName = rawTierName || '未知套餐';
+      tierSpecKey = 'custom';
+      tierDisplayName = rawTierName || rawTeamsTier || '未知套餐';
       officialPrice = null;
       priceRange = '费率未知';
     }
@@ -1788,7 +2214,9 @@
     return {
       status: 'identified',
       tierKey,
+      tierSpecKey,
       tierName: tierDisplayName,
+      multiplier,
       tierId: userTier.id || null,
       teamsTier,
       ultraSubTier,
@@ -1899,6 +2327,7 @@
     const modelNameMap = {
       'gemini-3.8-flash': 'Gemini 3.8 Flash Standard',
       'gemini-4-hydrogen': 'Gemini 4 Hydrogen',
+      'gemini-4-neon': 'Gemini 4 Neon',
       'gemini-4-carbon': 'Gemini 4 Carbon',
       'gemini-4-argon': 'Gemini 4 Argon',
       'gemini-3.1-pro-preview': 'Gemini 3.1 Pro Preview',
@@ -2053,6 +2482,164 @@
     }
   ];
 
+  // 2026-11 各档位规格、倍率、云存储、Prompt/Flow 额度池基准及 Cloud Credits 参考
+  const SUBSCRIPTION_TIER_SPECS = {
+    free: {
+      key: 'free',
+      tierKey: 'free',
+      name: 'Free',
+      nameZh: '免费版',
+      nameTw: '免費版',
+      nameEn: 'Free',
+      officialPriceUSD: 0,
+      multiplier: null,
+      windowDescZh: '每周基础刷新',
+      windowDescTw: '每週基礎重新整理',
+      windowDescEn: 'Weekly baseline refresh',
+      storage: '15 GB',
+      promptMonthly: null,
+      flowPoolMonthly: null,
+      flowOfficialZh: 'Flow 50/天',
+      flowOfficialTw: 'Flow 50/天',
+      flowOfficialEn: 'Flow 50/day',
+      cloudCreditsZh: null,
+      cloudCreditsTw: null,
+      cloudCreditsEn: null
+    },
+    plus: {
+      key: 'plus',
+      tierKey: 'plus',
+      name: 'Google AI Plus',
+      nameZh: 'Google AI Plus',
+      nameTw: 'Google AI Plus',
+      nameEn: 'Google AI Plus',
+      officialPriceUSD: 4.99,
+      multiplier: null,
+      windowDescZh: '基础提升窗口',
+      windowDescTw: '基礎提升視窗',
+      windowDescEn: 'Enhanced tier window',
+      storage: '400 GB / 2 TB',
+      promptMonthly: null,
+      flowPoolMonthly: null,
+      flowOfficialZh: 'Flow 50/天 + 200/月',
+      flowOfficialTw: 'Flow 50/天 + 200/月',
+      flowOfficialEn: 'Flow 50/day + 200/mo',
+      cloudCreditsZh: null,
+      cloudCreditsTw: null,
+      cloudCreditsEn: null
+    },
+    pro: {
+      key: 'pro',
+      tierKey: 'pro',
+      name: 'Google AI Pro',
+      nameZh: 'Google AI Pro',
+      nameTw: 'Google AI Pro',
+      nameEn: 'Google AI Pro',
+      officialPriceUSD: 19.99,
+      multiplier: 1,
+      windowDescZh: '1x · 5h+7d 窗口',
+      windowDescTw: '1x · 5h+7d 視窗',
+      windowDescEn: '1x · 5h+7d window',
+      storage: '5 TB',
+      promptMonthly: 50000,
+      flowPoolMonthly: 150000,
+      flowOfficialZh: '官方 +1,000/月',
+      flowOfficialTw: '官方 +1,000/月',
+      flowOfficialEn: 'Official +1,000/mo',
+      cloudCreditsZh: '$10/月 Cloud Credits',
+      cloudCreditsTw: '$10/月 Cloud Credits',
+      cloudCreditsEn: '$10/mo Cloud Credits'
+    },
+    ultra_5x: {
+      key: 'ultra_5x',
+      tierKey: 'ultra',
+      name: 'Google AI Ultra 5x',
+      nameZh: 'Google AI Ultra 5x',
+      nameTw: 'Google AI Ultra 5x',
+      nameEn: 'Google AI Ultra 5x',
+      officialPriceUSD: 99.99,
+      multiplier: 5,
+      windowDescZh: '5x Pro 窗口',
+      windowDescTw: '5x Pro 視窗',
+      windowDescEn: '5x Pro window',
+      storage: '20 TB',
+      promptMonthly: 250000,
+      flowPoolMonthly: 750000,
+      flowOfficialZh: '官方 +10,000/月',
+      flowOfficialTw: '官方 +10,000/月',
+      flowOfficialEn: 'Official +10,000/mo',
+      cloudCreditsZh: '$40/月 Cloud Credits',
+      cloudCreditsTw: '$40/月 Cloud Credits',
+      cloudCreditsEn: '$40/mo Cloud Credits'
+    },
+    ultra_20x: {
+      key: 'ultra_20x',
+      tierKey: 'ultra',
+      name: 'Google AI Ultra 20x',
+      nameZh: 'Google AI Ultra 20x',
+      nameTw: 'Google AI Ultra 20x',
+      nameEn: 'Google AI Ultra 20x',
+      officialPriceUSD: 199.99,
+      multiplier: 20,
+      windowDescZh: '20x Pro 窗口',
+      windowDescTw: '20x Pro 視窗',
+      windowDescEn: '20x Pro window',
+      storage: '30 TB',
+      promptMonthly: 1000000,
+      flowPoolMonthly: 3000000,
+      flowOfficialZh: '官方 +25,000/月',
+      flowOfficialTw: '官方 +25,000/月',
+      flowOfficialEn: 'Official +25,000/mo',
+      cloudCreditsZh: '$100/月 Cloud Credits',
+      cloudCreditsTw: '$100/月 Cloud Credits',
+      cloudCreditsEn: '$100/mo Cloud Credits'
+    },
+    ultra: {
+      key: 'ultra',
+      tierKey: 'ultra',
+      name: 'Google AI Ultra',
+      nameZh: 'Google AI Ultra',
+      nameTw: 'Google AI Ultra',
+      nameEn: 'Google AI Ultra',
+      officialPriceUSD: null,
+      priceRangeUSD: [99.99, 199.99],
+      priceRangeTextZh: '$99.99–$199.99/月',
+      priceRangeTextTw: '$99.99–$199.99/月',
+      priceRangeTextEn: '$99.99–$199.99/mo',
+      multiplier: null,
+      windowDescZh: '5x–20x Pro 窗口',
+      windowDescTw: '5x–20x Pro 視窗',
+      windowDescEn: '5x–20x Pro window',
+      storage: '20–30 TB',
+      promptMonthly: null,
+      flowPoolMonthly: null,
+      flowOfficialZh: '官方 +10,000–25,000/月',
+      flowOfficialTw: '官方 +10,000–25,000/月',
+      flowOfficialEn: 'Official +10,000–25,000/mo',
+      cloudCreditsZh: '$40–$100/月 Cloud Credits',
+      cloudCreditsTw: '$40–$100/月 Cloud Credits',
+      cloudCreditsEn: '$40–$100/月 Cloud Credits'
+    }
+  };
+
+  // 分套餐 × 分地区官方月付参考价二维矩阵 · 2026-11 校准
+  const SUBSCRIPTION_TIER_REGION_PRICES = {
+    US: { currency: 'USD', symbol: '$', plus: 4.99, pro: 19.99, ultra_5x: 99.99, ultra_20x: 199.99 },
+    JP: { currency: 'JPY', symbol: '¥', plus: 750, pro: 2900, ultra_5x: 14500, ultra_20x: 32000 },
+    KR: { currency: 'KRW', symbol: '₩', plus: 7000, pro: 29000, ultra_5x: 119000, ultra_20x: 300000 },
+    TW: { currency: 'TWD', symbol: 'NT$', plus: 160, pro: 650, ultra_5x: 3250, ultra_20x: 6500 },
+    HK: { currency: 'HKD', symbol: 'HK$', plus: 38, pro: 158, ultra_5x: 799, ultra_20x: 1588 },
+    EU: { currency: 'EUR', symbol: '€', plus: 5.49, pro: 21.99, ultra_5x: 99.99, ultra_20x: 219.99 },
+    GB: { currency: 'GBP', symbol: '£', plus: 4.99, pro: 18.99, ultra_5x: 94.99, ultra_20x: 189.99 },
+    AU: { currency: 'AUD', symbol: 'AU$', plus: 7.99, pro: 32.99, ultra_5x: 164.99, ultra_20x: 329.99 },
+    SG: { currency: 'SGD', symbol: 'S$', plus: 6.99, pro: 28.99, ultra_5x: 139.99, ultra_20x: 279.99 },
+    CA: { currency: 'CAD', symbol: 'CA$', plus: 6.99, pro: 26.99, ultra_5x: 139.99, ultra_20x: 279.99 },
+    IN: { currency: 'INR', symbol: '₹', plus: 499, pro: 1950, ultra_5x: 6500, ultra_20x: 19500 },
+    TR: { currency: 'TRY', symbol: '₺', plus: 199.99, pro: 869.99, ultra_5x: 4749.99, ultra_20x: 8999.99 },
+    BR: { currency: 'BRL', symbol: 'R$', plus: 24.90, pro: 96.90, ultra_5x: 499.90, ultra_20x: 999.90 },
+    EG: { currency: 'EGP', symbol: 'EGP ', plus: 239.99, pro: 939.99, ultra_5x: 4399.99, ultra_20x: 8799.99 }
+  };
+
   const CURRENCY_SYMBOLS = {
     USD: '$',
     CNY: '¥',
@@ -2091,7 +2678,7 @@
     HUF: 'Ft ',
     RON: 'lei ',
     ZAR: 'R ',
-    EGP: 'E£ ',
+    EGP: 'EGP ',
     KES: 'KSh ',
     AED: 'AED ',
     SAR: 'SAR ',
@@ -2101,69 +2688,111 @@
   // 订阅地区参考价与静态汇率，供本地估算使用 (基准货币: CNY)
   const SUBSCRIPTION_REGIONS_PRESET = [
     // 亚太与大洋洲
-    { id: 'TW', name: '中国台湾', flag: '🇹🇼', currency: 'TWD', symbol: 'NT$', monthlyPrice: 650, rateToCNY: 0.21, aliases: ['tw', 'ntd', 'twd', 'taiwan', '台湾', '中国台湾', '台区'] },
-    { id: 'HK', name: '中国香港', flag: '🇭🇰', currency: 'HKD', symbol: 'HK$', monthlyPrice: 158.00, rateToCNY: 0.857, aliases: ['hk', 'hong kong', '香港', '中国香港', '港区'] },
-    { id: 'JP', name: '日本', flag: '🇯🇵', currency: 'JPY', symbol: '¥', monthlyPrice: 2900, rateToCNY: 0.0425, aliases: ['jp', 'japan', '日本', '日区'] },
-    { id: 'KR', name: '韩国', flag: '🇰🇷', currency: 'KRW', symbol: '₩', monthlyPrice: 29000, rateToCNY: 0.0051, aliases: ['kr', 'korea', 'south korea', '韩国', '韩区'] },
-    { id: 'AU', name: '澳大利亚 (澳区)', flag: '🇦🇺', currency: 'AUD', symbol: 'AU$', monthlyPrice: 32.99, rateToCNY: 4.45, aliases: ['au', 'aud', 'australia', '澳大利亚', '澳洲', '澳区'] },
-    { id: 'NZ', name: '新西兰', flag: '🇳🇿', currency: 'NZD', symbol: 'NZ$', monthlyPrice: 34.99, rateToCNY: 4.05, aliases: ['nz', 'nzd', 'new zealand', '新西兰'] },
-    { id: 'SG', name: '新加坡', flag: '🇸🇬', currency: 'SGD', symbol: 'S$', monthlyPrice: 27.99, rateToCNY: 5.12, aliases: ['sg', 'singapore', '新加坡', '星洲'] },
-    { id: 'MY', name: '马来西亚', flag: '🇲🇾', currency: 'MYR', symbol: 'RM ', monthlyPrice: 97.99, rateToCNY: 1.55, aliases: ['my', 'myr', 'malaysia', '马来西亚', '大马'] },
-    { id: 'TH', name: '泰国', flag: '🇹🇭', currency: 'THB', symbol: '฿', monthlyPrice: 750, rateToCNY: 0.20, aliases: ['th', 'thb', 'thailand', '泰国'] },
-    { id: 'VN', name: '越南', flag: '🇻🇳', currency: 'VND', symbol: '₫', monthlyPrice: 489000, rateToCNY: 0.00028, aliases: ['vn', 'vnd', 'vietnam', '越南'] },
-    { id: 'ID', name: '印度尼西亚', flag: '🇮🇩', currency: 'IDR', symbol: 'Rp ', monthlyPrice: 309000, rateToCNY: 0.00044, aliases: ['id', 'idr', 'indonesia', '印度尼西亚', '印尼'] },
-    { id: 'PH', name: '菲律宾', flag: '🇵🇭', currency: 'PHP', symbol: '₱', monthlyPrice: 1100, rateToCNY: 0.117, aliases: ['ph', 'php', 'philippines', '菲律宾'] },
-    { id: 'IN', name: '印度', flag: '🇮🇳', currency: 'INR', symbol: '₹', monthlyPrice: 1950, rateToCNY: 0.076, aliases: ['in', 'inr', 'india', '印度', '印区'] },
-    { id: 'PK', name: '巴基斯坦', flag: '🇵🇰', currency: 'PKR', symbol: '₨ ', monthlyPrice: 5600, rateToCNY: 0.024, aliases: ['pk', 'pkr', 'pakistan', '巴基斯坦'] },
+    { id: 'TW', name: '中国台湾', nameTw: '台灣', nameEn: 'Taiwan', flag: '🇹🇼', currency: 'TWD', symbol: 'NT$', monthlyPrice: 650, rateToCNY: 0.21, aliases: ['tw', 'ntd', 'twd', 'taiwan', '台湾', '台灣', '中国台湾', '中國台灣', '台区', '台區'] },
+    { id: 'HK', name: '中国香港', nameTw: '香港', nameEn: 'Hong Kong', flag: '🇭🇰', currency: 'HKD', symbol: 'HK$', monthlyPrice: 158.00, rateToCNY: 0.857, aliases: ['hk', 'hong kong', '香港', '中国香港', '中國香港', '港区', '港區'] },
+    { id: 'JP', name: '日本', nameTw: '日本', nameEn: 'Japan', flag: '🇯🇵', currency: 'JPY', symbol: '¥', monthlyPrice: 2900, rateToCNY: 0.0425, aliases: ['jp', 'japan', '日本', '日区', '日區'] },
+    { id: 'KR', name: '韩国', nameTw: '韓國', nameEn: 'South Korea', flag: '🇰🇷', currency: 'KRW', symbol: '₩', monthlyPrice: 29000, rateToCNY: 0.0051, aliases: ['kr', 'korea', 'south korea', '韩国', '韓國', '韩区', '韓區'] },
+    { id: 'AU', name: '澳大利亚 (澳区)', nameTw: '澳洲', nameEn: 'Australia', flag: '🇦🇺', currency: 'AUD', symbol: 'AU$', monthlyPrice: 32.99, rateToCNY: 4.45, aliases: ['au', 'aud', 'australia', '澳大利亚', '澳洲', '澳大利亞', '澳区', '澳區'] },
+    { id: 'NZ', name: '新西兰', nameTw: '紐西蘭', nameEn: 'New Zealand', flag: '🇳🇿', currency: 'NZD', symbol: 'NZ$', monthlyPrice: 34.99, rateToCNY: 4.05, aliases: ['nz', 'nzd', 'new zealand', '新西兰', '紐西蘭'] },
+    { id: 'SG', name: '新加坡', nameTw: '新加坡', nameEn: 'Singapore', flag: '🇸🇬', currency: 'SGD', symbol: 'S$', monthlyPrice: 28.99, rateToCNY: 5.12, aliases: ['sg', 'singapore', '新加坡', '星洲'] },
+    { id: 'MY', name: '马来西亚', nameTw: '馬來西亞', nameEn: 'Malaysia', flag: '🇲🇾', currency: 'MYR', symbol: 'RM ', monthlyPrice: 97.99, rateToCNY: 1.55, aliases: ['my', 'myr', 'malaysia', '马来西亚', '馬來西亞', '大马', '大馬'] },
+    { id: 'TH', name: '泰国', nameTw: '泰國', nameEn: 'Thailand', flag: '🇹🇭', currency: 'THB', symbol: '฿', monthlyPrice: 750, rateToCNY: 0.20, aliases: ['th', 'thb', 'thailand', '泰国', '泰國'] },
+    { id: 'VN', name: '越南', nameTw: '越南', nameEn: 'Vietnam', flag: '🇻🇳', currency: 'VND', symbol: '₫', monthlyPrice: 489000, rateToCNY: 0.00028, aliases: ['vn', 'vnd', 'vietnam', '越南'] },
+    { id: 'ID', name: '印度尼西亚', nameTw: '印尼', nameEn: 'Indonesia', flag: '🇮🇩', currency: 'IDR', symbol: 'Rp ', monthlyPrice: 309000, rateToCNY: 0.00044, aliases: ['id', 'idr', 'indonesia', '印度尼西亚', '印度尼西亞', '印尼'] },
+    { id: 'PH', name: '菲律宾', nameTw: '菲律賓', nameEn: 'Philippines', flag: '🇵🇭', currency: 'PHP', symbol: '₱', monthlyPrice: 1100, rateToCNY: 0.117, aliases: ['ph', 'php', 'philippines', '菲律宾', '菲律賓'] },
+    { id: 'IN', name: '印度', nameTw: '印度', nameEn: 'India', flag: '🇮🇳', currency: 'INR', symbol: '₹', monthlyPrice: 1950, rateToCNY: 0.076, aliases: ['in', 'inr', 'india', '印度', '印区', '印區'] },
+    { id: 'PK', name: '巴基斯坦', nameTw: '巴基斯坦', nameEn: 'Pakistan', flag: '🇵🇰', currency: 'PKR', symbol: '₨ ', monthlyPrice: 5600, rateToCNY: 0.024, aliases: ['pk', 'pkr', 'pakistan', '巴基斯坦'] },
 
     // 北美与拉美
-    { id: 'US', name: '美国', flag: '🇺🇸', currency: 'USD', symbol: '$', monthlyPrice: 19.99, rateToCNY: 6.72, aliases: ['us', 'usa', 'united states', '美国', '美区'] },
-    { id: 'CA', name: '加拿大', flag: '🇨🇦', currency: 'CAD', symbol: 'CA$', monthlyPrice: 26.99, rateToCNY: 4.88, aliases: ['ca', 'cad', 'canada', '加拿大'] },
-    { id: 'MX', name: '墨西哥', flag: '🇲🇽', currency: 'MXN', symbol: '$', monthlyPrice: 395, rateToCNY: 0.36, aliases: ['mx', 'mxn', 'mexico', '墨西哥'] },
-    { id: 'BR', name: '巴西', flag: '🇧🇷', currency: 'BRL', symbol: 'R$', monthlyPrice: 96.99, rateToCNY: 1.18, aliases: ['br', 'brl', 'brazil', '巴西'] },
-    { id: 'TR', name: '土耳其', flag: '🇹🇷', currency: 'TRY', symbol: '₺', monthlyPrice: 869.99, rateToCNY: 0.133, aliases: ['tr', 'try', 'turkey', '土耳其', '土区'] },
-    { id: 'AR', name: '阿根廷', flag: '🇦🇷', currency: 'ARS', symbol: '$', monthlyPrice: 19999, rateToCNY: 0.0065, aliases: ['ar', 'ars', 'argentina', '阿根廷'] },
-    { id: 'CL', name: '智利', flag: '🇨🇱', currency: 'CLP', symbol: '$', monthlyPrice: 18990, rateToCNY: 0.0072, aliases: ['cl', 'clp', 'chile', '智利'] },
-    { id: 'CO', name: '哥伦比亚', flag: '🇨🇴', currency: 'COP', symbol: '$', monthlyPrice: 84900, rateToCNY: 0.0016, aliases: ['co', 'cop', 'colombia', '哥伦比亚'] },
-    { id: 'PE', name: '秘鲁', flag: '🇵🇪', currency: 'PEN', symbol: 'S/ ', monthlyPrice: 76.90, rateToCNY: 1.82, aliases: ['pe', 'pen', 'peru', '秘鲁'] },
+    { id: 'US', name: '美国', nameTw: '美國', nameEn: 'United States', flag: '🇺🇸', currency: 'USD', symbol: '$', monthlyPrice: 19.99, rateToCNY: 6.72, aliases: ['us', 'usa', 'united states', '美国', '美國', '美区', '美區'] },
+    { id: 'CA', name: '加拿大', nameTw: '加拿大', nameEn: 'Canada', flag: '🇨🇦', currency: 'CAD', symbol: 'CA$', monthlyPrice: 26.99, rateToCNY: 4.88, aliases: ['ca', 'cad', 'canada', '加拿大'] },
+    { id: 'MX', name: '墨西哥', nameTw: '墨西哥', nameEn: 'Mexico', flag: '🇲🇽', currency: 'MXN', symbol: '$', monthlyPrice: 395, rateToCNY: 0.36, aliases: ['mx', 'mxn', 'mexico', '墨西哥'] },
+    { id: 'BR', name: '巴西', nameTw: '巴西', nameEn: 'Brazil', flag: '🇧🇷', currency: 'BRL', symbol: 'R$', monthlyPrice: 96.90, rateToCNY: 1.18, aliases: ['br', 'brl', 'brazil', '巴西'] },
+    { id: 'TR', name: '土耳其', nameTw: '土耳其', nameEn: 'Turkey', flag: '🇹🇷', currency: 'TRY', symbol: '₺', monthlyPrice: 869.99, rateToCNY: 0.133, aliases: ['tr', 'try', 'turkey', '土耳其', '土区', '土區'] },
+    { id: 'AR', name: '阿根廷', nameTw: '阿根廷', nameEn: 'Argentina', flag: '🇦🇷', currency: 'ARS', symbol: '$', monthlyPrice: 19999, rateToCNY: 0.0065, aliases: ['ar', 'ars', 'argentina', '阿根廷'] },
+    { id: 'CL', name: '智利', nameTw: '智利', nameEn: 'Chile', flag: '🇨🇱', currency: 'CLP', symbol: '$', monthlyPrice: 18990, rateToCNY: 0.0072, aliases: ['cl', 'clp', 'chile', '智利'] },
+    { id: 'CO', name: '哥伦比亚', nameTw: '哥倫比亞', nameEn: 'Colombia', flag: '🇨🇴', currency: 'COP', symbol: '$', monthlyPrice: 84900, rateToCNY: 0.0016, aliases: ['co', 'cop', 'colombia', '哥伦比亚', '哥倫比亞'] },
+    { id: 'PE', name: '秘鲁', nameTw: '秘魯', nameEn: 'Peru', flag: '🇵🇪', currency: 'PEN', symbol: 'S/ ', monthlyPrice: 76.90, rateToCNY: 1.82, aliases: ['pe', 'pen', 'peru', '秘鲁', '秘魯'] },
 
     // 欧洲与欧亚
-    { id: 'GB', name: '英国', flag: '🇬🇧', currency: 'GBP', symbol: '£', monthlyPrice: 18.99, rateToCNY: 8.75, aliases: ['gb', 'uk', 'gbp', 'united kingdom', '英国', '英区'] },
-    { id: 'EU', name: '欧洲/欧盟 (德法意西荷等)', flag: '🇪🇺', currency: 'EUR', symbol: '€', monthlyPrice: 21.99, rateToCNY: 7.52, aliases: ['eu', 'eur', 'euro', 'europe', '欧洲', '欧盟', '德国', '法国', '意大利', '西班牙', '荷兰'] },
-    { id: 'CH', name: '瑞士', flag: '🇨🇭', currency: 'CHF', symbol: 'CHF ', monthlyPrice: 17.00, rateToCNY: 7.85, aliases: ['ch', 'chf', 'switzerland', '瑞士'] },
-    { id: 'UA', name: '乌克兰', flag: '🇺🇦', currency: 'UAH', symbol: '₴', monthlyPrice: 900, rateToCNY: 0.162, aliases: ['ua', 'uah', 'ukraine', '乌克兰'] },
-    { id: 'PL', name: '波兰', flag: '🇵🇱', currency: 'PLN', symbol: 'zł ', monthlyPrice: 97.99, rateToCNY: 1.72, aliases: ['pl', 'pln', 'poland', '波兰'] },
-    { id: 'SE', name: '瑞典', flag: '🇸🇪', currency: 'SEK', symbol: 'kr ', monthlyPrice: 239, rateToCNY: 0.65, aliases: ['se', 'sek', 'sweden', '瑞典'] },
-    { id: 'NO', name: '挪威', flag: '🇳🇴', currency: 'NOK', symbol: 'kr ', monthlyPrice: 239, rateToCNY: 0.63, aliases: ['no', 'nok', 'norway', '挪威'] },
-    { id: 'DK', name: '丹麦', flag: '🇩🇰', currency: 'DKK', symbol: 'kr ', monthlyPrice: 169, rateToCNY: 1.01, aliases: ['dk', 'dkk', 'denmark', '丹麦'] },
-    { id: 'CZ', name: '捷克', flag: '🇨🇿', currency: 'CZK', symbol: 'Kč ', monthlyPrice: 529, rateToCNY: 0.30, aliases: ['cz', 'czk', 'czech', '捷克'] },
-    { id: 'HU', name: '匈牙利', flag: '🇭🇺', currency: 'HUF', symbol: 'Ft ', monthlyPrice: 8990, rateToCNY: 0.0185, aliases: ['hu', 'huf', 'hungary', '匈牙利'] },
-    { id: 'RO', name: '罗马尼亚', flag: '🇷🇴', currency: 'RON', symbol: 'lei ', monthlyPrice: 109.99, rateToCNY: 1.51, aliases: ['ro', 'ron', 'romania', '罗马尼亚'] },
+    { id: 'GB', name: '英国', nameTw: '英國', nameEn: 'United Kingdom', flag: '🇬🇧', currency: 'GBP', symbol: '£', monthlyPrice: 18.99, rateToCNY: 8.75, aliases: ['gb', 'uk', 'gbp', 'united kingdom', '英国', '英國', '英区', '英區'] },
+    { id: 'EU', name: '欧洲/欧盟 (德法意西荷等)', nameTw: '歐洲/歐盟 (德法義西荷等)', nameEn: 'Europe / EU', flag: '🇪🇺', currency: 'EUR', symbol: '€', monthlyPrice: 21.99, rateToCNY: 7.52, aliases: ['eu', 'eur', 'euro', 'europe', '欧洲', '歐洲', '欧盟', '歐盟', '德国', '德國', '法国', '法國', '意大利', '義大利', '西班牙', '荷兰', '荷蘭'] },
+    { id: 'CH', name: '瑞士', nameTw: '瑞士', nameEn: 'Switzerland', flag: '🇨🇭', currency: 'CHF', symbol: 'CHF ', monthlyPrice: 17.00, rateToCNY: 7.85, aliases: ['ch', 'chf', 'switzerland', '瑞士'] },
+    { id: 'UA', name: '乌克兰', nameTw: '烏克蘭', nameEn: 'Ukraine', flag: '🇺🇦', currency: 'UAH', symbol: '₴', monthlyPrice: 900, rateToCNY: 0.162, aliases: ['ua', 'uah', 'ukraine', '乌克兰', '烏克蘭'] },
+    { id: 'PL', name: '波兰', nameTw: '波蘭', nameEn: 'Poland', flag: '🇵🇱', currency: 'PLN', symbol: 'zł ', monthlyPrice: 97.99, rateToCNY: 1.72, aliases: ['pl', 'pln', 'poland', '波兰', '波蘭'] },
+    { id: 'SE', name: '瑞典', nameTw: '瑞典', nameEn: 'Sweden', flag: '🇸🇪', currency: 'SEK', symbol: 'kr ', monthlyPrice: 239, rateToCNY: 0.65, aliases: ['se', 'sek', 'sweden', '瑞典'] },
+    { id: 'NO', name: '挪威', nameTw: '挪威', nameEn: 'Norway', flag: '🇳🇴', currency: 'NOK', symbol: 'kr ', monthlyPrice: 239, rateToCNY: 0.63, aliases: ['no', 'nok', 'norway', '挪威'] },
+    { id: 'DK', name: '丹麦', nameTw: '丹麥', nameEn: 'Denmark', flag: '🇩🇰', currency: 'DKK', symbol: 'kr ', monthlyPrice: 169, rateToCNY: 1.01, aliases: ['dk', 'dkk', 'denmark', '丹麦', '丹麥'] },
+    { id: 'CZ', name: '捷克', nameTw: '捷克', nameEn: 'Czechia', flag: '🇨🇿', currency: 'CZK', symbol: 'Kč ', monthlyPrice: 529, rateToCNY: 0.30, aliases: ['cz', 'czk', 'czech', 'czechia', '捷克'] },
+    { id: 'HU', name: '匈牙利', nameTw: '匈牙利', nameEn: 'Hungary', flag: '🇭🇺', currency: 'HUF', symbol: 'Ft ', monthlyPrice: 8990, rateToCNY: 0.0185, aliases: ['hu', 'huf', 'hungary', '匈牙利'] },
+    { id: 'RO', name: '罗马尼亚', nameTw: '羅馬尼亞', nameEn: 'Romania', flag: '🇷🇴', currency: 'RON', symbol: 'lei ', monthlyPrice: 109.99, rateToCNY: 1.51, aliases: ['ro', 'ron', 'romania', '罗马尼亚', '羅馬尼亞'] },
 
     // 中东与非洲
-    { id: 'NG', name: '尼日利亚', flag: '🇳🇬', currency: 'NGN', symbol: '₦', monthlyPrice: 28500, rateToCNY: 0.0042, aliases: ['ng', 'ngn', 'nigeria', '尼日利亚', '尼区'] },
-    { id: 'ZA', name: '南非', flag: '🇿🇦', currency: 'ZAR', symbol: 'R ', monthlyPrice: 429.99, rateToCNY: 0.38, aliases: ['za', 'zar', 'south africa', '南非'] },
-    { id: 'EG', name: '埃及', flag: '🇪🇬', currency: 'EGP', symbol: 'E£ ', monthlyPrice: 999, rateToCNY: 0.136, aliases: ['eg', 'egp', 'egypt', '埃及'] },
-    { id: 'KE', name: '肯尼亚', flag: '🇰🇪', currency: 'KES', symbol: 'KSh ', monthlyPrice: 2800, rateToCNY: 0.052, aliases: ['ke', 'kes', 'kenya', '肯尼亚'] },
-    { id: 'AE', name: '阿联酋', flag: '🇦🇪', currency: 'AED', symbol: 'AED ', monthlyPrice: 76.99, rateToCNY: 1.83, aliases: ['ae', 'aed', 'uae', 'emirates', '阿联酋', '迪拜'] },
-    { id: 'SA', name: '沙特阿拉伯', flag: '🇸🇦', currency: 'SAR', symbol: 'SAR ', monthlyPrice: 85.99, rateToCNY: 1.79, aliases: ['sa', 'sar', 'saudi', '沙特', '沙特阿拉伯'] },
-    { id: 'IL', name: '以色列', flag: '🇮🇱', currency: 'ILS', symbol: '₪ ', monthlyPrice: 79.90, rateToCNY: 1.85, aliases: ['il', 'ils', 'israel', '以色列'] },
+    { id: 'NG', name: '尼日利亚', nameTw: '奈及利亞', nameEn: 'Nigeria', flag: '🇳🇬', currency: 'NGN', symbol: '₦', monthlyPrice: 28500, rateToCNY: 0.0042, aliases: ['ng', 'ngn', 'nigeria', '尼日利亚', '奈及利亞', '尼区', '尼區'] },
+    { id: 'ZA', name: '南非', nameTw: '南非', nameEn: 'South Africa', flag: '🇿🇦', currency: 'ZAR', symbol: 'R ', monthlyPrice: 429.99, rateToCNY: 0.38, aliases: ['za', 'zar', 'south africa', '南非'] },
+    { id: 'EG', name: '埃及', nameTw: '埃及', nameEn: 'Egypt', flag: '🇪🇬', currency: 'EGP', symbol: 'EGP ', monthlyPrice: 939.99, rateToCNY: 0.136, aliases: ['eg', 'egp', 'egypt', '埃及'] },
+    { id: 'KE', name: '肯尼亚', nameTw: '肯亞', nameEn: 'Kenya', flag: '🇰🇪', currency: 'KES', symbol: 'KSh ', monthlyPrice: 2800, rateToCNY: 0.052, aliases: ['ke', 'kes', 'kenya', '肯尼亚', '肯亞'] },
+    { id: 'AE', name: '阿联酋', nameTw: '阿拉伯聯合大公國', nameEn: 'United Arab Emirates', flag: '🇦🇪', currency: 'AED', symbol: 'AED ', monthlyPrice: 76.99, rateToCNY: 1.83, aliases: ['ae', 'aed', 'uae', 'emirates', 'united arab emirates', '阿联酋', '阿聯酋', '迪拜', '杜拜'] },
+    { id: 'SA', name: '沙特阿拉伯', nameTw: '沙烏地阿拉伯', nameEn: 'Saudi Arabia', flag: '🇸🇦', currency: 'SAR', symbol: 'SAR ', monthlyPrice: 85.99, rateToCNY: 1.79, aliases: ['sa', 'sar', 'saudi', 'saudi arabia', '沙特', '沙特阿拉伯', '沙烏地阿拉伯'] },
+    { id: 'IL', name: '以色列', nameTw: '以色列', nameEn: 'Israel', flag: '🇮🇱', currency: 'ILS', symbol: '₪ ', monthlyPrice: 79.90, rateToCNY: 1.85, aliases: ['il', 'ils', 'israel', '以色列'] },
 
     // 大中华区/人民币与自定义
-    { id: 'CN', name: '中国大陆 (CNY)', flag: '🇨🇳', currency: 'CNY', symbol: '¥', monthlyPrice: 140.00, rateToCNY: 1.0, aliases: ['cn', 'cny', 'china', '中国', '人民币', '国内'] }
+    { id: 'CN', name: '中国大陆 (CNY)', nameTw: '中國大陸 (CNY)', nameEn: 'China Mainland', flag: '🇨🇳', currency: 'CNY', symbol: '¥', monthlyPrice: 140.00, rateToCNY: 1.0, aliases: ['cn', 'cny', 'china', 'china mainland', '中国', '中國', '中国大陆', '中國大陸', '人民币', '人民幣', '国内', '國內'] }
   ];
+
+  function resolvePlanSpecKey(tierKey = null, multiplier = null, override = null) {
+    if (tierKey && typeof tierKey === 'object') {
+      const ps = tierKey;
+      const mVal = ps.ultraSubTier === '5x' ? 5 : (ps.ultraSubTier === '20x' ? 20 : ps.multiplier);
+      return resolvePlanSpecKey(ps.tierKey || null, mVal ?? null, ps.planTierOverride || null);
+    }
+    const ov = typeof override === 'string' ? override.trim().toLowerCase() : '';
+    if (ov === 'free' || ov === 'teams_tier_free') return 'free';
+    if (ov === 'plus' || ov === 'teams_tier_plus') return 'plus';
+    if (ov === 'pro' || ov === 'teams_tier_pro') return 'pro';
+    if (ov === 'ultra_5x' || ov === 'ultra 5x' || ov === 'ultra-5x' || ov === '5x') return 'ultra_5x';
+    if (ov === 'ultra_20x' || ov === 'ultra 20x' || ov === 'ultra-20x' || ov === '20x') return 'ultra_20x';
+    if (ov === 'ultra' || ov === 'google ai ultra') return 'ultra';
+    const tk = typeof tierKey === 'string' ? tierKey.trim().toLowerCase() : '';
+    const mult = Number(multiplier);
+    if (tk === 'free') return 'free';
+    if (tk === 'plus') return 'plus';
+    if (tk === 'pro') return 'pro';
+    if (tk === 'ultra_5x' || tk === 'ultra 5x' || tk === 'ultra-5x') return 'ultra_5x';
+    if (tk === 'ultra_20x' || tk === 'ultra 20x' || tk === 'ultra-20x') return 'ultra_20x';
+    if (tk === 'ultra') {
+      if (mult === 5) return 'ultra_5x';
+      if (mult === 20) return 'ultra_20x';
+      return 'ultra';
+    }
+    return 'unknown';
+  }
+
+  function getPlanTierSpec(specKey) {
+    return SUBSCRIPTION_TIER_SPECS[specKey] || null;
+  }
 
   function findRegionPreset(regionQuery) {
     if (!regionQuery || typeof regionQuery !== 'string') return null;
-    const q = regionQuery.trim().toLowerCase();
+    const raw = regionQuery.trim();
+    if (!raw) return null;
+    const q = raw.toLowerCase();
+    const stripped = raw.replace(/\s*\([A-Za-z]{2,4}\)\s*$/i, '').trim().toLowerCase();
     return SUBSCRIPTION_REGIONS_PRESET.find(r =>
       r.id.toLowerCase() === q ||
       r.name.toLowerCase() === q ||
+      (r.nameTw && r.nameTw.toLowerCase() === q) ||
+      (r.nameEn && r.nameEn.toLowerCase() === q) ||
+      (stripped && (
+        r.name.toLowerCase() === stripped ||
+        (r.nameTw && r.nameTw.toLowerCase() === stripped) ||
+        (r.nameEn && r.nameEn.toLowerCase() === stripped)
+      )) ||
       r.aliases.some(a => a.toLowerCase() === q || q.includes(a.toLowerCase()))
     ) || null;
   }
 
-  function getCurrencyRateToCNY(currency, regionQuery = null) {
+  function resolveCurrencyRateToCNY(currency, regionQuery = null) {
     let cur = String(currency || '').toUpperCase();
     if (cur === 'NTD') cur = 'TWD';
     if (cur === 'CNY') return 1.0;
@@ -2171,45 +2800,133 @@
     if (!preset || (cur && preset.currency !== cur)) {
       preset = SUBSCRIPTION_REGIONS_PRESET.find(r => r.currency === cur);
     }
-    return preset ? preset.rateToCNY : (
-      cur === 'USD' ? 6.72 : (
-        cur === 'TWD' ? 0.21 : (
-          cur === 'HKD' ? 0.857 : (
-            cur === 'JPY' ? 0.0425 : (
-              cur === 'EUR' ? 7.52 : (
-                cur === 'GBP' ? 8.75 : null
-              )
-            )
-          )
-        )
-      )
-    );
+    if (preset && preset.rateToCNY) return preset.rateToCNY;
+    if (cur === 'USD') return 6.72;
+    if (cur === 'HKD') return 0.857;
+    if (cur === 'TWD') return 0.21;
+    if (cur === 'JPY') return 0.0425;
+    if (cur === 'EUR') return 7.52;
+    if (cur === 'GBP') return 8.75;
+    return null;
   }
 
   function convertToCNY(amount, currency, regionQuery = null) {
     if (amount === null || amount === undefined || Number.isNaN(Number(amount))) return null;
     const num = Number(amount);
     if (num === 0) return 0;
-    const cur = String(currency || '').toUpperCase();
-    if (cur === 'CNY') return Number(num.toFixed(2));
-    const rate = getCurrencyRateToCNY(cur, regionQuery);
+    const rate = resolveCurrencyRateToCNY(currency, regionQuery);
     if (!rate) return null;
     return Number((num * rate).toFixed(2));
   }
 
+  /**
+   * 跨币种通用换算（依托 CNY 基准静态汇率）
+   */
   function convertCurrency(amount, fromCurrency, toCurrency = 'CNY', regionQuery = null) {
     if (amount === null || amount === undefined || Number.isNaN(Number(amount))) return null;
     const num = Number(amount);
     if (num === 0) return 0;
-    let fromCur = String(fromCurrency || '').toUpperCase();
-    let toCur = String(toCurrency || 'CNY').toUpperCase();
-    if (fromCur === 'NTD') fromCur = 'TWD';
-    if (toCur === 'NTD') toCur = 'TWD';
-    if (fromCur === toCur) return Number(num.toFixed(2));
-    const fromRate = getCurrencyRateToCNY(fromCur, regionQuery);
-    const toRate = getCurrencyRateToCNY(toCur, null);
+    let from = String(fromCurrency || '').trim().toUpperCase();
+    let to = String(toCurrency || 'CNY').trim().toUpperCase();
+    if (from === 'NTD') from = 'TWD';
+    if (to === 'NTD') to = 'TWD';
+    if (from === to) return Number(num.toFixed(2));
+    const fromRate = resolveCurrencyRateToCNY(from, regionQuery);
+    const toRate = resolveCurrencyRateToCNY(to, null);
     if (!fromRate || !toRate) return null;
     return Number(((num * fromRate) / toRate).toFixed(2));
+  }
+
+  /**
+   * 查询指定地区 + 指定套餐的官方参考月价（2026-11 二维矩阵优先，其余地区按 USD 参考价换算）
+   */
+  function getRegionPlanReferencePrice(regionOrPreset, specKey = 'pro') {
+    const preset = (typeof regionOrPreset === 'string')
+      ? findRegionPreset(regionOrPreset)
+      : (regionOrPreset && typeof regionOrPreset === 'object' ? regionOrPreset : null);
+    const sk = (specKey && SUBSCRIPTION_TIER_SPECS[specKey]) ? specKey : 'pro';
+    if (sk === 'free') {
+      return {
+        available: true,
+        isRange: false,
+        monthlyPrice: 0,
+        currency: preset?.currency || 'USD',
+        symbol: preset?.symbol || '$',
+        source: 'preset_region'
+      };
+    }
+    if (sk === 'ultra') {
+      return {
+        available: false,
+        isRange: true,
+        monthlyPrice: null,
+        minUsd: 99.99,
+        maxUsd: 199.99,
+        currency: preset?.currency || 'USD',
+        symbol: preset?.symbol || '$',
+        source: 'unknown'
+      };
+    }
+    if (!preset) {
+      const spec = SUBSCRIPTION_TIER_SPECS[sk];
+      return {
+        available: spec && spec.officialPriceUSD !== null && spec.officialPriceUSD !== undefined,
+        isRange: false,
+        monthlyPrice: spec?.officialPriceUSD ?? null,
+        currency: 'USD',
+        symbol: '$',
+        source: 'official_reference'
+      };
+    }
+    const matrixRow = SUBSCRIPTION_TIER_REGION_PRICES[preset.id];
+    if (matrixRow && matrixRow[sk] !== undefined) {
+      return {
+        available: true,
+        isRange: false,
+        monthlyPrice: Number(matrixRow[sk]),
+        currency: matrixRow.currency,
+        symbol: matrixRow.symbol || preset.symbol || (CURRENCY_SYMBOLS[matrixRow.currency] || '$'),
+        source: 'preset_region'
+      };
+    }
+    if (sk === 'pro' && Number.isFinite(Number(preset.monthlyPrice))) {
+      return {
+        available: true,
+        isRange: false,
+        monthlyPrice: Number(preset.monthlyPrice),
+        currency: preset.currency,
+        symbol: preset.symbol || (CURRENCY_SYMBOLS[preset.currency] || '$'),
+        source: 'preset_region'
+      };
+    }
+    const spec = SUBSCRIPTION_TIER_SPECS[sk];
+    if (spec && Number.isFinite(Number(spec.officialPriceUSD))) {
+      const usdRef = Number(spec.officialPriceUSD);
+      const converted = preset.currency === 'USD'
+        ? usdRef
+        : convertCurrency(usdRef, 'USD', preset.currency, preset.id);
+      if (converted !== null && Number.isFinite(converted)) {
+        const rounded = (preset.currency === 'JPY' || preset.currency === 'KRW' || preset.currency === 'VND' || preset.currency === 'IDR' || preset.currency === 'CLP' || preset.currency === 'COP' || preset.currency === 'HUF' || preset.currency === 'TWD' || preset.currency === 'INR' || preset.currency === 'NGN')
+          ? Math.round(converted)
+          : Number(converted.toFixed(2));
+        return {
+          available: true,
+          isRange: false,
+          monthlyPrice: rounded,
+          currency: preset.currency,
+          symbol: preset.symbol || (CURRENCY_SYMBOLS[preset.currency] || '$'),
+          source: 'preset_converted'
+        };
+      }
+    }
+    return {
+      available: false,
+      isRange: false,
+      monthlyPrice: null,
+      currency: preset.currency || 'USD',
+      symbol: preset.symbol || '$',
+      source: 'unknown'
+    };
   }
 
   function resolvePlanQuotaPools(planInfo = {}) {
@@ -2317,50 +3034,127 @@
     let tierId = null;
     let planName = '未知';
     let tierSource = 'unknown';
+    let multiplier = rawLive?.multiplier || cachedLive?.multiplier || null;
 
-    if (rawLive && rawLive.status === 'identified' && rawLive.tierKey !== 'unknown') {
-      status = 'identified';
-      tierKey = rawLive.tierKey;
-      tierName = rawLive.tierName;
-      tierId = rawLive.tierId;
-      planName = rawLive.planName || rawLive.tierName;
-      tierSource = 'live';
-    } else if (effectiveCustom && effectiveCustom.tierName) {
-      status = 'custom';
-      tierKey = effectiveCustom.tierKey || 'custom';
-      tierName = effectiveCustom.tierName;
-      planName = effectiveCustom.tierName;
-      tierSource = 'custom';
-    } else if (cachedLive && cachedLive.status === 'identified' && cachedLive.tierKey !== 'unknown') {
-      status = 'identified';
-      tierKey = cachedLive.tierKey;
-      tierName = cachedLive.tierName;
-      tierId = cachedLive.tierId;
-      planName = cachedLive.planName || cachedLive.tierName;
-      tierSource = 'cached_live';
+    const rawTierOverride = effectiveCustom?.planTierOverride || effectiveCustom?.tierOverride || effectiveCustom?.planTier || null;
+    const normTierOverride = (typeof rawTierOverride === 'string' && rawTierOverride.trim() && rawTierOverride.trim().toLowerCase() !== 'auto')
+      ? rawTierOverride.trim().toLowerCase()
+      : null;
+
+    let overrideApplied = false;
+    let overrideUltraSub = null;
+    if (normTierOverride) {
+      if (normTierOverride === 'free' || normTierOverride === 'teams_tier_free') {
+        status = (rawLive && rawLive.status === 'identified') ? 'identified' : 'custom';
+        tierKey = 'free';
+        tierName = 'Free';
+        planName = 'Free';
+        tierId = rawLive?.tierId || cachedLive?.tierId || null;
+        tierSource = 'custom';
+        multiplier = null;
+        overrideApplied = true;
+      } else if (normTierOverride === 'plus' || normTierOverride === 'teams_tier_plus') {
+        status = (rawLive && rawLive.status === 'identified') ? 'identified' : 'custom';
+        tierKey = 'plus';
+        tierName = 'Google AI Plus';
+        planName = 'Google AI Plus';
+        tierId = rawLive?.tierId || cachedLive?.tierId || null;
+        tierSource = 'custom';
+        multiplier = null;
+        overrideApplied = true;
+      } else if (normTierOverride === 'pro' || normTierOverride === 'teams_tier_pro') {
+        status = (rawLive && rawLive.status === 'identified') ? 'identified' : 'custom';
+        tierKey = 'pro';
+        tierName = 'Google AI Pro';
+        planName = 'Google AI Pro';
+        tierId = rawLive?.tierId || cachedLive?.tierId || null;
+        tierSource = 'custom';
+        multiplier = 1;
+        overrideApplied = true;
+      } else if (normTierOverride === 'ultra_5x' || normTierOverride === 'ultra 5x' || normTierOverride === 'ultra-5x' || normTierOverride === '5x') {
+        status = (rawLive && rawLive.status === 'identified') ? 'identified' : 'custom';
+        tierKey = 'ultra';
+        tierName = 'Google AI Ultra (5x)';
+        planName = 'Google AI Ultra (5x)';
+        tierId = rawLive?.tierId || cachedLive?.tierId || null;
+        tierSource = 'custom';
+        multiplier = 5;
+        overrideUltraSub = '5x';
+        overrideApplied = true;
+      } else if (normTierOverride === 'ultra_20x' || normTierOverride === 'ultra 20x' || normTierOverride === 'ultra-20x' || normTierOverride === '20x') {
+        status = (rawLive && rawLive.status === 'identified') ? 'identified' : 'custom';
+        tierKey = 'ultra';
+        tierName = 'Google AI Ultra (20x)';
+        planName = 'Google AI Ultra (20x)';
+        tierId = rawLive?.tierId || cachedLive?.tierId || null;
+        tierSource = 'custom';
+        multiplier = 20;
+        overrideUltraSub = '20x';
+        overrideApplied = true;
+      } else if (normTierOverride === 'ultra' || normTierOverride === 'google ai ultra') {
+        status = (rawLive && rawLive.status === 'identified') ? 'identified' : 'custom';
+        tierKey = 'ultra';
+        tierName = 'Google AI Ultra（子档未知）';
+        planName = 'Google AI Ultra';
+        tierId = rawLive?.tierId || cachedLive?.tierId || null;
+        tierSource = 'custom';
+        multiplier = null;
+        overrideApplied = true;
+      }
+    }
+
+    if (!overrideApplied) {
+      if (rawLive && rawLive.status === 'identified' && rawLive.tierKey !== 'unknown') {
+        status = 'identified';
+        tierKey = rawLive.tierKey;
+        tierName = rawLive.tierName;
+        tierId = rawLive.tierId;
+        planName = rawLive.planName || rawLive.tierName;
+        tierSource = 'live';
+      } else if (effectiveCustom && effectiveCustom.tierName) {
+        status = 'custom';
+        tierKey = effectiveCustom.tierKey || 'custom';
+        tierName = effectiveCustom.tierName;
+        planName = effectiveCustom.tierName;
+        tierSource = 'custom';
+      } else if (cachedLive && cachedLive.status === 'identified' && cachedLive.tierKey !== 'unknown') {
+        status = 'identified';
+        tierKey = cachedLive.tierKey;
+        tierName = cachedLive.tierName;
+        tierId = cachedLive.tierId;
+        planName = cachedLive.planName || cachedLive.tierName;
+        tierSource = 'cached_live';
+      }
     }
 
     // 1B. Google AI Ultra 子档识别与用户自选回退（5x / 20x）
-    const liveSub = normalizeUltraSubTier(rawLive?.ultraSubTier);
-    const customSub = normalizeUltraSubTier(effectiveCustom?.ultraSubTier || effectiveCustom?.subTier);
-    const cachedSub = normalizeUltraSubTier(cachedLive?.ultraSubTier);
     let ultraSubTier = null;
     let ultraSubTierSource = 'unknown';
-    if (liveSub) {
-      ultraSubTier = liveSub;
-      ultraSubTierSource = 'live';
-    } else if (customSub) {
-      ultraSubTier = customSub;
-      ultraSubTierSource = 'custom';
-    } else if (cachedSub) {
-      ultraSubTier = cachedSub;
-      ultraSubTierSource = 'cached_live';
-    }
+    if (overrideApplied) {
+      if (overrideUltraSub) {
+        ultraSubTier = overrideUltraSub;
+        ultraSubTierSource = 'custom';
+      }
+    } else {
+      const liveSub = normalizeUltraSubTier(rawLive?.ultraSubTier);
+      const customSub = normalizeUltraSubTier(effectiveCustom?.ultraSubTier || effectiveCustom?.subTier);
+      const cachedSub = normalizeUltraSubTier(cachedLive?.ultraSubTier);
+      if (liveSub) {
+        ultraSubTier = liveSub;
+        ultraSubTierSource = 'live';
+      } else if (customSub) {
+        ultraSubTier = customSub;
+        ultraSubTierSource = 'custom';
+      } else if (cachedSub) {
+        ultraSubTier = cachedSub;
+        ultraSubTierSource = 'cached_live';
+      }
 
-    if (tierKey === 'unknown' && customSub) {
-      status = 'custom';
-      tierKey = 'ultra';
-      tierSource = 'custom';
+      if (tierKey === 'unknown' && customSub) {
+        status = 'custom';
+        tierKey = 'ultra';
+        tierSource = 'custom';
+      }
     }
 
     const ultraSubTierSpec = (tierKey === 'ultra' && ultraSubTier && ULTRA_SUB_TIER_PRESETS[ultraSubTier])
@@ -2368,7 +3162,11 @@
       : null;
     if (ultraSubTierSpec) {
       tierName = ultraSubTierSpec.tierName;
+      if (!multiplier) multiplier = ultraSubTierSpec.quotaMultiplier;
     }
+
+    const planSpecKey = resolvePlanSpecKey(tierKey, multiplier, overrideApplied ? normTierOverride : null);
+    const planSpec = getPlanTierSpec(planSpecKey);
 
     // 2A. 账号所在地区 (accountRegion / country) 独立取值：仅表示本地记录，不影响订阅国家与币种
     let country = '未知';
@@ -2429,9 +3227,6 @@
     }
 
     // 4. 订阅币种 (subscriptionCurrency / currency)、价格模式与实付价格解析
-    // 明确区分两种价格模式：
-    // 'preset': 跟随订阅国家参考价 (按所选国家实时派生参考定价与币种，不固定用户实付)
-    // 'custom': 自定义实付金额 (尊重用户手动填写的金额，含 0 元，切换国家不覆盖)
     let priceMode = effectiveCustom?.priceMode;
     if (priceMode !== 'preset' && priceMode !== 'custom') {
       const hasCustomPaid = Boolean(effectiveCustom && (effectiveCustom.isZeroExtraCost || (effectiveCustom.actualPricePaid !== null && effectiveCustom.actualPricePaid !== undefined && effectiveCustom.actualPricePaid !== '')));
@@ -2447,12 +3242,16 @@
     let actualPricePaid = null;
     let officialPriceMonthly = ultraSubTierSpec
       ? ultraSubTierSpec.officialPriceMonthly
-      : (rawLive?.officialPriceMonthly ?? cachedLive?.officialPriceMonthly ?? null);
+      : (planSpec && planSpec.officialPriceUSD !== undefined && overrideApplied
+        ? planSpec.officialPriceUSD
+        : (rawLive?.officialPriceMonthly ?? cachedLive?.officialPriceMonthly ?? (planSpec?.officialPriceUSD ?? null)));
+    if (overrideApplied && planSpecKey === 'ultra') {
+      officialPriceMonthly = null;
+    }
     const matchedRegionPreset = findRegionPreset(region);
     let rawCur = (effectiveCustom?.subscriptionCurrency || effectiveCustom?.currency) ? String(effectiveCustom.subscriptionCurrency || effectiveCustom.currency).trim().toUpperCase() : '';
     if (rawCur === 'NTD') rawCur = 'TWD';
     const isValidCustomCurrency = Boolean(rawCur && (CURRENCY_SYMBOLS[rawCur] || SUBSCRIPTION_REGIONS_PRESET.some(p => p.currency === rawCur)));
-    // 显式锁定币种：明确声明为 custom 来源，或自定义模式下指定了币种，或币种与当前地区预设不一致且明确传入
     const isManualCurrency = isValidCustomCurrency && (
       effectiveCustom?.currencySource === 'custom' ||
       priceMode === 'custom' ||
@@ -2492,7 +3291,7 @@
 
     const isLivePaidValid = rawLive && rawLive.priceSource !== 'custom' && rawLive.priceSource !== 'preset_region' && rawLive.actualPricePaid !== null && rawLive.actualPricePaid !== undefined && Number.isFinite(Number(rawLive.actualPricePaid)) && Number(rawLive.actualPricePaid) >= 0;
 
-    if (isLivePaidValid) {
+    if (isLivePaidValid && !overrideApplied) {
       priceMode = 'live';
       actualPricePaid = Number(rawLive.actualPricePaid);
       isPriceEstimated = false;
@@ -2528,15 +3327,31 @@
         priceRangeNote = `${acquisitionSourceName} · 待设置实付金额`;
       }
     } else {
-      // priceMode === 'preset' (跟随订阅国家参考价)
+      // priceMode === 'preset' (跟随订阅国家参考价，按 6 档 × 14 国官方矩阵派生)
       priceMode = 'preset';
-      if (matchedRegionPreset) {
-        if (tierKey === 'ultra' && ultraSubTierSpec && matchedRegionPreset.currency === 'USD') {
-          actualPricePaid = Number(ultraSubTierSpec.officialPriceMonthly);
+      const effLookupSpecKey = (planSpecKey === 'unknown' || planSpecKey === 'custom') ? 'pro' : planSpecKey;
+      if (effLookupSpecKey === 'free') {
+        actualPricePaid = 0;
+        officialPriceMonthly = 0;
+        isPriceEstimated = false;
+        priceSource = matchedRegionPreset ? 'preset_region' : 'official_reference';
+        billingCycle = effectiveCustom?.billingCycle || '免费版';
+        priceRangeNote = `${acquisitionSourceName} · ${curSymbol}0 · ${billingCycle}`;
+      } else if (effLookupSpecKey === 'ultra') {
+        actualPricePaid = null;
+        officialPriceMonthly = null;
+        isPriceEstimated = true;
+        priceSource = 'unknown';
+        billingCycle = effectiveCustom?.billingCycle || '月付';
+        priceRangeNote = `${acquisitionSourceName} · $99.99~199.99/月 · 待选子档`;
+      } else if (matchedRegionPreset) {
+        const refObj = getRegionPlanReferencePrice(matchedRegionPreset, effLookupSpecKey);
+        if (refObj.available && refObj.monthlyPrice !== null) {
+          actualPricePaid = Number(refObj.monthlyPrice);
           isPriceEstimated = true;
           priceSource = 'preset_region';
           billingCycle = effectiveCustom?.billingCycle || '月付';
-          priceRangeNote = `${acquisitionSourceName} · 官方参考价 ${curSymbol}${actualPricePaid} · ${billingCycle}`;
+          priceRangeNote = `${acquisitionSourceName} · 地区参考价 ${curSymbol}${actualPricePaid} · ${billingCycle}`;
         } else {
           actualPricePaid = Number(matchedRegionPreset.monthlyPrice);
           isPriceEstimated = true;
@@ -2588,6 +3403,11 @@
     return {
       status,
       tierKey,
+      tierSpecKey: planSpecKey,
+      planTierOverride: normTierOverride || 'auto',
+      planSpecKey,
+      planSpec,
+      multiplier,
       tierName,
       tierId,
       ultraSubTier,
@@ -2637,7 +3457,7 @@
         price: priceSource,
         acquisition: effectiveCustom?.acquisitionSource ? 'custom' : 'default'
       },
-      hasCustomSettings: Boolean(effectiveCustom && (effectiveCustom.ultraSubTier || effectiveCustom.subTier || effectiveCustom.country || effectiveCustom.region || effectiveCustom.subscriptionRegion || effectiveCustom.currency || effectiveCustom.actualPricePaid !== undefined || effectiveCustom.customNote || effectiveCustom.acquisitionSource)),
+      hasCustomSettings: Boolean(effectiveCustom && (effectiveCustom.planTierOverride || effectiveCustom.ultraSubTier || effectiveCustom.subTier || effectiveCustom.country || effectiveCustom.region || effectiveCustom.subscriptionRegion || effectiveCustom.currency || effectiveCustom.actualPricePaid !== undefined || effectiveCustom.customNote || effectiveCustom.acquisitionSource)),
       pricingTableVerifiedDate: '2026-11-09',
       updatedAt: rawLive?.updatedAt || new Date().toISOString()
     };
@@ -2996,7 +3816,7 @@
   function normalizeModelLookupName(raw) {
     return String(raw || '')
       .toLowerCase()
-      .replace(/\([^)]*\)/g, ' ')
+      .replace(/[\(（]\s*(?:extra\s*high|xhigh|low|medium|high|extra|minimal|max|thinking)\s*[\)）]/gi, ' ')
       .replace(/\b(low|medium|high|xhigh|extra\s*high)\b/gi, ' ')
       .replace(/[^a-z0-9.\u4e00-\u9fa5]+/g, ' ')
       .replace(/\s+/g, ' ')
@@ -3019,6 +3839,87 @@
     if (w.includes('weekly') || w.includes('7d') || w.includes('week')) return { key: 'weekly', short: '7d', label: '每周限额' };
     if (w.includes('daily') || w.includes('24h') || w.includes('day')) return { key: 'daily', short: '24h', label: '每日限额' };
     return { key: w || 'quota', short: '', label: '周期限额' };
+  }
+
+  const QUOTA_WINDOW_TIE_ORDER = {
+    '5h': 0,
+    '24h': 1,
+    daily: 1,
+    '7d': 2,
+    weekly: 2
+  };
+
+  function resolveQuotaBucketWindowRank(bucket) {
+    if (!bucket || typeof bucket !== 'object') return 99;
+    const short = String(bucket.windowShort || '').trim().toLowerCase();
+    const key = String(bucket.windowKey || '').trim().toLowerCase();
+    const id = String(bucket.bucketId || '').trim().toLowerCase();
+    for (const candidate of [short, key]) {
+      if (candidate in QUOTA_WINDOW_TIE_ORDER) return QUOTA_WINDOW_TIE_ORDER[candidate];
+    }
+    if (id.includes('5h') || id.includes('5_hour')) return 0;
+    if (id.includes('24h') || id.includes('day') || id.includes('daily')) return 1;
+    if (id.includes('7d') || id.includes('week') || id.includes('weekly')) return 2;
+    return 10;
+  }
+
+  function resolveQuotaWindowBucketPair(buckets = []) {
+    const list = Array.isArray(buckets) ? buckets.filter(Boolean) : [];
+    const findWindow = (targetKey, targetShort) => {
+      const candidates = list.filter(b => {
+        const wk = String(b.windowKey || '').trim().toLowerCase();
+        const ws = String(b.windowShort || '').trim().toLowerCase();
+        return wk === targetKey || ws === targetShort;
+      });
+      if (!candidates.length) return null;
+      const priced = candidates.filter(b => b.remainingFraction !== null && b.remainingFraction !== undefined && Number.isFinite(Number(b.remainingFraction)));
+      if (priced.length) {
+        return priced.slice().sort((a, b) => Number(a.remainingFraction) - Number(b.remainingFraction))[0];
+      }
+      return candidates[0];
+    };
+    return {
+      bucket5h: findWindow('5h', '5h'),
+      bucket7d: findWindow('weekly', '7d')
+    };
+  }
+
+  /**
+   * 统一选择主限额窗口（5h > 24h/daily > 7d/weekly 平局序）
+   */
+  function selectPrimaryQuotaBucket(buckets = [], preferredMode = 'auto') {
+    const list = Array.isArray(buckets) ? buckets.filter(Boolean) : [];
+    if (!list.length) return { primaryBucket: null, selectionReason: 'none' };
+    const mode = String(preferredMode || 'auto').trim().toLowerCase();
+    if (mode === '5h' || mode === 'weekly') {
+      const pair = resolveQuotaWindowBucketPair(list);
+      const picked = mode === '5h' ? pair.bucket5h : pair.bucket7d;
+      if (picked && picked.remainingFraction !== null && picked.remainingFraction !== undefined && Number.isFinite(Number(picked.remainingFraction))) {
+        return {
+          primaryBucket: picked,
+          selectionReason: list.length === 1 ? 'single_window' : (mode === '5h' ? 'user_5h' : 'user_weekly')
+        };
+      }
+    }
+    const priced = list.filter(b => b.remainingFraction !== null && b.remainingFraction !== undefined && Number.isFinite(Number(b.remainingFraction)));
+    if (!priced.length) {
+      return { primaryBucket: list[0], selectionReason: list.length === 1 ? 'single_window' : 'unpriced_fallback' };
+    }
+    const sorted = priced.slice().sort((a, b) => {
+      const diff = Number(a.remainingFraction) - Number(b.remainingFraction);
+      if (Math.abs(diff) > 1e-6) return diff;
+      const rankDiff = resolveQuotaBucketWindowRank(a) - resolveQuotaBucketWindowRank(b);
+      if (rankDiff !== 0) return rankDiff;
+      return String(a.bucketId || '').localeCompare(String(b.bucketId || ''));
+    });
+    const best = sorted[0];
+    if (priced.length === 1) return { primaryBucket: best, selectionReason: 'single_window' };
+    const second = sorted[1];
+    const isTie = Math.abs(Number(best.remainingFraction) - Number(second.remainingFraction)) <= 1e-6;
+    return {
+      primaryBucket: best,
+      selectionReason: isTie ? 'tie_window' : 'tighter_window'
+    };
   }
 
   /**
@@ -3080,12 +3981,12 @@
       const joinedHints = [g.groupId, title, desc, ...explicitModelNames].filter(Boolean).join(' ').toLowerCase();
       if (joinedHints.includes('3p') || joinedHints.includes('claude') || joinedHints.includes('gpt-oss')) {
         sharedKey = 'shared_3p_pool';
+      } else if (joinedHints.includes('hydrogen') || joinedHints.includes('neon') || joinedHints.includes('flash')) {
+        sharedKey = 'shared_gemini_main';
       } else if (joinedHints.includes('argon')) {
         sharedKey = 'shared_gemini_argon';
       } else if (joinedHints.includes('carbon')) {
         sharedKey = 'shared_gemini_carbon';
-      } else if (joinedHints.includes('hydrogen') || joinedHints.includes('flash')) {
-        sharedKey = 'shared_gemini_main';
       } else {
         sharedKey = `group_${g.groupId || normalizeModelLookupName(title) || idx}`;
       }
@@ -3104,15 +4005,26 @@
     // 2. 将 clientModelConfigs 按产品折叠多挡位（如 Low/Medium/High/XHigh）
     const productMap = new Map();
     const fallbackGroupNames = {
-      shared_gemini_main: 'Gemini 4 Hydrogen / Gemini 3.8 Flash',
+      shared_gemini_main: 'Gemini 4 Neon / Hydrogen / Gemini 3.8 Flash',
       shared_3p_pool: 'Claude Opus/Sonnet 5.5 / GPT-OSS 120B (第三方共享池)',
       shared_gemini_argon: 'Gemini 4 Argon / Orchestrator',
       shared_gemini_carbon: 'Gemini 4 Carbon'
     };
+    const CORE_SHARED_POOLS = new Set(Object.keys(fallbackGroupNames));
 
     for (const cfg of rawConfigs) {
       if (!cfg || typeof cfg !== 'object') continue;
       if (cfg.isHistorical === true) continue;
+      if (cfg.isInternal === true) continue;
+      const rawMId = String(cfg.modelId || cfg.model || '').trim().toLowerCase();
+      const rawMAlias = String(cfg.modelOrAlias?.model || '').trim().toLowerCase();
+      if ((rawMId.startsWith('chat_') && /^chat_\d+$/.test(rawMId)) || (rawMAlias.startsWith('chat_') && /^chat_\d+$/.test(rawMAlias))) continue;
+      if (rawMId.startsWith('tab_') || rawMAlias.startsWith('tab_')) continue;
+      const isLegacyRetiredCfg = /^gemini-2\.5-/i.test(rawMId)
+        || /^gemini-2\.5-/i.test(rawMAlias)
+        || /^gemini\s*2\.5\b/i.test(String(cfg.label || ''));
+      if (isLegacyRetiredCfg) continue;
+
       const gInfo = groupModelProduct(cfg);
       const avail = classifyModelQuotaAvailability(cfg, planStatus);
       const qi = cfg.quotaInfo || {};
@@ -3131,6 +4043,9 @@
       }) || null;
 
       const resolvedSharedKey = matchedSummaryGroup ? matchedSummaryGroup.sharedKey : defaultSharedKey;
+      const allowDynamicCfg = !isLegacyRetiredCfg && resolvedSharedKey !== 'unknown' && (parsedFrac.hasValue || resetMeta.hasResetTime);
+      if (!CORE_SHARED_POOLS.has(resolvedSharedKey) && !matchedSummaryGroup && !allowDynamicCfg) continue;
+
       const pKey = `${resolvedSharedKey}::${gInfo.productKey}`;
 
       let prod = productMap.get(pKey);
@@ -3242,11 +4157,14 @@
     };
 
     for (const pg of parsedGroups) {
-      ensurePool(pg.sharedKey, pg.title, pg);
+      if (CORE_SHARED_POOLS.has(pg.sharedKey) || (Array.isArray(pg.buckets) && pg.buckets.length > 0)) {
+        ensurePool(pg.sharedKey, pg.title, pg);
+      }
     }
 
     for (const prod of productMap.values()) {
       const sKey = prod.sharedGroupKey;
+      if (!sKey || sKey === 'unknown') continue;
       const summaryGroup = parsedGroups.find(pg => pg.sharedKey === sKey) || null;
       const pool = ensurePool(sKey, prod.productLabel, summaryGroup);
       pool.models.push({
@@ -3334,11 +4252,10 @@
         }
       }
 
-      // 从 buckets 中选最紧缩（最小 remainingFraction）的作为 primaryBucket
-      const pricedBuckets = pool.buckets.filter(b => b.remainingFraction !== null);
-      if (pricedBuckets.length > 0) {
-        pricedBuckets.sort((a, b) => a.remainingFraction - b.remainingFraction);
-        const pb = pricedBuckets[0];
+      // 从 buckets 中统一选出主窗口（更紧缩优先 + 5h/7d 确定性平局规则）
+      const { primaryBucket: pb, selectionReason } = selectPrimaryQuotaBucket(pool.buckets);
+      pool.selectionReason = selectionReason;
+      if (pb && pb.remainingFraction !== null && pb.remainingFraction !== undefined) {
         pool.primaryBucket = pb;
         pool.remainingFraction = pb.remainingFraction;
         pool.percentText = pb.percentText;
@@ -3359,8 +4276,7 @@
           pool.status = 'available';
           pool.statusLabel = '正常可用';
         }
-      } else if (pool.buckets.length > 0) {
-        const pb = pool.buckets[0];
+      } else if (pb) {
         pool.primaryBucket = pb;
         pool.hasResetTime = pb.hasResetTime;
         pool.resetTimeIso = pb.resetTimeIso;
@@ -3387,21 +4303,46 @@
 
     // 4. 匹配当前会话模型与浏览查看池（浏览不修改 currentModel）
     const findMatchedForTarget = (targetInput) => {
-      if (!targetInput) return { pool: null, model: null };
-      const targetStr = typeof targetInput === 'object'
-        ? String(targetInput.modelId || targetInput.modelOrAlias?.model || targetInput.label || targetInput.model || '')
-        : String(targetInput);
-      const tLower = targetStr.trim().toLowerCase();
-      const tStripped = tLower.replace(/^model_/, '');
-      const tNorm = normalizeModelLookupName(targetStr);
+      if (!targetInput || targetInput.isUnknownModel) return { pool: null, model: null };
+      const targetCandidates = typeof targetInput === 'object'
+        ? [targetInput.modelId, targetInput.modelOrAlias?.model, targetInput.label, targetInput.model]
+          .filter(v => typeof v === 'string' && v.trim())
+        : [String(targetInput)].filter(v => v.trim());
+      const targetProductKey = typeof targetInput === 'object' && targetInput.productKey
+        ? String(targetInput.productKey).trim()
+        : '';
+      if (targetCandidates.length === 0 && !targetProductKey) return { pool: null, model: null };
+      const targetLowers = targetCandidates.map(v => v.trim().toLowerCase());
+      const targetStripped = targetLowers.map(v => v.replace(/^model_/, ''));
+      const targetNorms = [...new Set(targetCandidates.map(normalizeModelLookupName).filter(Boolean))];
 
+      // 1. 最高优先级：精确 modelId / aliases（避免跨池名称模糊匹配抢占 M667/M668/M537 等独立实体）
       for (const pool of pools) {
         for (const m of pool.models) {
           const allIds = [...m.modelIds, ...m.aliases].map(x => x.toLowerCase());
-          if (allIds.some(id => id === tLower || id.replace(/^model_/, '') === tStripped)) {
+          if (allIds.some(id => targetLowers.includes(id) || targetStripped.includes(id.replace(/^model_/, '')))) {
             return { pool, model: m };
           }
-          if (tNorm && normalizeModelLookupName(m.productLabel) === tNorm) {
+        }
+      }
+      // 2. 次优先级：精确 productKey
+      if (targetProductKey) {
+        for (const pool of pools) {
+          for (const m of pool.models) {
+            if (m.productKey && m.productKey === targetProductKey) {
+              return { pool, model: m };
+            }
+          }
+        }
+      }
+      // 3. 展示名与归一化产品名匹配
+      for (const pool of pools) {
+        for (const m of pool.models) {
+          if (m.productLabel && targetLowers.includes(m.productLabel.toLowerCase())) {
+            return { pool, model: m };
+          }
+          const mNorm = normalizeModelLookupName(m.productLabel);
+          if (mNorm && targetNorms.includes(mNorm)) {
             return { pool, model: m };
           }
         }
@@ -4059,16 +5000,29 @@
     add,
     empty,
     analyzeSteps,
+    extractGeneratorMaxStep,
+    isCheckpointNewerThanGenerator,
+    buildPostCompactSummary,
     parseDurationSec,
     GEMINI_PRICING_TABLE,
     SUBSCRIPTION_ACQUISITION_PRESETS,
+    SUBSCRIPTION_TIER_SPECS,
+    SUBSCRIPTION_TIER_REGION_PRICES,
     SUBSCRIPTION_REGIONS_PRESET,
     ULTRA_SUB_TIER_PRESETS,
     normalizeUltraSubTier,
+    resolvePlanSpecKey,
+    getPlanTierSpec,
+    getRegionPlanReferencePrice,
     findRegionPreset,
+    resolveCurrencyRateToCNY,
     convertToCNY,
     convertCurrency,
     CURRENCY_SYMBOLS,
+    normalizeModelLookupName,
+    selectPrimaryQuotaBucket,
+    resolveQuotaBucketWindowRank,
+    resolveQuotaWindowBucketPair,
     normalizeModelId,
     resolveStableModelId,
     EFFORT_WHITELIST,

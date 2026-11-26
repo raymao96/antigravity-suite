@@ -778,7 +778,7 @@ test('default current period API reference amount, independent subscription spen
   h.elements.get('badge-tokens').click();
   h.elements.get('tok-view-cost').click();
 
-  // 1) 验证首屏默认并列展示：已记录用量按公开API折算金额（绝不显示为 $0）与用户实际支出
+  // 1) 验证首屏默认并列展示：已记录用量按公开API 折算金额（绝不显示为 $0）与用户实际支出
   const titleEl = h.elements.get('cost-card-title');
   const periodTag = h.elements.get('cost-period-tag');
   const grandVal = h.elements.get('cost-grand-val');
@@ -896,7 +896,7 @@ test('integrated verification: legacy payload without referenceCost calculates d
   assert.equal(badgeAmt.textContent, '31.0K'); // 保持原有效值，严禁变 0！
   assert.equal(grandVal.textContent, '约 $0.01');
 
-  // 3. 验证默认紧凑摘要态、常驻“API折算 · 非实付”及热力图在统计页隔离
+  // 3. 验证默认紧凑摘要态、常驻“API 折算 · 非实付”及热力图在统计页隔离
   const detailsPane = h.elements.get('cost-details-pane');
   const toggleBtn = h.elements.get('btn-cost-details-toggle');
   const tokensMain = h.elements.get('tokens-main-view');
@@ -907,7 +907,7 @@ test('integrated verification: legacy payload without referenceCost calculates d
   assert.equal(detailsPane.style.display, 'none'); // 默认收起详情
   assert.equal(toggleBtn.textContent, '展开详情 ▼');
   assert.equal(tokensMain.style.display, 'none'); // 费用模式下热力图与统计卡片完全不展示
-  assert.equal(nonPaidBadge.textContent, 'API折算 · 非实付');
+  assert.equal(nonPaidBadge.textContent, 'API 折算 · 非实付');
   assert.match(scopeDesc.textContent, /全部来源/);
 
   // 4. 验证展开与收起围绕右侧锚点自适应展开与收拢
@@ -988,7 +988,7 @@ test('instant region switch to Australia & Korea, price badge dynamic animation 
 
   const directMenu = h.elements.get('direct-region-menu');
   const items = directMenu.children.find(c => c.className === 'ag-dropdown-list-container')?.children || [];
-  const auItem = items.find(it => (it.textContent && (it.textContent.includes('澳大利亚') || it.textContent.includes('AU'))) || it.children?.some?.(c => c.textContent && (c.textContent.includes('澳大利亚') || c.textContent.includes('AU'))));
+  const auItem = items.find(it => it.getAttribute('data-value') === 'AU');
   assert.ok(auItem, 'Australia item rendered in direct dropdown menu');
 
   // 点击澳大利亚
@@ -1001,7 +1001,7 @@ test('instant region switch to Australia & Korea, price badge dynamic animation 
   assert.equal(priceCny.textContent, '(≈ ¥146.8 CNY)');
   assert.match(detPrice.textContent, /AU\$32\.99 · 月付/);
   assert.equal(detPriceTag.textContent, '官方定价');
-  assert.match(directLabel.textContent, /澳大利亚.*AU\$32\.99/);
+  assert.match(directLabel.textContent, /澳洲.*AU\$32\.99/);
 
   api.dispose();
 });
@@ -1034,7 +1034,7 @@ test('tray/root startup visibility, settings save/restore (country, subscription
   directTrigger.click();
   const directMenu = h.elements.get('direct-region-menu');
   const items = directMenu.children.find(c => c.className === 'ag-dropdown-list-container')?.children || [];
-  const krItem = items.find(it => it.children?.some?.(c => c.textContent && c.textContent.includes('韩国')));
+  const krItem = items.find(it => it.getAttribute('data-value') === 'KR');
   assert.ok(krItem, 'Korea item exists');
   krItem.click();
   await h.flush();
@@ -1806,4 +1806,54 @@ test('topbar badge order places 5h/week quota after tok/s so first two open cont
 
   sandbox.__AGEnhancer.dispose();
   sandbox.__AGContextMeter.dispose();
+});
+
+test('ELV-93 SVG hourglass wait state and 2.33/2.34 marketplace avoidance with /c/ archive guard', async () => {
+  // 1. ELV-93 等待态纯 SVG 沙漏验证：requestPoll 发出后尚未返回 TPS 时启用沙漏，返回合法 TPS 后恢复数值
+  const h = harness();
+  h.finishScan();
+  const bSpeed = h.elements.get('badge-speed');
+  const waitSvg = h.elements.get('badge-speed-wait-svg');
+  const speedAmount = h.elements.get('speed-amount');
+  assert.equal(bSpeed.getAttribute('data-speed-phase'), 'waiting');
+  assert.equal(waitSvg.hidden, false);
+  assert.equal(speedAmount.textContent, '');
+
+  h.pending[0].resolve(response({
+    timeToFirstToken: '1.2s',
+    streamingDuration: '4.0s',
+    usage: { inputTokens: 1000, outputTokens: 200 },
+    chatStartMetadata: { contextWindowMetadata: { maxContextTokens: 256000 } }
+  }));
+  await h.flush();
+  assert.equal(bSpeed.getAttribute('data-speed-phase'), null);
+  assert.equal(waitSvg.hidden, true);
+  assert.equal(speedAmount.textContent, '38.5 tok/s');
+
+  // 2. 子视图避让与已归档 /c/... 会话防误锁验证
+  const api = h.sandbox.__AGContextMeter;
+  assert.equal(api.isMarketplaceActiveForTest(), false);
+
+  // 模拟路径进入 /marketplace
+  h.sandbox.location.pathname = '/marketplace';
+  assert.equal(api.isMarketplaceActiveForTest(), true);
+
+  // 切回已归档对话页 /c/uuid（有 conversation-view 但带 Back 按钮与按钮文字“详情”时绝不误锁）
+  h.sandbox.location.pathname = '/c/11111111-1111-1111-1111-111111111111';
+  const convNode = h.host; // fallback element
+  const prevQs = h.sandbox.document.querySelector;
+  const prevQsa = h.sandbox.document.querySelectorAll;
+  h.sandbox.document.querySelector = (sel) => {
+    if (String(sel).includes('conversation-view')) return { id: 'conv-marker' };
+    return prevQs ? prevQs.call(h.sandbox.document, sel) : null;
+  };
+  h.sandbox.document.querySelectorAll = (sel) => {
+    if (String(sel).includes('aria-label*="Back"')) {
+      return [{ tagName: 'BUTTON', textContent: 'Back', getAttribute: () => 'Back', closest: () => null }];
+    }
+    return prevQsa ? prevQsa.call(h.sandbox.document, sel) : [];
+  };
+  assert.equal(api.isMarketplaceActiveForTest(), false);
+
+  api.dispose();
 });

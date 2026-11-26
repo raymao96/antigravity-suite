@@ -867,12 +867,14 @@ test('需求 2: resolvePlanQuotaPools 与渲染/配额浮窗保持套餐子组�
   assert.equal(Math.round(geminiGroup.fiveHour.remainingFraction * 100), 35, 'Gemini 主组剩余比例应取更紧约束 35%');
 
   if (typeof enhancer.toggleQuotaPopover === 'function') {
+    env.win.__AGContextMeterHistory = { planStatus: { tierKey: 'ultra', ultraSubTier: '20x' } };
     await enhancer.toggleQuotaPopover(true);
     const pop = env.doc.getElementById('ag-quota-popover') || shadow.getElementById('ag-quota-popover');
     if (pop) {
       const popText = pop.textContent || '';
       assert.ok(!popText.includes('500 / 50000') && !popText.includes('100 / 150000'),
         `配额浮窗不得透出旧存根 500 / 50000 或 100 / 150000: ${popText}`);
+      assert.match(pop.innerHTML, /<strong>20× Pro 額度<\/strong>/, '浮窗的 Prompt 額度摘要應省略重複的限額週期');
       const openSettingsBtn = env.doc.getElementById('ag-quota-open-settings') || shadow.getElementById('ag-quota-open-settings');
       assert.equal(openSettingsBtn, null, '配额浮窗不再内置独立设置入口，已统一收敛到外部顶栏设置入口');
     }
@@ -3020,7 +3022,7 @@ test('需求 13: 远程浮窗整行热区勾选、CLI 多路复用器指定主�
 
   vm.runInContext(CAPSULE_SRC, envCap.sandbox);
   const capsApi = envCap.win.__AGY_CTX_CAPSULE_API__;
-  assert.equal(capsApi.version, '1.5.2');
+  assert.equal(capsApi.version, '1.5.5');
 
   capsApi.renderFooterCapsule(footerEl, {
     contextUsed: 181000,
@@ -3046,6 +3048,35 @@ test('需求 13: 远程浮窗整行热区勾选、CLI 多路复用器指定主�
   const childIdxOcc = capBtn.children.indexOf(occNode);
   const childIdxCache = capBtn.children.indexOf(cacheNode);
   assert.ok(childIdxOcc >= 0 && childIdxCache === childIdxOcc + 1, '缓存命中率必须位于上下文窗口占用率紧邻右侧');
+
+  const calls = [
+    { status: 'final', inputTokens: 9, cacheReadTokens: 972, cacheCreationTokens: 5 },
+    { status: 'final', inputTokens: 14, cacheReadTokens: 0 },
+    { status: 'streaming', inputTokens: 1000 },
+    { status: 'final', isEstimated: true, inputTokens: 1000 }
+  ];
+  let route = 'conversation-a';
+  envCap.win.__AGContextMeter = { snapshot: () => ({ route, sessionCalls: calls }) };
+  capsApi.renderFooterCapsule(footerEl, {
+    conversationId: 'conversation-a',
+    contextUsed: 14,
+    contextLimit: 512000,
+    usagePercent: 0,
+    remainPercent: 100,
+    hasPreciseSnapshot: true,
+    cacheHitRate: 0,
+    cacheReadTokens: 0,
+    inputTokens: 14,
+    outputTokens: 0
+  });
+  capBtn.dispatchEvent({ type: 'mouseenter', target: capBtn });
+  const tooltip = envCap.doc.getElementById('__agy_ctx_capsule_tooltip__');
+  assert.match(tooltip.textContent, /最新快照快取命中率\s*0\.00%/);
+  assert.match(tooltip.textContent, /整段對話快取命中率\s*97\.20%/);
+  route = 'conversation-b';
+  capBtn.dispatchEvent({ type: 'mouseenter', target: capBtn });
+  assert.doesNotMatch(tooltip.textContent, /整段對話快取命中率/);
+  capBtn.dispatchEvent({ type: 'mouseleave', target: capBtn });
 
   // 未产生首轮快照时显示 --%
   capsApi.renderFooterCapsule(footerEl, {
@@ -13901,9 +13932,9 @@ test('需求 28: 快捷提示词直接发送（逐条直发开关 + 内置免参
   const freshRendererSrc = fs.readFileSync(path.join(ROOT, 'meter-renderer.js'), 'utf8');
   const freshEnhancerSrc = fs.readFileSync(path.join(ROOT, 'ag-enhancer-overlay.js'), 'utf8');
 
-  async function withQuickSendEnv(fn) {
+  async function withQuickSendEnv(fn, locale = 'zh-CN') {
     const env = createDomEnv();
-    env.localStorage.setItem('ag_suite_locale', 'zh-CN');
+    env.localStorage.setItem('ag_suite_locale', locale);
     const activeTimers = new Set();
     env.sandbox.setTimeout = (cb, ms) => {
       const delay = Number(ms) > 500 ? Number(ms) : Math.min(Number(ms) || 0, 8);
@@ -14118,6 +14149,19 @@ test('需求 28: 快捷提示词直接发送（逐条直发开关 + 内置免参
     assert.equal(getSendClicks(), 1, '开启内置直发后 重载规则 应自动触发发送');
   });
 
+  await withQuickSendEnv(async ({ api, quickBar, editorEl, getSendClicks, getToastText }) => {
+    quickBar.querySelector('#ag-qcap-reload')?.click();
+    await new Promise(r => setTimeout(r, 120));
+    assert.equal(editorEl.textContent, '重新讀取 AGENTS');
+    assert.match(getToastText(), /按 Enter 即可傳送/);
+    assert.equal(getSendClicks(), 0);
+
+    await api.setQuickPrompts([{ id: 'c0', label: '自訂內容', text: '仅填入的文本', autoSend: false }]);
+    quickBar.querySelector('#ag-qcap-prompt-0')?.click();
+    await new Promise(r => setTimeout(r, 120));
+    assert.equal(editorEl.textContent, '仅填入的文本');
+  }, 'zh-TW');
+
   // 4. ⌘/Ctrl + 点击临时反转行为
   await withQuickSendEnv(async ({ api, quickBar, editorEl, getSendClicks }) => {
     await api.setQuickPrompts([
@@ -14309,8 +14353,8 @@ module.exports = {
     assert.ok(elapsedB < 2000, `老裸进程保护跳过场景应在 2s 内退出，实际耗时 ${elapsedB}ms`);
 
     const logContent = fs.readFileSync(path.join(fakeHome, 'Library', 'Logs', 'antigravity-hans.log'), 'utf8');
-    assert.match(logContent, /PID: 999999, 已运行 120s > 30s.*跳过自动重拉/, '应写入保护当前会话的跳过重拉日志');
-    assert.doesNotMatch(logContent, /自动补参重拉/, '不得对运行超过 30s 的老裸进程触发重拉');
+    assert.match(logContent, /PID: 999999, 已執行 120s > 30s.*略過自動重拉/, '应写入保护当前会话的跳过重拉日志');
+    assert.doesNotMatch(logContent, /自動補參重拉/, '不得对运行超过 30s 的老裸进程触发重拉');
 
     // 用例 4c：ShipIt 正在升级（pgrep 返回 0）+ 刚启动 3s 的裸进程 -> _auto-trigger 避让不触发重拉
     const psFile4c = path.join(tmpRoot, 'ps-4c.txt');
@@ -14328,7 +14372,7 @@ module.exports = {
     });
     assert.equal(fs.readFileSync(openLog29, 'utf8').trim(), '', 'ShipIt 运行期间不得对刚启动 3s 的裸进程触发补参重拉');
     const logAfter4c = fs.readFileSync(path.join(fakeHome, 'Library', 'Logs', 'antigravity-hans.log'), 'utf8');
-    assert.doesNotMatch(logAfter4c, /999888.*自动补参重拉/, 'ShipIt 避让期不得写入 999888 重拉日志');
+    assert.doesNotMatch(logAfter4c, /999888.*自動補參重拉/, 'ShipIt 避让期不得写入 999888 重拉日志');
   } finally {
     fs.rmSync(tmpRoot, { recursive: true, force: true });
   }
@@ -28728,9 +28772,15 @@ test('繁體中文（台灣用語 / zh-TW）轉換器、設定面板切換、各
   );
   const twSample = convertZhCNToZhTW('启用后台状态与自定义列表，打开查看全部说明');
   assert.ok(!/[啓裏衆爲着羣峯綫麪衞賬]/.test(twSample), `不應出現非台灣標準異體字: ${twSample}`);
-  assert.equal(convertZhCNToZhTW('布局'), '排版');
+  assert.equal(convertZhCNToZhTW('查看API折算，或扫描二维码后打开'), '檢視 API 折算，或掃描 QR Code 後開啟');
+  assert.equal(convertZhCNToZhTW('已使用 API 折算'), '已使用 API 折算');
+  assert.equal(convertZhCNToZhTW('按回车即可发送／按回車鍵'), '按 Enter 即可傳送／按 Enter 鍵');
+  assert.equal(convertZhCNToZhTW('第一行\\n第二行'), '第一行\\n第二行');
+  assert.equal(convertZhCNToZhTW('欢迎回来，Guest。我们从哪里继续？'), '歡迎回來，Guest。我們從哪裡繼續？');
+  assert.equal(convertZhCNToZhTW('哪里、这里、公里、布局、导航面包屑、串口、设备名称、浏览器扩展'),
+    '哪裡、這裡、公里、排版、麵包屑導覽、序列埠、裝置名稱、瀏覽器擴充功能');
   assert.equal(convertZhCNToZhTW('左右并排布局'), '左右並排版面設定');
-  for (const sample of ['工作流', '使用工作流编排多智能体', '布局', '进程', '周边', '周围', '干预', '干扰', '批准', '获准']) {
+  for (const sample of ['工作流', '使用工作流编排多智能体', '布局', '进程', '周边', '周围', '干预', '干扰', '批准', '获准', '查看文档']) {
     const once = convertZhCNToZhTW(sample);
     assert.equal(convertZhCNToZhTW(once), once, `convertZhCNToZhTW(${sample}) 必須具備冪等性`);
   }
@@ -28790,6 +28840,17 @@ test('繁體中文（台灣用語 / zh-TW）轉換器、設定面板切換、各
   const agentPane = env.doc.querySelector('.antigravity-agent-side-panel');
   assert.ok(agentPane, '模擬 DOM 應包含 .antigravity-agent-side-panel');
   agentPane.appendChild(labelEl);
+
+  const welcome = env.doc.createElement('h1');
+  const welcomeText = {
+    nodeType: 3,
+    nodeValue: 'Welcome back, Guest. Where should we pick up?',
+    get textContent() { return this.nodeValue; },
+    set textContent(v) { this.nodeValue = String(v); },
+    parentElement: welcome
+  };
+  welcome.childNodes.push(welcomeText);
+  agentPane.appendChild(welcome);
 
   const buildWelcome = env.doc.createElement('h1');
   const buildWelcomeText = {
@@ -28872,6 +28933,7 @@ test('繁體中文（台灣用語 / zh-TW）轉換器、設定面板切換、各
   assert.equal(env.win.__antigravityZhGetLang?.(), 'zh-TW');
   assert.equal(env.doc.documentElement.getAttribute('data-ag-hans-lang'), 'zh-TW');
   assert.equal(textNode.nodeValue, '無限', 'zh-TW 下客戶端覆蓋層應輸出繁體中文');
+  assert.equal(welcomeText.nodeValue, '歡迎回來，Guest。我們從哪裡繼續？');
   assert.equal(buildWelcomeText.nodeValue, '你好，Guest，今天想打造什麼？');
   assert.deepEqual(readPermissionTexts(), permissionDescriptions.map(([, tw]) => tw));
   assert.equal(thinkingText.nodeValue, '思考過程', 'zh-TW 下思考外殼應顯示繁體中文「思考過程」');
@@ -28886,6 +28948,7 @@ test('繁體中文（台灣用語 / zh-TW）轉換器、設定面板切換、各
   // 切換至 English 應還原原文，再切回 zh-CN 應恢復簡體中文
   api.setLocale('en');
   assert.equal(textNode.nodeValue, 'Turbo');
+  assert.equal(welcomeText.nodeValue, 'Welcome back, Guest. Where should we pick up?');
   assert.equal(buildWelcomeText.nodeValue, 'Hey Guest, what should we build today?');
   assert.deepEqual(readPermissionTexts(), permissionDescriptions.map(([en]) => en));
   assert.equal(thinkingText.nodeValue, 'Thought Process');
@@ -28894,6 +28957,7 @@ test('繁體中文（台灣用語 / zh-TW）轉換器、設定面板切換、各
   api.setLocale('zh-CN');
   assert.equal(env.win.__antigravityZhGetLang?.(), 'zh');
   assert.equal(textNode.nodeValue, '无限');
+  assert.equal(welcomeText.nodeValue, '欢迎回来，Guest。我们从哪里继续？');
   assert.equal(buildWelcomeText.nodeValue, '你好，Guest，今天想构建什么？');
   assert.deepEqual(readPermissionTexts(), permissionDescriptions.map(([, , cn]) => cn));
   assert.equal(thinkingText.nodeValue, '思考过程');
@@ -28929,11 +28993,215 @@ test('繁體中文（台灣用語 / zh-TW）轉換器、設定面板切換、各
   const occEl = footer.querySelector('.agy-ctx-occ');
   const cacheEl = footer.querySelector('.agy-ctx-cache');
   assert.equal(occEl?.getAttribute('aria-label'), '上下文視窗佔用率');
-  assert.equal(cacheEl?.getAttribute('aria-label'), '上下文快取命中率');
+  assert.equal(cacheEl?.getAttribute('aria-label'), '最新快照快取命中率');
 
   capEnv.win.__AGY_CTX_CAPSULE_DISPOSE__?.();
   env.win.__antigravityZhPatchCleanup?.();
   api.dispose?.();
 });
 
+test('同步 antigravity-chinese v3.3.64: 内置浏览器与旁路提问草稿词条、分组模型 New 徽标及 [data-uri] 保护', () => {
+  const hansSrc = fs.readFileSync(path.join(ROOT, 'antigravity-hans-overlay.js'), 'utf8');
+  const env = createDomEnv();
+  env.localStorage.setItem('ag_suite_locale', 'zh-CN');
+  env.sandbox.location.pathname = '/workbench.html';
+  env.sandbox.location.href = 'file:///Applications/Antigravity.app/workbench.html';
+  env.win.location = env.sandbox.location;
+  env.win.top = env.win;
+  env.sandbox.Node = { ELEMENT_NODE: 1, TEXT_NODE: 3, DOCUMENT_NODE: 9 };
+  env.sandbox.NodeFilter = { SHOW_TEXT: 4, SHOW_ELEMENT: 1 };
 
+  const makeTextNode = (val, parentElement) => ({
+    nodeType: 3,
+    nodeValue: val,
+    get textContent() { return this.nodeValue; },
+    set textContent(v) { this.nodeValue = String(v); },
+    parentElement,
+    parentNode: parentElement
+  });
+
+  env.doc.createTreeWalker = (rootNode, whatToShow) => {
+    const flat = [];
+    const walk = (n) => {
+      if (!n) return;
+      const children = n.childNodes || n.children || [];
+      for (const ch of children) {
+        if ((ch.nodeType === 1 && (whatToShow & 1)) || (ch.nodeType === 3 && (whatToShow & 4))) {
+          flat.push(ch);
+        }
+        walk(ch);
+      }
+    };
+    walk(rootNode);
+    let idx = 0;
+    return { nextNode: () => (idx < flat.length ? flat[idx++] : null) };
+  };
+  env.sandbox.MutationObserver = class {
+    observe() {}
+    disconnect() {}
+  };
+
+  const panel = env.doc.createElement('div');
+  panel.className = 'antigravity-agent-side-panel';
+  env.doc.body.appendChild(panel);
+
+  // 1. 内置浏览器按钮与站点安全标签
+  const inspectBtn = env.doc.createElement('button');
+  inspectBtn.setAttribute('data-testid', 'webview-url-bar-inspect-button');
+  inspectBtn.setAttribute('title', 'Inspect element to comment');
+  inspectBtn.setAttribute('aria-label', 'Inspect element to comment');
+  panel.appendChild(inspectBtn);
+
+  const shotBtn = env.doc.createElement('button');
+  shotBtn.setAttribute('data-testid', 'webview-url-bar-screenshot');
+  shotBtn.setAttribute('aria-label', 'Add screenshot to conversation');
+  panel.appendChild(shotBtn);
+
+  const secBtn = env.doc.createElement('button');
+  secBtn.setAttribute('data-testid', 'url-security-indicator');
+  secBtn.setAttribute('title', 'View site information');
+  secBtn.setAttribute('aria-label', 'example.test. View site information');
+  panel.appendChild(secBtn);
+
+  // 2. 旁路提问草稿 vs 已提交标题
+  const draftTab = env.doc.createElement('button');
+  draftTab.setAttribute('data-tab-id', 'side_question__draft');
+  draftTab.setAttribute('title', 'New Side Question');
+  const draftInner = env.doc.createElement('div');
+  draftInner.setAttribute('title', 'New Side Question');
+  const draftText = makeTextNode('New Side Question', draftInner);
+  draftInner.childNodes.push(draftText);
+  draftTab.appendChild(draftInner);
+  panel.appendChild(draftTab);
+
+  const namedTab = env.doc.createElement('button');
+  namedTab.setAttribute('data-tab-id', 'side_question__conversation');
+  namedTab.setAttribute('title', 'New Side Question');
+  const namedInner = env.doc.createElement('div');
+  namedInner.setAttribute('title', 'New Side Question');
+  const namedText = makeTextNode('New Side Question', namedInner);
+  namedInner.childNodes.push(namedText);
+  namedTab.appendChild(namedInner);
+  panel.appendChild(namedTab);
+
+  const emptyHint = env.doc.createElement('div');
+  emptyHint.setAttribute('data-testid', 'side-question-tab-empty');
+  const emptySpan = env.doc.createElement('span');
+  const emptyText = makeTextNode('Ask a side question without interrupting the main conversation', emptySpan);
+  emptySpan.childNodes.push(emptyText);
+  emptyHint.appendChild(emptySpan);
+  panel.appendChild(emptyHint);
+
+  // 3. 模型分组行中的 "New" 徽标保持原文，普通动作按钮保留 "新增"
+  const modelRow = env.doc.createElement('button');
+  modelRow.className = 'agy-overlay-item';
+  const rowWrap = env.doc.createElement('span');
+  const effortGroup = env.doc.createElement('span');
+  effortGroup.setAttribute('data-testid', 'model-selector-effort-group');
+  const badgeWrap = env.doc.createElement('div');
+  const badgeSpan = env.doc.createElement('span');
+  const badgeText = makeTextNode('New', badgeSpan);
+  badgeSpan.childNodes.push(badgeText);
+  badgeWrap.appendChild(badgeSpan);
+  rowWrap.appendChild(effortGroup);
+  rowWrap.appendChild(badgeWrap);
+  modelRow.appendChild(rowWrap);
+  panel.appendChild(modelRow);
+
+  const normalNewBtn = env.doc.createElement('button');
+  const normalNewText = makeTextNode('New', normalNewBtn);
+  normalNewBtn.childNodes.push(normalNewText);
+  panel.appendChild(normalNewBtn);
+
+  // 4. 本地 [data-uri] 路径保护必须持续生效
+  const uriNode = env.doc.createElement('span');
+  uriNode.setAttribute('data-uri', 'file:///Users/me/Settings');
+  const uriText = makeTextNode('Settings', uriNode);
+  uriNode.childNodes.push(uriText);
+  panel.appendChild(uriNode);
+
+  try {
+    vm.runInContext(hansSrc, env.sandbox);
+    assert.equal(inspectBtn.getAttribute('title'), '检查元素并添加评论');
+    assert.equal(shotBtn.getAttribute('aria-label'), '将截图添加到会话');
+    assert.equal(secBtn.getAttribute('title'), '查看网站信息');
+    assert.equal(secBtn.getAttribute('aria-label'), 'example.test。查看网站信息');
+    assert.equal(draftTab.getAttribute('title'), '新建旁路提问');
+    assert.equal(draftInner.getAttribute('title'), '新建旁路提问');
+    assert.equal(draftText.nodeValue, '新建旁路提问');
+    assert.equal(namedTab.getAttribute('title'), 'New Side Question');
+    assert.equal(namedInner.getAttribute('title'), 'New Side Question');
+    assert.equal(namedText.nodeValue, 'New Side Question');
+    assert.equal(emptyText.nodeValue, '发起旁路提问，不打断主会话');
+    assert.equal(badgeText.nodeValue, 'New');
+    assert.equal(normalNewText.nodeValue, '新增');
+    assert.equal(uriText.nodeValue, 'Settings');
+
+    env.win.__antigravityZhSetLang('zh-TW');
+    assert.equal(inspectBtn.getAttribute('title'), '檢查元素並新增留言');
+    assert.equal(shotBtn.getAttribute('aria-label'), '將截圖加入對話');
+    assert.equal(secBtn.getAttribute('aria-label'), 'example.test。檢視網站資訊');
+    assert.equal(draftText.nodeValue, '新增延伸提問');
+    assert.equal(emptyText.nodeValue, '提出延伸問題，不中斷主要對話');
+    assert.equal(namedText.nodeValue, 'New Side Question');
+  } finally {
+    env.sandbox.__antigravityZhPatchCleanup?.();
+  }
+});
+
+test('pulse-capsule-overlay: M532-M537 兜底、短窗 TPS 过滤与窄屏 4 档防挤压', () => {
+  const envCap = createDomEnv();
+  envCap.sandbox.location.href = 'https://127.0.0.1:12345/';
+  envCap.win.location = envCap.sandbox.location;
+  const footerEl = envCap.doc.createElement('div');
+  footerEl.className = 'agy-composer-footer';
+  envCap.doc.body.appendChild(footerEl);
+
+  vm.runInContext(CAPSULE_SRC, envCap.sandbox);
+  const capsApi = envCap.win.__AGY_CTX_CAPSULE_API__;
+  assert.equal(capsApi.version, '1.5.5');
+
+  // 1. M532-M537 Neon 模型名称与 1M 上下文兜底
+  assert.equal(capsApi.resolveModelDisplayName('MODEL_PLACEHOLDER_M532'), 'Gemini 4 Neon (High)');
+  assert.equal(capsApi.resolveModelDisplayName('MODEL_PLACEHOLDER_M537'), 'Orchestrator (Neon)');
+  assert.equal(capsApi.getContextLimitForModel('MODEL_PLACEHOLDER_M532'), 1048576);
+
+  // 2. 短窗 TPS (<1.0s 或 <30 outTok) 过滤与 streamingDuration 采样
+  const shortRes = capsApi.analyzeSteps([{
+    metadata: { streamingDuration: '0.5s' },
+    modelUsage: { inputTokens: 500, outputTokens: 200 }
+  }]);
+  assert.equal(shortRes.tokPerSec, 0);
+
+  const validRes = capsApi.analyzeSteps([{
+    metadata: { streamingDuration: '4.0s' },
+    modelUsage: { inputTokens: 500, thinkingOutputTokens: 100, responseOutputTokens: 100 }
+  }]);
+  assert.equal(validRes.tokPerSec, 50);
+
+  // 3. computeCapsuleTier 4 档响应阈值与 24px 滞回
+  assert.equal(capsApi.computeCapsuleTier(600, 'full'), 'full');
+  assert.equal(capsApi.computeCapsuleTier(520, 'full'), 'compact');
+  assert.equal(capsApi.computeCapsuleTier(440, 'compact'), 'tight');
+  assert.equal(capsApi.computeCapsuleTier(360, 'tight'), 'minimal');
+  assert.equal(capsApi.computeCapsuleTier(570, 'compact'), 'compact'); // 滞回区间内不回弹
+  assert.equal(capsApi.computeCapsuleTier(590, 'compact'), 'full');    // >= 560 + 24 恢复
+
+  // 4. 胶囊 DOM 保留 .agy-ctx-speed-num / .agy-ctx-speed-unit 且 textContent 连续一致
+  capsApi.renderFooterCapsule(footerEl, {
+    contextUsed: 120000,
+    contextLimit: 1000000,
+    usagePercent: 12,
+    cacheHitRate: 88.5,
+    hasPreciseSnapshot: true,
+    tokPerSec: 92,
+    cacheReadTokens: 100000,
+    inputTokens: 20000
+  });
+  const btn = footerEl.querySelector('[data-agy-context-capsule="1"]');
+  assert.equal(btn.querySelector('.agy-ctx-speed-num')?.textContent, '92');
+  assert.equal(btn.querySelector('.agy-ctx-speed-unit')?.textContent, ' tok/s');
+  assert.equal(btn.querySelector('.agy-ctx-speed-val')?.textContent, '92 tok/s');
+
+  envCap.win.__AGY_CTX_CAPSULE_DISPOSE__();
+});

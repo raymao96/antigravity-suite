@@ -354,6 +354,181 @@
     } catch {}
   }
 
+  function isSearchOrFilterTextbox(node) {
+    if (!node) return false;
+    try {
+      const type = String(node.type || node.getAttribute?.('type') || '').toLowerCase();
+      if (type === 'search') return true;
+      const meta = [
+        node.getAttribute?.('placeholder'),
+        node.getAttribute?.('aria-label'),
+        node.getAttribute?.('name'),
+        node.getAttribute?.('data-testid')
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (/\b(search|filter|find|extension|plugin|marketplace)\b|搜索|过滤|筛选|扩展|插件/.test(meta)) return true;
+      if (node.closest?.('[data-testid*="customization"], [data-testid*="marketplace"], [class*="customization"], [class*="marketplace"]')) {
+        return true;
+      }
+    } catch {}
+    return false;
+  }
+
+  function hasRealChatComposer() {
+    try {
+      const selectors = '[data-testid="composer"], [data-testid="chat-input"], [data-testid="prompt-input"], textarea, [contenteditable="true"], [role="textbox"]';
+      let candidates = [];
+      if (typeof document?.querySelectorAll === 'function') {
+        candidates = Array.from(document.querySelectorAll(selectors) || []);
+      }
+      if (!candidates.length && typeof document?.querySelector === 'function') {
+        for (const singleSel of selectors.split(',')) {
+          const hit = document.querySelector(singleSel.trim());
+          if (hit) candidates.push(hit);
+        }
+      }
+      for (const node of candidates) {
+        if (!node) continue;
+        if (typeof host?.contains === 'function' && host.contains(node)) continue;
+        if (node.closest?.('#ag-context-meter')) continue;
+        if (isSearchOrFilterTextbox(node)) continue;
+        if (typeof node.getBoundingClientRect === 'function') {
+          const rect = node.getBoundingClientRect();
+          if (rect && Number(rect.width) === 0 && Number(rect.height) === 0) continue;
+        }
+        return true;
+      }
+    } catch {}
+    return false;
+  }
+
+  function isHostNavOrSideUtilityNode(node) {
+    if (!node) return false;
+    try {
+      if (typeof host?.contains === 'function' && host.contains(node)) return true;
+      if (node.closest?.('#ag-context-meter')) return true;
+      if (node.closest?.('nav, aside, [data-side-panel-open], [data-side-panel-focus-scope]')) return true;
+      if (node.tagName === 'A' && node.getAttribute?.('href')) return true;
+    } catch {}
+    return false;
+  }
+
+  function hasActiveConversationContentInDom() {
+    try {
+      if (typeof document?.querySelector !== 'function') return false;
+      return Boolean(
+        document.querySelector('[data-testid="conversation-view"], [data-testid="cascade-system-message-toolbar"], .ag-cm-turn-footer')
+      );
+    } catch { return false; }
+  }
+
+  function isHostMarketplaceActive() {
+    try {
+      const locPath = String(typeof location !== 'undefined' ? (location.pathname || '') : '');
+      const locHash = String(typeof location !== 'undefined' ? (location.hash || '') : '');
+      const locCombined = `${locPath} ${locHash}`.toLowerCase();
+      if (/(?:^|\/|#|\s)(?:extensions|marketplace|customizations|installed|plugin|plugins)(?:\/|$|\?|#|\s)/i.test(locCombined)) {
+        return true;
+      }
+      if (typeof document?.querySelectorAll === 'function' || typeof document?.querySelector === 'function') {
+        const navSelectors = '[data-testid*="customization"], [data-testid*="marketplace"], [data-testid*="installed"], [aria-label*="自定义"], [aria-label*="Customization"]';
+        const navCandidates = typeof document?.querySelectorAll === 'function'
+          ? Array.from(document.querySelectorAll(navSelectors) || [])
+          : (document.querySelector(navSelectors) ? [document.querySelector(navSelectors)] : []);
+        const hasActiveCustomNav = navCandidates.some(node => {
+          if (!node || host?.contains?.(node) || node.closest?.('#ag-context-meter')) return false;
+          return Boolean(
+            node.classList?.contains?.('active') ||
+            node.getAttribute?.('aria-selected') === 'true' ||
+            node.getAttribute?.('aria-current') === 'page'
+          );
+        });
+        if (hasActiveCustomNav) return true;
+      }
+
+      if (hasRealChatComposer()) return false;
+
+      const headings = typeof document?.querySelectorAll === 'function'
+        ? Array.from(document.querySelectorAll('h1, h2, h3, [role="heading"], [aria-selected="true"]') || [])
+        : [];
+      const CUSTOMIZATION_TITLES = new Set([
+        '自定义扩展', '插件市场', '已安装', '自定义扩展与技能',
+        'Marketplace', 'Customizations', 'Customizations & Skills', 'Installed', 'Plugins', 'Extensions',
+        'Browse the Marketplace'
+      ]);
+      const hasHeading = headings.some(node => {
+        if (!node || isHostNavOrSideUtilityNode(node)) return false;
+        const txt = String(node.textContent || '').trim();
+        return CUSTOMIZATION_TITLES.has(txt);
+      });
+      if (hasHeading) return true;
+
+      // 防止无输入框的已归档历史会话 (/c/...) 被宽松全局 Back 误锁
+      if (hasActiveConversationContentInDom()) return false;
+
+      const backCandidates = typeof document?.querySelectorAll === 'function'
+        ? Array.from(document.querySelectorAll('[aria-label*="Back"], [aria-label*="返回"], [data-testid*="back"]') || [])
+        : (document.querySelector?.('[aria-label*="Back"], [aria-label*="返回"], [data-testid*="back"]')
+          ? [document.querySelector('[aria-label*="Back"], [aria-label*="返回"], [data-testid*="back"]')]
+          : []);
+      const hasHostBack = backCandidates.some(btn => {
+        if (!btn || isHostNavOrSideUtilityNode(btn)) return false;
+        return btn.tagName === 'BUTTON' || btn.getAttribute?.('role') === 'button' || String(btn.getAttribute?.('data-testid') || '').toLowerCase().includes('back');
+      });
+      if (hasHostBack) {
+        const customContainerNodes = typeof document?.querySelectorAll === 'function'
+          ? Array.from(document.querySelectorAll('[data-testid*="customization"], [class*="customization"], [data-testid*="marketplace"], [class*="marketplace"]'))
+          : [];
+        if (customContainerNodes.some(node => node && !isHostNavOrSideUtilityNode(node))) {
+          return true;
+        }
+        const actionNodes = typeof document?.querySelectorAll === 'function'
+          ? Array.from(document.querySelectorAll('button, [role="button"]'))
+          : [];
+        const hasPluginDetailAction = actionNodes.some(btn => {
+          if (!btn || isHostNavOrSideUtilityNode(btn)) return false;
+          const label = String(btn.textContent || '').trim();
+          return /^(Install|Uninstall|Enable|Disable|Configure|Connect|\+\s*Add|Details|安装|卸载|启用|禁用|移除|配置|详情)$/i.test(label);
+        });
+        if (hasPluginDetailAction && !document.querySelector('[data-testid="conversation-view"]')) {
+          return true;
+        }
+      }
+      return false;
+    } catch { return false; }
+  }
+
+  function enforceMarketplaceAvoidance(forceActive) {
+    const active = typeof forceActive === 'boolean' ? forceActive : isHostMarketplaceActive();
+    if (active && host.getAttribute?.('data-marketplace-active') === 'true') return true;
+    try {
+      if (active) {
+        host.setAttribute('data-marketplace-active', 'true');
+        state.tooltipOpen = false;
+        for (const id of ['panel', 'panel-tokens', 'overflow-menu']) {
+          const node = el(id);
+          if (node) node.hidden = true;
+        }
+        const tip = el('context-tooltip');
+        if (tip) tip.setAttribute('data-visible', 'false');
+        const upPop = el('update-popover');
+        if (upPop && upPop.style) upPop.style.display = 'none';
+        const heatPop = el('popover');
+        if (heatPop && heatPop.style) heatPop.style.display = 'none';
+        for (const bid of ['badge', 'badge-speed', 'badge-tokens', 'badge-overflow']) {
+          el(bid)?.setAttribute?.('aria-expanded', 'false');
+        }
+        try {
+          globalThis.__AGEnhancer?.closeQuotaPopover?.();
+          globalThis.__AGEnhancer?.closeRemotePopover?.();
+        } catch {}
+        if (typeof syncHostStackingElevation === 'function') syncHostStackingElevation(false);
+      } else if (host.getAttribute?.('data-marketplace-active') === 'true') {
+        host.removeAttribute('data-marketplace-active');
+      }
+    } catch {}
+    return active;
+  }
+
   function ensureHostDocked() {
     if (state.disposed) return;
     syncWindowControlsOverlay();
@@ -408,6 +583,7 @@
       host.setAttribute('data-dock', 'fixed');
       updateFixedFallbackPosition();
     }
+    enforceMarketplaceAvoidance();
     updateResponsiveLayout();
   }
 
@@ -846,6 +1022,9 @@
   }
 
   function showPanel(target) {
+    if ((target === 'context' || target === 'tokens') && enforceMarketplaceAvoidance()) {
+      return;
+    }
     const pContext = el('panel');
     const pTokens = el('panel-tokens');
     const pSettings = el('panel-settings');
@@ -1202,17 +1381,20 @@
 
   function renderPlanDetail(ps) {
     if (!ps) return;
+    const isCustomTier = Boolean(ps.sources?.tier === 'custom' || (ps.planTierOverride && ps.planTierOverride !== 'auto'));
     const sumTxt = el('plan-summary-text');
     if (sumTxt) {
       if (ps.ultraSubTierSpec) {
-        const subModeTxt = ps.ultraSubTierSource === 'custom' ? '子档自定义' : '已自动识别';
+        const subModeTxt = (isCustomTier || ps.ultraSubTierSource === 'custom') ? '自定义' : '已自动识别';
         sumTxt.textContent = `${ps.tierName} · ${ps.ultraSubTierSpec.quotaMultiplierText} · ${subModeTxt}`;
       } else {
-        const modeTxt = ps.status === 'identified' ? '已自动识别' : ps.hasCustomSettings ? '自定义生效' : '未识别/默认';
+        const modeTxt = isCustomTier
+          ? '自定义生效'
+          : (ps.status === 'identified' ? '已自动识别' : ps.hasCustomSettings ? '自定义生效' : '未识别/默认');
         sumTxt.textContent = `${ps.tierName || 'Pro'} · ${modeTxt} · 刚刚更新`;
       }
     }
-    // 实时联动更新黄框位置的订阅费与汇率胶囊 (支持动效与符号消散)
+    // 实时联动顶部订阅费与汇率胶囊
     const curSymbol = ps.currencySymbol || '$';
     let targetSymbol = '$';
     let targetNum = 19.99;
@@ -1223,7 +1405,7 @@
       targetSymbol = curSymbol;
       targetNum = 0;
       targetCycle = '/月';
-      targetCny = '(随套餐免费)';
+      targetCny = ps.tierKey === 'free' ? '(免费版)' : '(随套餐免费)';
     } else if (ps.actualPricePaid !== null && ps.actualPricePaid !== undefined) {
       targetSymbol = curSymbol;
       const rawPaid = Number(ps.actualPricePaid);
@@ -1253,6 +1435,22 @@
 
     const detName = el('p-det-name');
     if (detName) detName.textContent = ps.tierName || 'Google AI Pro';
+    const tagTier = el('p-det-tier-tag');
+    if (tagTier) {
+      if (isCustomTier) {
+        tagTier.style.display = 'inline-block';
+        tagTier.textContent = '自定义';
+      } else if (ps.status === 'identified') {
+        tagTier.style.display = 'inline-block';
+        tagTier.textContent = '自动识别';
+      } else {
+        tagTier.style.display = 'none';
+        tagTier.textContent = '';
+      }
+    }
+    if (typeof refreshDirectTierDisplay === 'function') {
+      refreshDirectTierDisplay(ps);
+    }
 
     const isUltraPlan = ps.tierKey === 'ultra' || Boolean(ps.ultraSubTier);
     const summarySubWrap = el('summary-subtier-wrap');
@@ -2288,7 +2486,7 @@
       scopeDescEl.textContent = `${srcName} · ${pLabel}`;
     }
     const nonPaidBadge = el('cost-non-paid-badge');
-    if (nonPaidBadge) nonPaidBadge.textContent = 'API折算 · 非实付';
+    if (nonPaidBadge) nonPaidBadge.textContent = 'API 折算 · 非实付';
 
     if (costModelMode === 'ref') {
       apiCost = Number(effectiveRef.totalCostUSD || 0);
@@ -2428,7 +2626,7 @@
         diffSummary.textContent = `与此 API 方案参考差额 约 +$${apiCost.toFixed(2)} (免费权益使用中 · 不计算无限倍数)`;
       } else if (ps.actualPricePaid !== null && ps.currency === 'USD') {
         const diff = apiCost - Number(ps.actualPricePaid);
-        diffSummary.textContent = `与此 API 方案参考差额 ${diff >= 0 ? '+' : ''}$${diff.toFixed(2)} (API折算 - 实际支出 · 仅供参考比较)`;
+        diffSummary.textContent = `与此 API 方案参考差额 ${diff >= 0 ? '+' : ''}$${diff.toFixed(2)} (API 折算 - 实际支出 · 仅供参考比较)`;
       } else {
         diffSummary.textContent = '跨币种或实付未知 · 并列展示不计算差额';
       }
@@ -3526,17 +3724,25 @@
 
   function syncSpeedBadgeText() {
     const sp = state.latest?.speed;
+    const bSpeed = el('badge-speed');
+    const waitSvgWrap = el('badge-speed-wait-svg');
     const speedAmount = el('speed-amount');
     const overflowSpeedVal = el('overflow-speed-val');
     if (!speedAmount) return;
     const isCompact = state.layoutMode === 'compact';
     if (sp?.tps != null) {
+      bSpeed?.removeAttribute?.('data-speed-phase');
+      if (waitSvgWrap) waitSvgWrap.hidden = true;
       speedAmount.textContent = isCompact ? `${sp.tps}` : `${sp.tps} tok/s`;
       if (overflowSpeedVal) overflowSpeedVal.textContent = `${sp.tps} tok/s`;
     } else if (state.requestBusy) {
-      speedAmount.textContent = isCompact ? '…' : '计算中…';
+      bSpeed?.setAttribute?.('data-speed-phase', 'waiting');
+      if (waitSvgWrap) waitSvgWrap.hidden = false;
+      speedAmount.textContent = '';
       if (overflowSpeedVal) overflowSpeedVal.textContent = '计算中…';
     } else {
+      bSpeed?.removeAttribute?.('data-speed-phase');
+      if (waitSvgWrap) waitSvgWrap.hidden = true;
       speedAmount.textContent = isCompact ? '--' : '-- tok/s';
       if (overflowSpeedVal) overflowSpeedVal.textContent = '-- tok/s';
     }
@@ -3906,6 +4112,8 @@
   function tick() {
     if (!state.disposed && !host.isConnected) {
       ensureHostDocked();
+    } else if (!state.disposed) {
+      enforceMarketplaceAvoidance();
     }
     const id = route();
     if (id !== state.route) {
@@ -3977,7 +4185,9 @@
     openGithubRepo: path => openGithubRepo(path),
     updateHeatTabThumb: () => updateHeatTabThumb(),
     getPlanSettings: () => ({
+      tierKey: ANTIGRAVITY_TOKEN_DATA.planStatus?.tierKey || null,
       tierName: ANTIGRAVITY_TOKEN_DATA.planStatus?.tierName || '未知',
+      planTierOverride: ANTIGRAVITY_TOKEN_DATA.planStatus?.planTierOverride || null,
       ultraSubTier: ANTIGRAVITY_TOKEN_DATA.planStatus?.ultraSubTier || null,
       country: ANTIGRAVITY_TOKEN_DATA.planStatus?.country || '未知',
       subscriptionRegion: ANTIGRAVITY_TOKEN_DATA.planStatus?.subscriptionRegion || ANTIGRAVITY_TOKEN_DATA.planStatus?.region || '未知',
@@ -3990,6 +4200,8 @@
     setCountry: val => applyDirectCountrySelection(val),
     setCurrency: val => applyDirectCurrencySelection(val),
     setUltraSubTier: val => applyDirectSubTierSelection(val),
+    setPlanTierOverride: val => applyDirectTierSelection(val),
+    isMarketplaceActiveForTest: () => isHostMarketplaceActive(),
     restoreSettingsFromHost,
     openSettings: tab => openSuiteSettings(tab),
     getTerminalSettings: () => getSuiteTerminalSettings(),

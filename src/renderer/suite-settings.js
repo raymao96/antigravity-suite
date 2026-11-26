@@ -173,6 +173,7 @@
     '收起色阶微调 ▲': 'Hide Advanced ▲',
     '切换下方主题色系后，所有弹窗的高亮色、进度条、按钮激活态及热力图均会自动同步。': 'Switching the theme palette syncs accents, progress bars, active controls, and the heatmap.',
     '全局强调色与顶部栏分项配色': 'Global Accent & Topbar Colors',
+    '订阅方案：': 'Subscription Plan:',
     'Ultra 套餐规格：': 'Ultra Tier Spec:',
     '账号归属地区：': 'Account Region:',
     '订阅结算地区：': 'Billing Region:',
@@ -787,7 +788,7 @@
       recEn: '',
       tag: '军团流水',
       tagEn: 'Pipeline',
-      role: '拉起探查→拆解→求解→批判审校→修补 5 阶段专业 Agent 团队接管项目。',
+      role: '启动 Agent 团队接手项目，依序执行探查、拆解、求解、审查与修补。',
       roleEn: 'Invoke an autonomous 5-phase team pipeline to tackle large projects end-to-end.',
       scene: '超大型工程重构或从零搭建完整大项目，希望团队全自动一条龙交付。',
       sceneEn: 'Large projects or greenfield builds best handled by a full autonomous team.',
@@ -1389,6 +1390,8 @@
 
     // 2. 订阅与套餐配置移入「套餐与订阅」分页，原 Token 面板保留只读信息与跳转按钮
     moveTo('plan-save-feedback', 'settings-slot-sub-feedback');
+    moveTo('direct-tier-select', 'settings-slot-tier');
+    moveTo('direct-tier-wrap', 'settings-slot-tier');
     moveTo('direct-subtier-select', 'settings-slot-subtier');
     moveTo('direct-subtier-wrap', 'settings-slot-subtier');
     moveTo('direct-country-select', 'settings-slot-country');
@@ -1415,7 +1418,7 @@
 
     el('summary-subtier-wrap')?.remove?.();
     el('btn-edit-plan-custom')?.remove?.();
-    ['p-det-subtier-readonly', 'p-det-country', 'p-det-region', 'p-det-currency'].forEach(id => {
+    ['p-det-name', 'p-det-subtier-readonly', 'p-det-country', 'p-det-region', 'p-det-currency'].forEach(id => {
       const node = el(id);
       if (node) {
         node.style.display = 'inline-block';
@@ -2340,6 +2343,7 @@
     renderQuickPromptsEditor();
     renderDockBadgeStatusNote();
     dispatchSuitePrefsChanged();
+    if (typeof refreshDirectRegionDisplay === 'function') refreshDirectRegionDisplay();
     applySuiteShadowLocale();
     try {
       if (typeof window !== 'undefined' && typeof window.__antigravityZhSetLang === 'function') {
@@ -4554,8 +4558,8 @@
     const hasBridge = typeof window !== 'undefined' && (Boolean(window.__AGContextMeterLive?.port) || typeof window.contextMeterAPI?.dockBadgeOpenAx === 'function');
     if (!hasBridge) {
       setDockBadgeStatusNote(
-        '请手动打开「系统设置 → 隐私与安全性 → 辅助功能」，在列表中开启 Antigravity（若是用终端启动则开启对应终端）的权限',
-        'Open System Settings → Privacy & Security → Accessibility manually and enable permission for Antigravity (or your terminal if launched from terminal).',
+        '请手动打开「系统设置 → 隐私与安全性 → 辅助功能」，在列表中为「Antigravity Suite Dock 提醒」开启权限',
+        'Open System Settings → Privacy & Security → Accessibility manually and enable permission for Antigravity Suite Dock 提醒.',
         'warn',
         false
       );
@@ -4565,23 +4569,30 @@
       const res = await invokeHostBridge('/dock-badge-open-ax', {}, 'dockBadgeOpenAx');
       if (res && res.ok) {
         setDockBadgeStatusNote(
-          '已打开「系统设置 → 隐私与安全性 → 辅助功能」，请在列表中开启 Antigravity（若是用终端启动则开启对应终端）的权限，几秒后自动生效',
-          'Opened System Settings → Privacy & Security → Accessibility. Enable permission for Antigravity (or your terminal if launched from terminal); it takes effect in a few seconds.',
+          '已打开「系统设置 → 隐私与安全性 → 辅助功能」，请在列表中为「Antigravity Suite Dock 提醒」开启权限，几秒后自动生效',
+          'Opened System Settings → Privacy & Security → Accessibility. Enable permission for Antigravity Suite Dock 提醒; it takes effect in a few seconds.',
           'warn',
           false
         );
+      } else if (res?.errorCode === 'HELPER_START_FAILED') {
+        setDockBadgeStatusNote(
+          res.error || '无法启动 Dock 图标提醒助手，请重试',
+          'Could not start the Dock badge helper. Try again.',
+          'error',
+          true
+        );
       } else {
         setDockBadgeStatusNote(
-          '未能自动打开系统设置，请手动前往「系统设置 → 隐私与安全性 → 辅助功能」，开启 Antigravity（或对应终端）的权限',
-          'Could not open System Settings automatically. Manually open System Settings → Privacy & Security → Accessibility and enable permission for Antigravity.',
+          '未能自动打开系统设置，请手动前往「系统设置 → 隐私与安全性 → 辅助功能」，为「Antigravity Suite Dock 提醒」开启权限',
+          'Could not open System Settings automatically. Manually open System Settings → Privacy & Security → Accessibility and enable permission for Antigravity Suite Dock 提醒.',
           'warn',
           false
         );
       }
     } catch {
       setDockBadgeStatusNote(
-        '无法打开系统设置，请手动前往「系统设置 → 隐私与安全性 → 辅助功能」，开启 Antigravity（或对应终端）的权限',
-        'Unable to open System Settings. Manually open System Settings → Privacy & Security → Accessibility and enable permission for Antigravity.',
+        '无法打开系统设置，请手动前往「系统设置 → 隐私与安全性 → 辅助功能」，为「Antigravity Suite Dock 提醒」开启权限',
+        'Unable to open System Settings. Manually open System Settings → Privacy & Security → Accessibility and enable permission for Antigravity Suite Dock 提醒.',
         'warn',
         false
       );

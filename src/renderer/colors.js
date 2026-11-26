@@ -354,6 +354,13 @@
     return getSystemTheme();
   }
 
+  function refreshActiveHeatViews() {
+    if (activeHeatView === 'weekly') renderHeatmapWeekly();
+    else if (activeHeatView === 'monthly') renderHeatmapMonthly();
+    else if (activeHeatView === 'yearly') renderHeatmapYearly();
+    else if (activeHeatView === 'cum') renderHeatmapCum();
+  }
+
   function getPresetHeatmapScale() {
     const isLight = resolveTheme() === 'light';
     const presetObj = HEAT_PRESETS[heatPreset] || HEAT_PRESETS.purple;
@@ -557,8 +564,7 @@
     applyHeatmapPalette();
     syncSwatchAndResetButtons();
     if (typeof syncSettingsThemePills === 'function') syncSettingsThemePills();
-    if (activeHeatView === 'weekly') renderHeatmapWeekly();
-    else if (activeHeatView === 'cum') renderHeatmapCum();
+    refreshActiveHeatViews();
   }
 
   function setCustomColor(key, value) {
@@ -629,8 +635,7 @@
     applyHeatmapPalette();
     syncSwatchAndResetButtons();
     if (typeof syncSettingsThemePills === 'function') syncSettingsThemePills();
-    if (activeHeatView === 'weekly') renderHeatmapWeekly();
-    else if (activeHeatView === 'cum') renderHeatmapCum();
+    refreshActiveHeatViews();
     syncNativeOverlayTheme();
   }
 

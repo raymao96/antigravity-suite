@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-11-24T10:08:32.966Z",
+  "updatedAt": "2026-11-25T14:52:32.616Z",
   "upstreams": [
     {
       "repo": "elviscjn-cjn/antigravity-context-viewer",
       "branch": "main",
-      "absorbedSha": "838211fea3d305c72f3fe5f0c6ec340a644d481a",
-      "version": "v0.8.9",
+      "absorbedSha": "c057717d1fc2cbe15ae0ce59287877d054eed4c2",
+      "version": "v0.9.3",
       "role": "基础框架、顶部上下文圆环看板、Token 分类统计、52 周热力图与 API 折算费用",
       "mergeStrategy": "定向提取新模型上下文配额、API 价格表与前端渲染修复，禁止合入 app.asar 改盘与解锁逻辑",
       "localTargets": [
@@ -53,8 +53,8 @@
     {
       "repo": "yiheng8023/antigravity-chinese",
       "branch": "main",
-      "absorbedSha": "b4f85afb7a092773a995a2a8e01d5a090f29e664",
-      "version": "v3.3.63",
+      "absorbedSha": "3ebffe291bfbdd6ea718ea6ff4b8f616cd6cc7d1",
+      "version": "v3.3.64",
       "role": "适配 Antigravity 2.32.1 的精确词条与安全动态正则规则",
       "mergeStrategy": "增量提取新增精确词条与安全正则并去重合并，保留本地 [data-uri] 路径保护等跳过规则后更新补丁指纹",
       "localTargets": [
@@ -69,8 +69,8 @@
     {
       "repo": "wycocoyu/agy-context-dashboard",
       "branch": "main",
-      "absorbedSha": "305bf7857a56d1f3eebf0f913e5f395282aadb38",
-      "version": "v0.9.7",
+      "absorbedSha": "c497f19062deca10086850cc603a4f93f8611f7e",
+      "version": "v1.0.3",
       "role": "轻量级状态栏信息排布与指标展示参考",
       "mergeStrategy": "审阅展示指标与视觉细节，按需合并到顶部/底部状态条并避免重复展示",
       "localTargets": [
@@ -84,7 +84,7 @@
     {
       "repo": "oil-oil/agy-fast-io",
       "branch": "main",
-      "absorbedSha": "c9231ac580437829ccd7950efa5ea79b3a7e0503",
+      "absorbedSha": "197c27c20d3e338dace8502548346324c853be1b",
       "version": "v0.2.1",
       "role": "Antigravity 桌面端快速检索与读写提速规则 (Fast IO：免审白名单命令、同轮并读与必审命令合并)",
       "mergeStrategy": "审阅 plugin/rules/AGENTS.md 的白名单命令与回合压缩规则演进，同步更新至 docs/fast-io-AGENTS.md 与本地 AGENTS.md",

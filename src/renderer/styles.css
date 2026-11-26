@@ -109,7 +109,27 @@
       z-index:2147483646 !important;
     }
 
-    /* 窗口非活动状态适度降低顶栏对比度 */
+    /* 窗口非活动或宿主非对话全屏子视图（扩展/插件市场）时暂停动效并避让 */
+    :host([data-window-active="false"]) *,
+    :host([data-marketplace-active="true"]) *{
+      animation-play-state:paused !important;
+    }
+    :host([data-marketplace-active="true"]) .ag-panel,
+    :host([data-marketplace-active="true"]) #panel,
+    :host([data-marketplace-active="true"]) #panel-tokens,
+    :host([data-marketplace-active="true"]) #panel-settings,
+    :host([data-marketplace-active="true"]) #overflow-menu,
+    :host([data-marketplace-active="true"]) #context-tooltip,
+    :host([data-marketplace-active="true"]) #update-popover,
+    :host([data-marketplace-active="true"]) #popover{
+      display:none !important;
+      visibility:hidden !important;
+      pointer-events:none !important;
+    }
+    :host([data-dock="fixed"][data-marketplace-active="true"]){
+      display:none !important;
+      pointer-events:none !important;
+    }
     :host([data-window-active="false"]) .ag-unit{
       opacity:0.72;
     }
@@ -383,6 +403,48 @@
       min-width:30px;
       text-align:left;
       color:inherit;
+    }
+    #badge-speed[data-speed-phase="waiting"]{
+      min-width:26px;
+      justify-content:center;
+    }
+    #badge-speed[data-speed-phase="waiting"] #badge-speed-icon,
+    #badge-speed[data-speed-phase="waiting"] #speed-amount{
+      display:none !important;
+    }
+    .speed-wait-svg{
+      width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;
+      flex-shrink:0;color:var(--ag-custom-token-accent,var(--ag-token-accent-default,#a78bfa));
+    }
+    .speed-wait-svg[hidden]{display:none !important}
+    .ag-hourglass-svg{
+      display:block;width:14px;height:14px;transform-origin:center;
+      animation:ag-hourglass-flip 1.8s cubic-bezier(0.4,0,0.2,1) infinite;
+      will-change:transform;
+    }
+    .ag-hourglass-sand-top{transform-origin:7px 6.5px;animation:ag-hg-top-drain 1.8s linear infinite}
+    .ag-hourglass-sand-bot{transform-origin:7px 11.5px;animation:ag-hg-bot-fill 1.8s linear infinite}
+    .ag-hourglass-stream{animation:ag-hg-stream 1.8s linear infinite}
+    @keyframes ag-hourglass-flip{
+      0%,68%{transform:rotate(0deg)}
+      88%,100%{transform:rotate(180deg)}
+    }
+    @keyframes ag-hg-top-drain{
+      0%{transform:scaleY(1);opacity:0.95}
+      68%,100%{transform:scaleY(0.12);opacity:0.35}
+    }
+    @keyframes ag-hg-bot-fill{
+      0%{transform:scaleY(0.15);opacity:0.4}
+      68%,100%{transform:scaleY(1);opacity:0.95}
+    }
+    @keyframes ag-hg-stream{
+      0%,66%{opacity:0.9;transform:translateY(0)}
+      70%,100%{opacity:0;transform:translateY(1px)}
+    }
+    @media (prefers-reduced-motion: reduce){
+      .ag-hourglass-svg,.ag-hourglass-sand-top,.ag-hourglass-sand-bot,.ag-hourglass-stream{
+        animation:none !important;
+      }
     }
 
     /* 单元 3: 累计 Token 用量 */

@@ -272,7 +272,7 @@ async function restore(options = {}) {
               throw new Error('原位解构写回后校验失败：文件结构不合规或仍残留插件标记，中止并回滚。');
             }
 
-            console.log('[Restore] 已通过原位解构精准移除插件挂载，并完整保留宿主现有修改与构建内容。');
+            console.log('[Restore] 已透過原位解構精準移除外掛掛載，並完整保留宿主現有修改與建置內容。');
             const hotDisposed = await tryHotDispose();
             info.restoredAt = new Date().toISOString();
             info.inPlaceCleaned = true;
@@ -285,9 +285,9 @@ async function restore(options = {}) {
               try {
                 fs.copyFileSync(snapshotFile, targetFile);
                 clearAsarCache(targetFile);
-                console.error(`[Failure-Rollback] 原位卸载过程异常中断，已自动从改写前快照完整还原目标文件: ${targetFile}`);
+                console.error(`[Failure-Rollback] 原位解除安裝過程異常中斷，已自動從改寫前快照完整還原目標檔案: ${targetFile}`);
               } catch (rollbackErr) {
-                console.error(`[Fatal Rollback Error] 卸载快照回滚失败: ${rollbackErr.message}`);
+                console.error(`[Fatal Rollback Error] 解除安裝快照還原失敗: ${rollbackErr.message}`);
               }
             }
             throw err;

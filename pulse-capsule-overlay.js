@@ -3,7 +3,7 @@
  * 运行环境：客户端渲染进程 Main World / 浏览器扩展 MAIN World (同源 Connect-RPC + React Fiber 精准会话隔离)
  */
 (function () {
-    const CAPSULE_VERSION = '1.5.2';
+    const CAPSULE_VERSION = '1.5.5';
     if (window.__AGY_CTX_CAPSULE_ACTIVE__) {
         if (window.__AGY_CTX_CAPSULE_VERSION__ === CAPSULE_VERSION) return;
         try { window.__AGY_CTX_CAPSULE_DISPOSE__?.(); } catch {}
@@ -79,6 +79,12 @@
         MODEL_PLACEHOLDER_M37: 'gemini',
         MODEL_PLACEHOLDER_M18: 'gemini',
         MODEL_PLACEHOLDER_M47: 'gemini',
+        MODEL_PLACEHOLDER_M532: 'gemini',
+        MODEL_PLACEHOLDER_M533: 'gemini',
+        MODEL_PLACEHOLDER_M534: 'gemini',
+        MODEL_PLACEHOLDER_M535: 'gemini',
+        MODEL_PLACEHOLDER_M536: 'gemini',
+        MODEL_PLACEHOLDER_M537: 'gemini',
         MODEL_PLACEHOLDER_M400: 'premium',
         MODEL_PLACEHOLDER_M401: 'premium',
         MODEL_PLACEHOLDER_M402: 'premium',
@@ -97,6 +103,42 @@
     const availableModelsMap = new Map();      // normKey -> { modelId, displayName, maxTokens, maxOutputTokens }
     const sessionRuntimeBudgetMap = new Map(); // cascadeId -> { modelKey, maxContextTokens }
     const modelRuntimeBudgetMap = new Map();   // modelKey -> maxContextTokens
+    const sessionRuntimeSpeedMap = new Map();  // cascadeId -> { tokPerSec, avgTokPerSec, lastDurationSec, timedOutTokensSum, timedDurationSum }
+    const TPS_MIN_DURATION_SEC = 1.0;
+    const TPS_MAX_DURATION_SEC = 600;
+    const TPS_MIN_OUTPUT_TOKENS = 30;
+
+    function parseDurationSec(raw) {
+        if (raw == null) return 0;
+        if (typeof raw === 'number') return Number.isFinite(raw) && raw > 0 ? raw : 0;
+        if (typeof raw === 'string') {
+            const trimmed = raw.trim();
+            const m = trimmed.match(/^(\d+(?:\.\d+)?)\s*s$/i);
+            if (m) return Number(m[1]) || 0;
+            const n = Number(trimmed);
+            return Number.isFinite(n) && n > 0 ? n : 0;
+        }
+        if (typeof raw === 'object') {
+            const sec = Number(raw.seconds || 0) + Number(raw.nanos || 0) / 1e9;
+            return Number.isFinite(sec) && sec > 0 ? sec : 0;
+        }
+        return 0;
+    }
+
+    function isValidTpsSample(outTok, durSec) {
+        return Number(outTok) >= TPS_MIN_OUTPUT_TOKENS &&
+            Number(durSec) >= TPS_MIN_DURATION_SEC &&
+            Number(durSec) < TPS_MAX_DURATION_SEC;
+    }
+
+    function extractOutputTokens(usageObj) {
+        if (!usageObj || typeof usageObj !== 'object') return 0;
+        const direct = Math.max(0, parseInt(usageObj.outputTokens || usageObj.completionTokens || '0', 10) || 0);
+        if (direct > 0) return direct;
+        const think = Math.max(0, parseInt(usageObj.thinkingOutputTokens || '0', 10) || 0);
+        const resp = Math.max(0, parseInt(usageObj.responseOutputTokens || '0', 10) || 0);
+        return think + resp;
+    }
     let trajectoriesMap = new Map();    // cascadeId -> summary
     let sniffedCsrfToken = '';
     let panelAutoIdCounter = 0;
@@ -279,29 +321,64 @@
 
     function ingestGeneratorMetadataRows(rows, cascadeId) {
         if (!Array.isArray(rows) || rows.length === 0) return null;
-        for (let i = rows.length - 1; i >= 0; i--) {
-            const cm = rows[i]?.chatModel;
+        let latestBudgetEntry = null;
+        let lastTokPerSec = 0;
+        let lastDurationSec = 0;
+        let timedOutSum = 0;
+        let timedDurSum = 0;
+
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            const cm = row?.chatModel;
             if (!cm) continue;
+
             const budget = toPositiveIntLimit(cm.chatStartMetadata?.contextWindowMetadata?.maxContextTokens);
-            if (!budget) continue;
-            const turnModel = cm.model || cm.modelId || cm.responseModel || '';
-            const turnLabel = cm.modelDisplayName || '';
-            const turnKeys = getModelCandidateKeys(turnModel, turnLabel);
-            const primaryKey = turnKeys[0] || '';
-            const entry = { modelKey: primaryKey, maxContextTokens: budget };
-            if (cascadeId) {
-                setBoundedMap(sessionRuntimeBudgetMap, cascadeId, entry, 40);
-                const shortCid = normalizeCidKey(cascadeId);
-                if (shortCid && shortCid !== cascadeId) {
-                    setBoundedMap(sessionRuntimeBudgetMap, shortCid, entry, 40);
+            if (budget) {
+                const turnModel = cm.model || cm.modelId || cm.responseModel || '';
+                const turnLabel = cm.modelDisplayName || '';
+                const turnKeys = getModelCandidateKeys(turnModel, turnLabel);
+                const primaryKey = turnKeys[0] || '';
+                const entry = { modelKey: primaryKey, maxContextTokens: budget };
+                latestBudgetEntry = entry;
+                if (cascadeId) {
+                    setBoundedMap(sessionRuntimeBudgetMap, cascadeId, entry, 40);
+                    const shortCid = normalizeCidKey(cascadeId);
+                    if (shortCid && shortCid !== cascadeId) {
+                        setBoundedMap(sessionRuntimeBudgetMap, shortCid, entry, 40);
+                    }
+                }
+                for (const k of turnKeys) {
+                    setBoundedMap(modelRuntimeBudgetMap, k, budget, 60);
                 }
             }
-            for (const k of turnKeys) {
-                setBoundedMap(modelRuntimeBudgetMap, k, budget, 60);
+
+            const streamDur = parseDurationSec(cm.streamingDuration ?? cm.durationSec ?? row?.streamingDuration);
+            const usageObj = cm.usage || row?.usage || null;
+            const outTok = extractOutputTokens(usageObj);
+            if (isValidTpsSample(outTok, streamDur)) {
+                lastTokPerSec = Math.round(outTok / streamDur);
+                lastDurationSec = Number(streamDur.toFixed(1));
+                timedOutSum += outTok;
+                timedDurSum += streamDur;
             }
-            return entry;
         }
-        return null;
+
+        if (cascadeId && timedDurSum > 0 && lastTokPerSec > 0) {
+            const speedEntry = {
+                tokPerSec: lastTokPerSec,
+                avgTokPerSec: Math.round(timedOutSum / timedDurSum),
+                lastDurationSec,
+                timedOutTokensSum: timedOutSum,
+                timedDurationSum: timedDurSum
+            };
+            setBoundedMap(sessionRuntimeSpeedMap, cascadeId, speedEntry, 40);
+            const shortCid = normalizeCidKey(cascadeId);
+            if (shortCid && shortCid !== cascadeId) {
+                setBoundedMap(sessionRuntimeSpeedMap, shortCid, speedEntry, 40);
+            }
+        }
+
+        return latestBudgetEntry;
     }
 
     // 根据模型 ID 或显示名称动态获取实际上下文上限 (实测运行时预算 > 当前模型运行时记录 > GetAvailableModels 能力 > 家族兜底)
@@ -346,7 +423,7 @@
             }
             return 200000;
         }
-        if (combined.includes('GEMINI') || combined.includes('CARBON') || combined.includes('ARGON') || combined.includes('HYDROGEN') || combined.includes('ORCHESTRATOR') || combined.includes('FLASH') || /M41[789]|M427|M43[78]|M52[5-8]|M667|M669|M681|M31[89]|M320/.test(combined)) {
+        if (combined.includes('GEMINI') || combined.includes('NEON') || combined.includes('CARBON') || combined.includes('ARGON') || combined.includes('HYDROGEN') || combined.includes('ORCHESTRATOR') || combined.includes('FLASH') || /M41[789]|M427|M43[78]|M52[5-8]|M53[2-7]|M667|M669|M681|M31[89]|M320/.test(combined)) {
             return GEMINI_4_LIMIT;
         }
         return DEFAULT_LIMIT;
@@ -358,7 +435,7 @@
             return KNOWN_QUOTA_POOLS[modelId];
         }
         const combined = ((modelId || '') + ' ' + (label || '')).toUpperCase();
-        if (combined.includes('GEMINI') || combined.includes('CARBON') || combined.includes('ARGON') || combined.includes('HYDROGEN') || combined.includes('ORCHESTRATOR') || combined.includes('FLASH')) {
+        if (combined.includes('GEMINI') || combined.includes('NEON') || combined.includes('CARBON') || combined.includes('ARGON') || combined.includes('HYDROGEN') || combined.includes('ORCHESTRATOR') || combined.includes('FLASH')) {
             return 'gemini';
         }
         if (combined.includes('CLAUDE') || combined.includes('OPUS') || combined.includes('SONNET') || combined.includes('GPT') || combined.includes('OSS')) {
@@ -382,7 +459,14 @@
                 return c.label || modelId;
             }
         }
-        const m = String(modelId);
+        const rawM = String(modelId);
+        const m = rawM.toUpperCase();
+        if (m.includes('M532')) return 'Gemini 4 Neon (High)';
+        if (m.includes('M533')) return 'Gemini 4 Neon (Medium)';
+        if (m.includes('M534')) return 'Gemini 4 Neon (Low)';
+        if (m.includes('M535')) return 'Gemini 4 Neon (XHigh)';
+        if (m.includes('M536')) return 'Gemini 4 Neon';
+        if (m.includes('M537')) return 'Orchestrator (Neon)';
         if (m.includes('M667')) return 'Orchestrator (Carbon)';
         if (m.includes('M669')) return 'Gemini 4 Hydrogen (Orchestrator)';
         if (m.includes('M681')) return 'Orchestrator (Argon)';
@@ -408,7 +492,7 @@
         if (m.includes('M35')) return 'Claude Sonnet 4.6 (Thinking)';
         if (m.includes('M26')) return 'Claude Opus 4.6 (Thinking)';
         if (m.includes('GPT_OSS')) return 'GPT-OSS 120B (Medium)';
-        return m.replace(/^MODEL_PLACEHOLDER_/, '').replace(/^MODEL_/, '');
+        return rawM.replace(/^MODEL_PLACEHOLDER_/, '').replace(/^MODEL_/, '');
     }
 
     // 归一化会话 ID 尾缀 (兼容本地 UUID 与云端 v1/default/jetski_remote_agents_3p/<uuid>)
@@ -714,16 +798,20 @@
                     const inTok = Math.max(0, parseInt(mu.inputTokens || mu.promptTokens || '0', 10) || 0);
                     const cacheRead = Math.max(0, parseInt(mu.cacheReadTokens || mu.cachedTokens || '0', 10) || 0);
                     const cacheCreate = Math.max(0, parseInt(mu.cacheCreationTokens || '0', 10) || 0);
-                    const outTok = Math.max(0, parseInt(mu.outputTokens || mu.completionTokens || '0', 10) || 0);
+                    const outTok = extractOutputTokens(mu);
                     const cacheInclusiveInput = inTok + cacheRead + cacheCreate;
                     const snapshotTotal = cacheInclusiveInput + outTok;
 
-                    // 计算本步端到端每秒输出 Token 速度 (tok/s)
+                    // 计算本步端到端每秒输出 Token 速度 (优先 streamingDuration，回退时间戳差，严格过滤短窗 <1.0s 或 <30 outTok)
+                    const streamDurSec = parseDurationSec(
+                        meta.streamingDuration ?? st.streamingDuration ?? st.chatModel?.streamingDuration ?? mu.streamingDuration ?? meta.durationSec
+                    );
                     const tStart = parseResetTimeMs(meta.createdAt || meta.created_at || meta.startedAt || st.createdAt || st.created_at);
                     const tEndRaw = meta.finishedGeneratingAt || meta.completedAt || meta.updatedAt || st.finishedGeneratingAt || st.completedAt || st.updatedAt || meta.viewableAt || '';
                     const tEnd = parseResetTimeMs(tEndRaw);
-                    const durSec = (tStart > 0 && tEnd > tStart) ? (tEnd - tStart) / 1000 : 0;
-                    if (outTok > 0 && durSec >= 0.15 && durSec < 600) {
+                    const wallDurSec = (tStart > 0 && tEnd > tStart) ? (tEnd - tStart) / 1000 : 0;
+                    const durSec = streamDurSec > 0 ? streamDurSec : wallDurSec;
+                    if (isValidTpsSample(outTok, durSec)) {
                         lastTokPerSec = Math.round(outTok / durSec);
                         lastDurationSec = Number(durSec.toFixed(1));
                         timedOutTokensSum += outTok;
@@ -764,10 +852,14 @@
                     const isPlanner = stepType.includes('PLANNER') || stepType.includes('MODEL') || stepType.includes('ASSISTANT') || Boolean(st.plannerResponse);
                     if (isPlanner) {
                         estOutputSum += stepTok;
+                        const streamDurSec = parseDurationSec(
+                            meta.streamingDuration ?? st.streamingDuration ?? meta.durationSec
+                        );
                         const tStart = parseResetTimeMs(meta.createdAt || meta.created_at || meta.startedAt || st.createdAt || st.created_at);
                         const tEnd = parseResetTimeMs(meta.finishedGeneratingAt || meta.completedAt || meta.updatedAt || st.finishedGeneratingAt || st.completedAt || st.updatedAt);
-                        const durSec = (tStart > 0 && tEnd > tStart) ? (tEnd - tStart) / 1000 : 0;
-                        if (stepTok > 5 && durSec >= 0.2 && durSec < 600) {
+                        const wallDurSec = (tStart > 0 && tEnd > tStart) ? (tEnd - tStart) / 1000 : 0;
+                        const durSec = streamDurSec > 0 ? streamDurSec : wallDurSec;
+                        if (isValidTpsSample(stepTok, durSec)) {
                             lastTokPerSec = Math.round(stepTok / durSec);
                             lastDurationSec = Number(durSec.toFixed(1));
                             timedOutTokensSum += stepTok;
@@ -812,6 +904,12 @@
             (maxPriorCacheRead >= 50000 || inputTokens >= 240000)
         );
         const cacheCliffRisk = contextUsed >= 328000 ? 'critical' : (contextUsed >= 240000 ? 'warn' : 'none');
+        if (lastTokPerSec === 0 && extraLimits?.runtimeSpeed?.tokPerSec > 0) {
+            lastTokPerSec = extraLimits.runtimeSpeed.tokPerSec;
+            lastDurationSec = extraLimits.runtimeSpeed.lastDurationSec || 0;
+            timedOutTokensSum += extraLimits.runtimeSpeed.timedOutTokensSum || 0;
+            timedDurationSum += extraLimits.runtimeSpeed.timedDurationSum || 0;
+        }
         const avgTokPerSec = timedDurationSum > 0 ? Math.round(timedOutTokensSum / timedDurationSum) : lastTokPerSec;
 
         return {
@@ -1016,7 +1114,7 @@
                 if (b.getAttribute('data-agy-context-capsule') === '1') continue;
                 if (b.getAttribute('data-testid') === 'permissions-selector-trigger') continue;
                 const txt = (b.textContent || '').trim();
-                if (txt && (txt.includes('Gemini') || txt.includes('Claude') || txt.includes('GPT') || txt.includes('Argon') || txt.includes('Flash') || txt.includes('Opus') || txt.includes('Sonnet'))) {
+                if (txt && (txt.includes('Gemini') || txt.includes('Claude') || txt.includes('GPT') || txt.includes('Neon') || txt.includes('Hydrogen') || txt.includes('Carbon') || txt.includes('Argon') || txt.includes('Orchestrator') || txt.includes('Flash') || txt.includes('Opus') || txt.includes('Sonnet'))) {
                     result.modelLabel = txt;
                     break;
                 }
@@ -1125,7 +1223,7 @@
             : [];
         const estSteps = Math.max(1, msgBlocks.length > 0 ? msgBlocks.length : Math.ceil(textTokens / 350));
 
-        // 实时流式输出测速 (tok/s)
+        // 实时流式输出测速 (tok/s)，累计滑窗直到达标 (>= 1.0s 且 >= 30 outTok) 再采样与重设基线
         const now = Date.now();
         let tracker = domStreamTracker.get(cid);
         if (!tracker) {
@@ -1134,21 +1232,24 @@
         } else {
             const dtSec = (now - tracker.lastTime) / 1000;
             const dTok = textTokens - tracker.lastTokens;
-            if (dTok > 4 && dtSec >= 0.25 && dtSec <= 12) {
+            if (isValidTpsSample(dTok, dtSec) && dtSec <= 12) {
                 const spd = Math.round(dTok / dtSec);
                 if (spd > 0 && spd < 500) {
                     tracker.lastSpeed = spd;
                     tracker.avgTokensSum += dTok;
                     tracker.avgDurSum += dtSec;
                 }
+                tracker.lastTokens = textTokens;
+                tracker.lastTime = now;
             }
             if (tracker.lastTokens > 0 && (tracker.lastTokens - textTokens) > COMPRESSION_MIN_DROP) {
                 tracker.compressionDetected = true;
                 tracker.compressionBefore = tracker.lastTokens;
                 tracker.compressionAfter = textTokens;
                 tracker.compressionDrop = tracker.lastTokens - textTokens;
-            }
-            if (dtSec >= 0.8) {
+                tracker.lastTokens = textTokens;
+                tracker.lastTime = now;
+            } else if (dTok < 0 || dtSec > 12) {
                 tracker.lastTokens = textTokens;
                 tracker.lastTime = now;
             }
@@ -1399,6 +1500,9 @@
             const styleEl = document.createElement('style');
             styleEl.id = CAPSULE_STYLE_ID;
             styleEl.textContent = `
+                :is([id="antigravity.agentSidePanelInputBox"], [data-testid="agent-input-box"]):has([data-agy-context-capsule="1"]) .ag-live-metrics-pill {
+                    display: none !important;
+                }
                 [data-agy-context-capsule="1"] {
                     font-variant-numeric: tabular-nums;
                     font-feature-settings: "tnum" 1;
@@ -1424,6 +1528,66 @@
                     display: inline-block;
                     min-width: 4.5ch;
                     text-align: right;
+                }
+                [data-agy-context-capsule="1"][data-agy-tier="compact"] {
+                    gap: 4px !important;
+                    padding-left: 6px !important;
+                    padding-right: 6px !important;
+                }
+                [data-agy-context-capsule="1"][data-agy-tier="compact"] .agy-ctx-speed {
+                    margin-right: 2px !important;
+                    gap: 2px !important;
+                }
+                [data-agy-context-capsule="1"][data-agy-tier="compact"] .agy-ctx-speed-unit {
+                    display: none !important;
+                }
+                [data-agy-context-capsule="1"][data-agy-tier="compact"] .agy-ctx-speed-val,
+                [data-agy-context-capsule="1"][data-agy-tier="compact"] .agy-ctx-occ-val,
+                [data-agy-context-capsule="1"][data-agy-tier="compact"] .agy-ctx-cache-val {
+                    min-width: 0 !important;
+                }
+                [data-agy-context-capsule="1"][data-agy-tier="tight"] {
+                    gap: 3px !important;
+                    padding-left: 5px !important;
+                    padding-right: 5px !important;
+                }
+                [data-agy-context-capsule="1"][data-agy-tier="tight"] .agy-ctx-speed {
+                    margin-right: 1px !important;
+                    gap: 2px !important;
+                }
+                [data-agy-context-capsule="1"][data-agy-tier="tight"] .agy-ctx-speed-unit,
+                [data-agy-context-capsule="1"][data-agy-tier="tight"] .agy-ctx-occ-icon,
+                [data-agy-context-capsule="1"][data-agy-tier="tight"] .agy-ctx-cache-icon {
+                    display: none !important;
+                }
+                [data-agy-context-capsule="1"][data-agy-tier="tight"] .agy-ctx-tokens,
+                [data-agy-context-capsule="1"][data-agy-tier="tight"] .agy-ctx-occ,
+                [data-agy-context-capsule="1"][data-agy-tier="tight"] .agy-ctx-cache {
+                    gap: 2px !important;
+                }
+                [data-agy-context-capsule="1"][data-agy-tier="tight"] .agy-ctx-speed-val,
+                [data-agy-context-capsule="1"][data-agy-tier="tight"] .agy-ctx-occ-val,
+                [data-agy-context-capsule="1"][data-agy-tier="tight"] .agy-ctx-cache-val {
+                    min-width: 0 !important;
+                }
+                [data-agy-context-capsule="1"][data-agy-tier="minimal"] {
+                    gap: 3px !important;
+                    padding-left: 5px !important;
+                    padding-right: 5px !important;
+                }
+                [data-agy-context-capsule="1"][data-agy-tier="minimal"] .agy-ctx-speed {
+                    margin-right: 1px !important;
+                    gap: 2px !important;
+                }
+                [data-agy-context-capsule="1"][data-agy-tier="minimal"] .agy-ctx-speed-unit,
+                [data-agy-context-capsule="1"][data-agy-tier="minimal"] .agy-ctx-tokens,
+                [data-agy-context-capsule="1"][data-agy-tier="minimal"] .agy-ctx-occ-icon,
+                [data-agy-context-capsule="1"][data-agy-tier="minimal"] .agy-ctx-cache {
+                    display: none !important;
+                }
+                [data-agy-context-capsule="1"][data-agy-tier="minimal"] .agy-ctx-speed-val,
+                [data-agy-context-capsule="1"][data-agy-tier="minimal"] .agy-ctx-occ-val {
+                    min-width: 0 !important;
                 }
                 [data-agy-context-capsule="1"] .agy-ctx-fill {
                     transition: width 0.25s cubic-bezier(0.22, 1, 0.36, 1), fill 0.2s ease;
@@ -1526,10 +1690,12 @@
                 }
             } catch {}
         }
+        const runtimeSpeed = sessionRuntimeSpeedMap.get(cascadeId) || (shortCid ? sessionRuntimeSpeedMap.get(shortCid) : null) || null;
         return {
             runtimeBudget: rt?.maxContextTokens || toPositiveIntLimit(ctx?.observedBudget) || 0,
             runtimeModelKey: rt?.modelKey || '',
-            fiberMaxTokens: toPositiveIntLimit(ctx?.modelMaxTokens) || 0
+            fiberMaxTokens: toPositiveIntLimit(ctx?.modelMaxTokens) || 0,
+            runtimeSpeed
         };
     }
 
@@ -1728,6 +1894,23 @@
         return false;
     }
 
+    function getSessionCacheHitRate(conversationId) {
+        const snapshot = window.__AGContextMeter?.snapshot?.();
+        const key = normalizeCidKey(conversationId);
+        if (!key || key !== normalizeCidKey(snapshot?.route) || !Array.isArray(snapshot?.sessionCalls)) return null;
+        let read = 0;
+        let total = 0;
+        for (const call of snapshot.sessionCalls) {
+            if (!call || call.status !== 'final' || call.isEstimated) continue;
+            const tokens = [call.inputTokens, call.cacheReadTokens, call.cacheCreationTokens].map(value => Number(value ?? 0));
+            if (tokens.some(value => !Number.isFinite(value) || value < 0)) continue;
+            const [input, cached, written] = tokens;
+            read += cached;
+            total += input + cached + written;
+        }
+        return total > 0 ? (read / total) * 100 : null;
+    }
+
     function updateTooltipContent(capsuleBtn) {
         const el = ensureTooltipEl();
         const data = capsuleBtn.__ctxUsageData;
@@ -1809,8 +1992,11 @@
         ));
 
         // 4. 输出生成速度 & 上下文缓存命中率 & Token 拆解 (去掉所有表情图标)
-        if (data.hasPreciseSnapshot) {
+        const sessionCacheHitRate = getSessionCacheHitRate(data.conversationId);
+        if (data.hasPreciseSnapshot || sessionCacheHitRate !== null) {
             nodes.push(createDivider());
+        }
+        if (data.hasPreciseSnapshot) {
             if (data.tokPerSec > 0) {
                 const avgLabel = capTr(lang, '均值', '平均', 'avg');
                 nodes.push(createStandardRow(
@@ -1819,9 +2005,17 @@
                 ));
             }
             nodes.push(createStandardRow(
-                capTr(lang, '上下文缓存命中率', '上下文快取命中率', 'Context Cache Hit'),
+                capTr(lang, '最新快照缓存命中率', '最新快照快取命中率', 'Latest Snapshot Cache Hit Rate'),
                 `${cacheRateFormat.format(data.cacheHitRate)}%`
             ));
+        }
+        if (sessionCacheHitRate !== null) {
+            nodes.push(createStandardRow(
+                capTr(lang, '整段对话缓存命中率', '整段對話快取命中率', 'Conversation Cache Hit Rate'),
+                `${cacheRateFormat.format(sessionCacheHitRate)}%`
+            ));
+        }
+        if (data.hasPreciseSnapshot) {
             const breakdownRow = document.createElement('div');
             breakdownRow.style.cssText = `display:flex;align-items:center;justify-content:space-between;gap:12px;padding:1px 0;font-size:12px;color:${mutedColor};font-weight:400;min-width:0;`;
             const bdLeft = document.createElement('span');
@@ -1983,7 +2177,14 @@
 
         const speedVal = document.createElement('span');
         speedVal.className = 'agy-ctx-speed-val';
-        speedVal.textContent = '-- tok/s';
+        const speedNum = document.createElement('span');
+        speedNum.className = 'agy-ctx-speed-num';
+        speedNum.textContent = '--';
+        const speedUnit = document.createElement('span');
+        speedUnit.className = 'agy-ctx-speed-unit';
+        speedUnit.textContent = ' tok/s';
+        speedVal.appendChild(speedNum);
+        speedVal.appendChild(speedUnit);
 
         speedWrap.appendChild(boltSvg);
         speedWrap.appendChild(speedVal);
@@ -2033,7 +2234,7 @@
         const cacheWrap = document.createElement('span');
         cacheWrap.className = 'agy-ctx-cache';
         cacheWrap.style.cssText = 'display:inline-flex;align-items:center;gap:4px;opacity:0.88;';
-        cacheWrap.setAttribute('aria-label', capTr(lang, '上下文缓存命中率', '上下文快取命中率', 'Context Cache Hit Rate'));
+        cacheWrap.setAttribute('aria-label', capTr(lang, '最新快照缓存命中率', '最新快照快取命中率', 'Latest Snapshot Cache Hit Rate'));
 
         const cacheIcon = createSvgEl('svg', {
             class: 'agy-ctx-cache-icon shrink-0', width: 11, height: 11, viewBox: '0 0 16 16',
@@ -2110,7 +2311,7 @@
                 }
             }
         } else {
-            if (!capsuleBtn.querySelector('.agy-ctx-occ') || !capsuleBtn.querySelector('.agy-ctx-cache')) {
+            if (!capsuleBtn.querySelector('.agy-ctx-occ') || !capsuleBtn.querySelector('.agy-ctx-cache') || !capsuleBtn.querySelector('.agy-ctx-speed-num')) {
                 if (typeof capsuleBtn.replaceChildren === 'function') capsuleBtn.replaceChildren();
                 else {
                     while (capsuleBtn.firstChild) capsuleBtn.removeChild(capsuleBtn.firstChild);
@@ -2177,7 +2378,7 @@
                 cacheWrap.style.color = '';
                 cacheWrap.style.fontWeight = '';
                 cacheWrap.style.opacity = '0.88';
-                cacheWrap.setAttribute('aria-label', capTr(lang, '上下文缓存命中率', '上下文快取命中率', 'Context Cache Hit Rate'));
+                cacheWrap.setAttribute('aria-label', capTr(lang, '最新快照缓存命中率', '最新快照快取命中率', 'Latest Snapshot Cache Hit Rate'));
             }
         }
         const cacheValSpan = capsuleBtn.querySelector('.agy-ctx-cache-val');
@@ -2193,17 +2394,103 @@
             }
         }
 
+        const speedNumSpan = capsuleBtn.querySelector('.agy-ctx-speed-num');
+        const speedUnitSpan = capsuleBtn.querySelector('.agy-ctx-speed-unit');
         const speedValSpan = capsuleBtn.querySelector('.agy-ctx-speed-val');
-        if (speedValSpan) {
+        if (speedNumSpan) {
+            const numText = usageData.tokPerSec > 0 ? String(usageData.tokPerSec) : '--';
+            if (speedNumSpan.textContent !== numText) {
+                speedNumSpan.textContent = numText;
+            }
+            if (speedUnitSpan && speedUnitSpan.textContent !== ' tok/s') {
+                speedUnitSpan.textContent = ' tok/s';
+            }
+        } else if (speedValSpan) {
             const speedText = usageData.tokPerSec > 0 ? `${usageData.tokPerSec} tok/s` : '-- tok/s';
             if (speedValSpan.textContent !== speedText) {
                 speedValSpan.textContent = speedText;
             }
         }
 
+        applyResponsiveTierToCapsule(capsuleBtn);
+
         if (activeTooltipTarget === capsuleBtn) {
             updateTooltipContent(capsuleBtn);
         }
+    }
+
+    const CAPSULE_TIER_THRESHOLDS = { compact: 560, tight: 470, minimal: 390, hysteresis: 24 };
+    const CAPSULE_TIERS_ORDER = ['full', 'compact', 'tight', 'minimal'];
+    let capsuleResizeObserver = null;
+    let capsuleResizeTimer = null;
+    const observedCapsuleHosts = typeof WeakSet === 'function' ? new WeakSet() : null;
+
+    function computeCapsuleTier(width, prevTier = 'full') {
+        const w = Number(width);
+        if (!Number.isFinite(w) || w <= 0) return prevTier || 'full';
+        const { compact, tight, minimal, hysteresis } = CAPSULE_TIER_THRESHOLDS;
+        const curIdx = Math.max(0, CAPSULE_TIERS_ORDER.indexOf(prevTier));
+        if (curIdx <= 0) {
+            if (w < minimal) return 'minimal';
+            if (w < tight) return 'tight';
+            if (w < compact) return 'compact';
+            return 'full';
+        }
+        if (curIdx === 1) {
+            if (w < minimal) return 'minimal';
+            if (w < tight) return 'tight';
+            if (w >= compact + hysteresis) return 'full';
+            return 'compact';
+        }
+        if (curIdx === 2) {
+            if (w < minimal) return 'minimal';
+            if (w >= compact + hysteresis) return 'full';
+            if (w >= tight + hysteresis) return 'tight' === prevTier ? 'compact' : 'tight';
+            return 'tight';
+        }
+        if (w >= compact + hysteresis) return 'full';
+        if (w >= tight + hysteresis) return 'compact';
+        if (w >= minimal + hysteresis) return 'tight';
+        return 'minimal';
+    }
+
+    function applyResponsiveTierToCapsule(capsuleBtn) {
+        if (!capsuleBtn) return;
+        const container = capsuleBtn.closest?.('.agy-composer-footer') || capsuleBtn.parentElement;
+        if (container && typeof ResizeObserver === 'function') {
+            if (!capsuleResizeObserver) {
+                capsuleResizeObserver = new ResizeObserver(() => {
+                    if (capsuleResizeTimer) clearTimeout(capsuleResizeTimer);
+                    capsuleResizeTimer = setTimeout(() => {
+                        document.querySelectorAll('[data-agy-context-capsule="1"]').forEach((btn) => {
+                            applyResponsiveTierToCapsule(btn);
+                        });
+                    }, 80);
+                });
+            }
+            if (!observedCapsuleHosts || !observedCapsuleHosts.has(container)) {
+                try {
+                    capsuleResizeObserver.observe(container);
+                    observedCapsuleHosts?.add(container);
+                } catch {}
+            }
+        }
+        const rect = container?.getBoundingClientRect?.();
+        const width = Number(rect?.width || container?.clientWidth || 0);
+        const prevTier = capsuleBtn.getAttribute('data-agy-tier') || 'full';
+        let nextTier = width > 0 ? computeCapsuleTier(width, prevTier) : prevTier;
+        capsuleBtn.setAttribute('data-agy-tier', nextTier);
+        try {
+            const cScroll = Number(capsuleBtn.scrollWidth || 0);
+            const cClient = Number(capsuleBtn.clientWidth || 0);
+            if (cClient > 0 && cScroll > cClient + 4) {
+                const idx = CAPSULE_TIERS_ORDER.indexOf(nextTier);
+                if (idx >= 0 && idx < CAPSULE_TIERS_ORDER.length - 1) {
+                    nextTier = CAPSULE_TIERS_ORDER[idx + 1];
+                    capsuleBtn.setAttribute('data-agy-tier', nextTier);
+                }
+            }
+        } catch {}
     }
 
     // 选择兜底活跃会话
@@ -2238,7 +2525,8 @@
             // 若 sessionCache 中尚无数据或为 0，立即尝试从 Fiber 步骤或 DOM 实时感知计算 (解决云端项目显示全 0 问题)
             if (!baseUsage || baseUsage.contextUsed === 0) {
                 if (Array.isArray(ctx.fiberSteps) && ctx.fiberSteps.length > 0) {
-                    baseUsage = analyzeSteps(ctx.fiberSteps, ctx.modelId, ctx.modelLabel, Math.max(ctx.fiberStepCount, ctx.fiberSteps.length));
+                    const rtLimits = getRuntimeLimitInfo(cid, cid ? normalizeCidKey(cid) : '', ctx);
+                    baseUsage = analyzeSteps(ctx.fiberSteps, ctx.modelId, ctx.modelLabel, Math.max(ctx.fiberStepCount, ctx.fiberSteps.length), rtLimits);
                 } else {
                     const domUsage = computeDomFallbackUsage(footer, cid, ctx.modelId, ctx.modelLabel);
                     if (domUsage && domUsage.contextUsed > 0) {
@@ -2262,6 +2550,7 @@
                 const remainPercent = Math.max(0, 100 - usagePercent);
                 const effectiveQuota = quotaInfo || findQuotaForModel(effectiveModelId, effectiveLabel, null, ctx.fiberModelConfigs) || baseUsage.quotaInfo;
                 const usage = Object.assign({}, baseUsage, {
+                    conversationId: cid,
                     contextLimit: dynamicLimit,
                     usagePercent,
                     remainPercent,
@@ -2275,6 +2564,7 @@
                     runtimeBudget: toPositiveIntLimit(ctx.observedBudget)
                 });
                 const emptyUsage = {
+                    conversationId: cid,
                     contextUsed: 0,
                     contextLimit: limit,
                     usagePercent: 0,
@@ -2446,6 +2736,7 @@
             getContextLimitForModel,
             resolveModelDisplayName,
             renderFooterCapsule,
+            computeCapsuleTier,
             ingestAvailableModels: ingestAvailableModelsPayload,
             ingestUserStatusModelConfigs,
             ingestGeneratorMetadata: ingestGeneratorMetadataRows,
@@ -2454,6 +2745,8 @@
                 availableModelsMap.clear();
                 sessionRuntimeBudgetMap.clear();
                 modelRuntimeBudgetMap.clear();
+                sessionRuntimeSpeedMap.clear();
+                domStreamTracker.clear();
                 userStatusCache.modelConfigs = [];
             }
         };
@@ -2462,6 +2755,8 @@
             try { clearInterval(__agyPollTimer); } catch {}
             try { window.removeEventListener?.('ag-suite-prefs-changed', onSuitePrefsChanged); } catch {}
             try { if (typeof mutationTimer !== "undefined" && mutationTimer) clearTimeout(mutationTimer); } catch {}
+            try { if (capsuleResizeTimer) { clearTimeout(capsuleResizeTimer); capsuleResizeTimer = null; } } catch {}
+            try { if (capsuleResizeObserver) { capsuleResizeObserver.disconnect(); capsuleResizeObserver = null; } } catch {}
             try { if (typeof domObserver !== "undefined") domObserver.disconnect(); } catch {}
             try {
                 document.querySelectorAll("[data-agy-context-capsule=\"1\"]").forEach(el => el.remove());

@@ -557,7 +557,7 @@ async function install(options = {}) {
         throw new Error('指定的 --backup 文件的 dist/utils.js 缺少标准宿主标记或语法校验未通过。');
       }
       sourceArchive = resolvedBackup;
-      console.log(`[Installation] 已校验并选用显式指定的备份文件 (${path.basename(resolvedBackup)}) 作为打包基底。`);
+      console.log(`[Installation] 已驗證並選用明確指定的備份檔案 (${path.basename(resolvedBackup)}) 作為打包基底。`);
     }
 
     // 2. 基底选择与原位精准解构自愈（未显式指定 --backup 时执行）
@@ -611,7 +611,7 @@ async function install(options = {}) {
           inPlaceCleanedUtils = potentialCleanUtils;
           inPlaceCleanedPreload = potentialCleanPreload;
           sourceArchive = installed;
-          console.log('[Installation] 当前 ASAR 包含旧补丁痕迹，已通过原位解构精准移除插件挂载，并完整保留宿主现有修改与构建内容。');
+          console.log('[Installation] 目前 ASAR 包含舊補丁痕跡，已透過原位解構精準移除外掛掛載，並完整保留宿主現有修改與建置內容。');
         } else {
           // 原位清洗未通过标准结构校验（例如 utils.js 源码被外部严重破坏），回退检查本地合规原版备份
           let matchedBackup = null;
@@ -633,7 +633,7 @@ async function install(options = {}) {
                 } catch {}
                 if (bVer && targetHostVer && bVer === targetHostVer && bClean) {
                   sourceArchive = matchedBackup;
-                  console.log(`[Installation] 已安全采信与当前宿主版本 (v${bVer}) 匹配的原版备份 (${path.basename(matchedBackup)}) 作为基底重新安装。`);
+                  console.log(`[Installation] 已安全採信與目前宿主版本 (v${bVer}) 匹配的原版備份 (${path.basename(matchedBackup)}) 作為基底重新安裝。`);
                 }
               }
             }
@@ -841,6 +841,8 @@ async function install(options = {}) {
         'antigravity-hans-overlay.js',
         'live-host.js',
         'mobile-remote.js',
+        'remote-web-push.js',
+        'src/i18n/zh-tw-converter.js',
         'meter-enhance.js'
       ];
       const copiedOptionalAdditions = [];
@@ -848,6 +850,7 @@ async function install(options = {}) {
         const srcP = path.join(__dirname, file);
         const dstP = path.join(staging, 'dist', file);
         if (fs.existsSync(srcP) && !fs.statSync(srcP).isDirectory()) {
+          fs.mkdirSync(path.dirname(dstP), { recursive: true });
           fs.copyFileSync(srcP, dstP);
           copiedOptionalAdditions.push(file);
         } else if (fs.existsSync(dstP)) {
@@ -1035,9 +1038,9 @@ async function install(options = {}) {
           try {
             fs.copyFileSync(snapshotFile, installed);
             clearAsarCache(installed);
-            console.error(`[Failure-Rollback] 安装过程异常中断，已自动从改写前快照还原目标文件: ${installed}`);
+            console.error(`[Failure-Rollback] 安裝過程異常中斷，已自動從改寫前快照還原目標檔案: ${installed}`);
           } catch (rollbackErr) {
-            console.error(`[Fatal Rollback Error] 快照回滚失败: ${rollbackErr.message}`);
+            console.error(`[Fatal Rollback Error] 快照還原失敗: ${rollbackErr.message}`);
           }
         }
         throw err;
@@ -1056,7 +1059,7 @@ if (require.main === module) {
   const isTestEnv = process.env.AG_METER_TEST_MODE === '1' || process.env.NODE_ENV === 'test';
   const allowAsarPatch = isTestEnv || process.argv.includes('--allow-asar-patch');
   if (!allowAsarPatch) {
-    console.error('❌ 本套件默认采用 100% 零改包设计，已禁用直接运行 install.js 修改 app.asar；请改用 node cli.js live。');
+    console.error('❌ 本套件預設採用 100% 零改包設計，已停用直接執行 install.js 修改 app.asar；請改用 node cli.js live。');
     process.exitCode = 1;
   } else {
     install()

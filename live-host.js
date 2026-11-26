@@ -11,6 +11,7 @@ const { connect } = require('./local-api');
 const {
   collect,
   collectTokenHistoryAsync,
+  getTokenHistoryResponse,
   recordModelCalls,
   getPluginSettings,
   savePluginSettings,
@@ -598,12 +599,38 @@ async function startEmbeddedLiveBridge(options = {}) {
     (typeof options.getOrigin === 'function' ? options.getOrigin() : '') ||
     ''
   ).trim();
+  const normalizeOriginsList = (rawList, fallbackOrigin) => {
+    const out = [];
+    if (Array.isArray(rawList)) {
+      for (const item of rawList) {
+        const s = String(item || '').trim();
+        if (s && !out.includes(s)) out.push(s);
+      }
+    }
+    const fb = String(fallbackOrigin || '').trim();
+    if (fb && !out.includes(fb)) out.unshift(fb);
+    return out;
+  };
+  let currentOrigins = normalizeOriginsList(
+    options.origins || (typeof options.getOrigins === 'function' ? options.getOrigins() : null),
+    currentOrigin
+  );
   const resolveOrigin = () => {
     if (typeof options.getOrigin === 'function') {
       const dynamic = String(options.getOrigin() || '').trim();
       if (dynamic) currentOrigin = dynamic;
     }
     return currentOrigin;
+  };
+  const resolveAllowedOrigins = () => {
+    const primary = resolveOrigin();
+    const dynList = typeof options.getOrigins === 'function' ? options.getOrigins() : null;
+    if (Array.isArray(dynList) && dynList.length) {
+      currentOrigins = normalizeOriginsList(dynList, primary);
+    } else if (primary && !currentOrigins.includes(primary)) {
+      currentOrigins = normalizeOriginsList(currentOrigins, primary);
+    }
+    return new Set(currentOrigins.length ? currentOrigins : (primary ? [primary] : []));
   };
 
   const secret = crypto.randomBytes(32).toString('hex');
@@ -632,24 +659,25 @@ async function startEmbeddedLiveBridge(options = {}) {
   const persistStamp = () => {
     if (!writeStamp || !serverPort) return;
     try {
-      fs.mkdirSync(path.dirname(stamp), { recursive: true });
+      const allowedSet = resolveAllowedOrigins();
       const info = {
         port: serverPort,
         token: secret,
         pid: process.pid,
         origin: resolveOrigin(),
+        origins: Array.from(allowedSet),
         remoteDisabled: mobileRemoteDisabled,
         startedAt: Date.now(),
         embedded: Boolean(options.embedded)
       };
-      fs.writeFileSync(stamp, JSON.stringify(info));
+      safeWriteJsonSync(stamp, info);
     } catch {}
   };
   const server = http.createServer(async (req, res) => {
-    const allowedOrigin = resolveOrigin();
+    const allowedSet = resolveAllowedOrigins();
     const origin = req.headers.origin;
-    if (!allowedOrigin || origin !== allowedOrigin) { res.writeHead(403); res.end(); return; }
-    res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+    if (!origin || !allowedSet.has(origin)) { res.writeHead(403); res.end(); return; }
+    res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Private-Network', 'true');
     res.setHeader('Vary', 'Origin');
     if (req.method === 'OPTIONS') {
@@ -827,9 +855,15 @@ async function startEmbeddedLiveBridge(options = {}) {
           return;
         }
         if (req.url === '/token-history') {
-          const data = await collectTokenHistoryAsync({ force: request.force === true });
+          const resp = typeof getTokenHistoryResponse === 'function'
+            ? await getTokenHistoryResponse({
+              force: request.force === true,
+              knownRevision: request.knownRevision,
+              knownAccountKey: request.knownAccountKey
+            })
+            : { ok: true, data: await collectTokenHistoryAsync({ force: request.force === true }) };
           res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ ok: true, data }));
+          res.end(JSON.stringify(resp));
           return;
         }
         if (req.url === '/export-markdown') {
@@ -1236,13 +1270,17 @@ async function startEmbeddedLiveBridge(options = {}) {
     port: serverPort,
     token: secret,
     pid: process.pid,
-    origin: resolveOrigin()
+    origin: resolveOrigin(),
+    origins: Array.from(resolveAllowedOrigins())
   });
 
-  const setOrigin = (nextOrigin) => {
+  const setOrigin = (nextOrigin, nextOrigins = null) => {
     const clean = String(nextOrigin || '').trim();
-    if (clean && clean !== currentOrigin) {
-      currentOrigin = clean;
+    const nextList = normalizeOriginsList(nextOrigins, clean || currentOrigin);
+    const listChanged = nextList.length !== currentOrigins.length || nextList.some((o, i) => o !== currentOrigins[i]);
+    if ((clean && clean !== currentOrigin) || listChanged) {
+      if (clean) currentOrigin = clean;
+      currentOrigins = nextList;
       persistStamp();
     }
   };
@@ -1296,7 +1334,9 @@ if (require.main === module) {
     const stamp = path.join(getStateDir(), '.live-session.json');
     const bridge = await startEmbeddedLiveBridge({
       origin: api.origin,
+      origins: api.origins,
       getOrigin: () => api.origin,
+      getOrigins: () => api.origins,
       stampPath: stamp,
       embedded: false
     });
@@ -1324,9 +1364,15 @@ if (require.main === module) {
         }
         const a = await connect();
         misses = 0;
-        if (a.origin !== api.origin) {
+        const origChanged = a.origin !== api.origin;
+        const listChanged = Array.isArray(a.origins) && (
+          !Array.isArray(api.origins) ||
+          a.origins.length !== api.origins.length ||
+          a.origins.some((o, idx) => o !== api.origins[idx])
+        );
+        if (origChanged || listChanged) {
           api = a;
-          bridge.setOrigin(a.origin);
+          bridge.setOrigin(a.origin, a.origins);
         }
         await tryHotInject({ onlyMissing: true });
       } catch {
