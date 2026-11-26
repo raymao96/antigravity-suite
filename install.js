@@ -55,6 +55,25 @@ function extractAllAsar(archivePath, destDir) {
 
 // findAsarPath 由 ./asar-engine 纯路径共享模块提供并导出
 
+async function injectMissingSecondaryOverlays(evalExpr, enhancerOverlay, enhancerCond, codexOverlay, codexCond) {
+  let missingOk = true;
+  if (enhancerOverlay) {
+    const enhAlive = await evalExpr(`Boolean(${enhancerCond})`);
+    if (enhAlive?.result?.result?.value !== true) {
+      const enhRes = await evalExpr(enhancerOverlay);
+      if (!enhRes || enhRes.error || enhRes.result?.exceptionDetails) missingOk = false;
+    }
+  }
+  if (codexOverlay) {
+    const codexAlive = await evalExpr(`Boolean(${codexCond})`);
+    if (codexAlive?.result?.result?.value !== true) {
+      const codexRes = await evalExpr(codexOverlay);
+      if (!codexRes || codexRes.error || codexRes.result?.exceptionDetails) missingOk = false;
+    }
+  }
+  return missingOk;
+}
+
 async function tryHotInject(options = {}) {
   try {
     const appData = process.env.APPDATA || (process.platform === 'darwin'
@@ -86,6 +105,10 @@ async function tryHotInject(options = {}) {
     const enhancerOverlay = fs.existsSync(enhancerPath) ? fs.readFileSync(enhancerPath, 'utf8') : '';
     const enhancerVerMatch = enhancerOverlay.match(/globalThis\.__AGEnhancer\s*=\s*\{[\s\S]*?version\s*:\s*['"]([^'"]+)['"]/);
     const expectedEnhancerVer = enhancerVerMatch ? enhancerVerMatch[1] : '';
+    const codexPath = path.join(__dirname, 'ag-codex-overlay.js');
+    const codexOverlay = fs.existsSync(codexPath) ? fs.readFileSync(codexPath, 'utf8') : '';
+    const codexVerMatch = codexOverlay.match(/globalThis\.__AGCodexOverlay\s*=\s*\{[\s\S]*?version\s*:\s*['"]([^'"]+)['"]/);
+    const expectedCodexVer = codexVerMatch ? codexVerMatch[1] : '';
     const pulsePath = path.join(__dirname, 'pulse-capsule-overlay.js');
     const pulseOverlay = fs.existsSync(pulsePath) ? fs.readFileSync(pulsePath, 'utf8') : '';
     const pulseVerMatch = pulseOverlay.match(/const\s+CAPSULE_VERSION\s*=\s*['"]([^'"]+)['"]/);
@@ -196,8 +219,8 @@ async function tryHotInject(options = {}) {
       function shouldSkipEl(el) {
         if (!el || el.nodeType !== 1) return false;
         if (SKIP_TAGS.has(el.tagName)) return true;
-        if (el.id === 'ag-context-meter' || el.id === 'ag-quick-capsule-bar' || el.id === 'ag-quota-popover' || el.id === 'ag-chat-nav-float') return true;
-        if (el.closest && el.closest('#ag-context-meter, #ag-quick-capsule-bar, #ag-quota-popover, #ag-chat-nav-float, [data-agy-context-capsule], #__agy_ctx_capsule_tooltip__, [data-testid="user-input-step"], [aria-label="User message"], [aria-label="用户消息"], [data-testid="conversation-row-sidebar"] span.truncate')) return true;
+        if (el.id === 'ag-context-meter' || el.id === 'ag-quick-capsule-bar' || el.id === 'ag-quota-popover' || el.id === 'ag-chat-nav-float' || el.id === 'ag-quota' || el.id === 'ag-settings-nav-wrap' || el.id === 'ag-settings-pane' || el.id === 'ag-settings-font-menu') return true;
+        if (el.closest && el.closest('#ag-context-meter, #ag-quick-capsule-bar, #ag-quota-popover, #ag-chat-nav-float, #ag-quota, #ag-settings-nav-wrap, #ag-settings-pane, #ag-settings-font-menu, [data-agy-context-capsule], #__agy_ctx_capsule_tooltip__, [data-testid="user-input-step"], [aria-label="User message"], [aria-label="用户消息"], [data-testid="conversation-row-sidebar"] span.truncate')) return true;
         return false;
       }
       function lookupRev(str) {
@@ -272,7 +295,7 @@ async function tryHotInject(options = {}) {
         if (!el || el.nodeType !== 1) return true;
         var tag = el.tagName;
         if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT' || tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'CODE' || tag === 'PRE') return true;
-        if (el.id === 'ag-context-meter' || el.id === 'ag-suite-capsule' || el.id === 'ag-suite-settings-panel') return true;
+        if (el.id === 'ag-context-meter' || el.id === 'ag-suite-capsule' || el.id === 'ag-suite-settings-panel' || el.id === 'ag-quota' || el.id === 'ag-settings-nav-wrap' || el.id === 'ag-settings-pane' || el.id === 'ag-settings-font-menu') return true;
         if (el.isContentEditable) return true;
         if (el.getAttribute && (el.getAttribute('data-testid') === 'user-input-step' || el.getAttribute('data-ag-enhancer') != null)) return true;
         return false;
@@ -429,7 +452,10 @@ async function tryHotInject(options = {}) {
           const enhancerCond = enhancerOverlay
             ? `window.__AGEnhancer${expectedEnhancerVer ? ` && window.__AGEnhancer.version === ${JSON.stringify(expectedEnhancerVer)}` : ''} && typeof window.__AGEnhancer.isAlive === "function" && window.__AGEnhancer.isAlive()`
             : 'true';
-          const checkRes = await evalExpr(`Boolean(window.__AGContextMeter && window.__AGContextMeterLive && window.__AGContextMeterLive.port === ${Number(liveInfo?.port || 0)} && (${enhancerCond}))`);
+          const codexCond = codexOverlay
+            ? `window.__AGCodexOverlay${expectedCodexVer ? ` && window.__AGCodexOverlay.version === ${JSON.stringify(expectedCodexVer)}` : ''} && typeof window.__AGCodexOverlay.isAlive === "function" && window.__AGCodexOverlay.isAlive()`
+            : 'true';
+          const checkRes = await evalExpr(`Boolean(window.__AGContextMeter && window.__AGContextMeterLive && window.__AGContextMeterLive.port === ${Number(liveInfo?.port || 0)} && (${enhancerCond}) && (${codexCond}))`);
           if (checkRes?.result?.result?.value === true) {
             injectedCount++;
             continue;
@@ -437,11 +463,8 @@ async function tryHotInject(options = {}) {
           // 若主看板与桥接仍正常且仅缺少增强挂件，就地补注而不重绘主看板（即使挂件失败也不得重绘主看板，避免误关闭已打开浮窗）
           const baseOk = await evalExpr(`Boolean(window.__AGContextMeter && window.__AGContextMeterLive && window.__AGContextMeterLive.port === ${Number(liveInfo?.port || 0)})`);
           if (baseOk?.result?.result?.value === true) {
-            if (enhancerOverlay) {
-              const enhRes = await evalExpr(enhancerOverlay);
-              if (enhRes && !enhRes.error && !enhRes.result?.exceptionDetails) {
-                injectedCount++;
-              }
+            if (await injectMissingSecondaryOverlays(evalExpr, enhancerOverlay, enhancerCond, codexOverlay, codexCond)) {
+              injectedCount++;
             }
             continue;
           }
@@ -464,6 +487,9 @@ async function tryHotInject(options = {}) {
         if (evalRes && !evalRes.error && !evalRes.result?.exceptionDetails) {
           if (enhancerOverlay) {
             await evalExpr(enhancerOverlay);
+          }
+          if (codexOverlay) {
+            await evalExpr(codexOverlay);
           }
           injectedCount++;
         }
@@ -810,6 +836,7 @@ async function install(options = {}) {
 
       const optionalAdditions = [
         'ag-enhancer-overlay.js',
+        'ag-codex-overlay.js',
         'pulse-capsule-overlay.js',
         'antigravity-hans-overlay.js',
         'live-host.js',

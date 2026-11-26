@@ -2146,6 +2146,225 @@ function resolveAccountCustomPlan(customSettingsAll, currentAccountKey) {
   return null;
 }
 
+const CODEX_VALID_QUOTA_STYLES = new Set(['segments', 'bar', 'rings', 'gauge', 'dots', 'compact']);
+const CODEX_VALID_QUOTA_OTHER_STYLES = new Set(['lines', 'text', 'segments', 'rings', 'rows', 'hidden']);
+const CODEX_VALID_QUOTA_POOL_FILTERS = new Set(['all', 'gemini-only', 'claude-only']);
+const CODEX_VALID_FONT_MODES = new Set(['global', 'split']);
+
+function sanitizeFontField(raw) {
+  let s = String(raw || '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/[;{}<>@\\]/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .trim();
+  if (!s || /(?:url\s*\(|expression\s*\(|import\b)/i.test(s)) return '';
+  if (s.length > 240) s = s.slice(0, 240).trim();
+  return s;
+}
+
+function sanitizeCodexFontField(raw) {
+  if (typeof raw !== 'string') return '';
+  return raw
+    .replace(/[\x00-\x1f\x7f'";{}\r\n<>]/g, '')
+    .trim()
+    .slice(0, 80)
+    .trim();
+}
+
+function sanitizeCodexUiConfig(raw) {
+  const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const fontsSrc = src.fonts && typeof src.fonts === 'object' && !Array.isArray(src.fonts) ? src.fonts : {};
+  const quotaStyle = String(src.quotaStyle || '').trim().toLowerCase();
+  const quotaOtherStyle = String(src.quotaOtherStyle || '').trim().toLowerCase();
+  const quotaPoolFilter = String(src.quotaPoolFilter || '').trim().toLowerCase();
+  const fontMode = String(fontsSrc.mode || '').trim().toLowerCase();
+  return {
+    quotaSidebar: src.quotaSidebar !== false,
+    quotaStyle: CODEX_VALID_QUOTA_STYLES.has(quotaStyle) ? quotaStyle : 'bar',
+    quotaOtherStyle: CODEX_VALID_QUOTA_OTHER_STYLES.has(quotaOtherStyle) ? quotaOtherStyle : 'hidden',
+    quotaPoolFilter: CODEX_VALID_QUOTA_POOL_FILTERS.has(quotaPoolFilter) ? quotaPoolFilter : 'all',
+    codexTheme: src.codexTheme === true,
+    deadlockHealer: src.deadlockHealer !== false,
+    zoomShortcuts: src.zoomShortcuts !== false,
+    fonts: {
+      mode: CODEX_VALID_FONT_MODES.has(fontMode) ? fontMode : 'global',
+      global: sanitizeCodexFontField(fontsSrc.global),
+      ui: sanitizeCodexFontField(fontsSrc.ui),
+      chat: sanitizeCodexFontField(fontsSrc.chat),
+      code: sanitizeCodexFontField(fontsSrc.code)
+    }
+  };
+}
+
+function readSfntFontMeta(filePath) {
+  let fd;
+  try {
+    fd = fs.openSync(filePath, 'r');
+  } catch {
+    return [];
+  }
+  try {
+    const hdr = Buffer.alloc(16);
+    if (fs.readSync(fd, hdr, 0, 16, 0) < 12) return [];
+    const tag0 = hdr.toString('ascii', 0, 4);
+    const offsets = [];
+    if (tag0 === 'ttcf') {
+      const count = Math.min(hdr.readUInt32BE(8), 16);
+      const offBuf = Buffer.alloc(count * 4);
+      if (fs.readSync(fd, offBuf, 0, offBuf.length, 12) < offBuf.length) return [];
+      for (let i = 0; i < count; i++) offsets.push(offBuf.readUInt32BE(i * 4));
+    } else if (tag0 === 'OTTO' || tag0 === 'true' || hdr.readUInt32BE(0) === 0x00010000) {
+      offsets.push(0);
+    } else {
+      return [];
+    }
+
+    const results = [];
+    for (const sfntOff of offsets) {
+      const sh = Buffer.alloc(12);
+      if (fs.readSync(fd, sh, 0, 12, sfntOff) < 12) continue;
+      const numTables = Math.min(sh.readUInt16BE(4), 128);
+      const tblBuf = Buffer.alloc(numTables * 16);
+      if (fs.readSync(fd, tblBuf, 0, tblBuf.length, sfntOff + 12) < tblBuf.length) continue;
+
+      let nameTbl = null;
+      let postTbl = null;
+      for (let i = 0; i < numTables; i++) {
+        const t = tblBuf.toString('ascii', i * 16, i * 16 + 4);
+        const off = tblBuf.readUInt32BE(i * 16 + 8);
+        const len = tblBuf.readUInt32BE(i * 16 + 12);
+        if (t === 'name') nameTbl = { off, len };
+        else if (t === 'post') postTbl = { off, len };
+      }
+      if (!nameTbl || nameTbl.len < 6 || nameTbl.len > 524288) continue;
+
+      let isMono = false;
+      if (postTbl && postTbl.len >= 16) {
+        const pb = Buffer.alloc(16);
+        if (fs.readSync(fd, pb, 0, 16, postTbl.off) >= 16) {
+          isMono = pb.readUInt32BE(12) !== 0;
+        }
+      }
+
+      const nb = Buffer.alloc(nameTbl.len);
+      if (fs.readSync(fd, nb, 0, nameTbl.len, nameTbl.off) < 6) continue;
+      const count = nb.readUInt16BE(2);
+      const strOff = nb.readUInt16BE(4);
+      let prefEn = '';
+      let famEn = '';
+      let prefAny = '';
+      let famAny = '';
+      for (let i = 0; i < count; i++) {
+        const r = 6 + i * 12;
+        if (r + 12 > nb.length) break;
+        const plat = nb.readUInt16BE(r);
+        const enc = nb.readUInt16BE(r + 2);
+        const lang = nb.readUInt16BE(r + 4);
+        const nameId = nb.readUInt16BE(r + 6);
+        if (nameId !== 1 && nameId !== 16) continue;
+        const len = nb.readUInt16BE(r + 8);
+        const off = strOff + nb.readUInt16BE(r + 10);
+        if (off + len > nb.length || len === 0 || len > 256) continue;
+        let val = '';
+        if (plat === 3 || plat === 0) {
+          for (let p = 0; p + 1 < len; p += 2) val += String.fromCharCode(nb.readUInt16BE(off + p));
+        } else if (plat === 1 && enc === 0) {
+          val = nb.toString('latin1', off, off + len);
+        }
+        val = val.replace(/\0/g, '').trim();
+        if (!val || val.startsWith('.')) continue;
+        const isEn = (plat === 3 && lang === 0x0409) || (plat === 1 && lang === 0) || plat === 0;
+        if (nameId === 16) {
+          if (isEn && !prefEn) prefEn = val;
+          else if (!prefAny) prefAny = val;
+        } else {
+          if (isEn && !famEn) famEn = val;
+          else if (!famAny) famAny = val;
+        }
+      }
+      const family = prefEn || famEn || prefAny || famAny;
+      if (family) results.push({ family, isMono });
+    }
+    return results;
+  } catch {
+    return [];
+  } finally {
+    try {
+      fs.closeSync(fd);
+    } catch {}
+  }
+}
+
+let cachedUserFonts = null;
+let cachedUserFontsAt = 0;
+
+function scanUserInstalledFonts({ dirs = null, force = false } = {}) {
+  const now = Date.now();
+  if (!dirs && !force && cachedUserFonts && now - cachedUserFontsAt < 60000) {
+    return cachedUserFonts;
+  }
+
+  const home = os.homedir();
+  const scanDirs = Array.isArray(dirs)
+    ? dirs
+    : process.platform === 'darwin'
+    ? [path.join(home, 'Library', 'Fonts'), '/Library/Fonts']
+    : process.platform === 'win32'
+    ? [path.join(process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'), 'Microsoft', 'Windows', 'Fonts')]
+    : [path.join(home, '.local', 'share', 'fonts'), path.join(home, '.fonts')];
+
+  const sansMap = new Map();
+  const monoMap = new Map();
+  let scannedFiles = 0;
+  const MAX_FILES = 400;
+
+  const walk = (dirPath, depth) => {
+    if (depth > 2 || scannedFiles >= MAX_FILES) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (scannedFiles >= MAX_FILES) break;
+      if (!entry.name || entry.name.startsWith('.')) continue;
+      const full = path.join(dirPath, entry.name);
+      if (entry.isDirectory()) {
+        walk(full, depth + 1);
+      } else if (/\.(ttf|otf|ttc|otc)$/i.test(entry.name)) {
+        scannedFiles += 1;
+        const metas = readSfntFontMeta(full);
+        for (const m of metas) {
+          const clean = sanitizeFontField(m.family);
+          if (!clean) continue;
+          const key = clean.toLowerCase();
+          if (m.isMono || /\bmono\b|\bcode\b|\bnerd\b|\bterm\b/i.test(clean)) {
+            if (!monoMap.has(key)) monoMap.set(key, clean);
+          } else {
+            if (!sansMap.has(key)) sansMap.set(key, clean);
+          }
+        }
+      }
+    }
+  };
+
+  for (const d of scanDirs) {
+    if (d) walk(d, 0);
+  }
+
+  const result = {
+    sans: Array.from(sansMap.values()).sort((a, b) => a.localeCompare(b)),
+    mono: Array.from(monoMap.values()).sort((a, b) => a.localeCompare(b))
+  };
+
+  if (!dirs) {
+    cachedUserFonts = result;
+    cachedUserFontsAt = now;
+  }
+  return result;
+}
+
 function getPluginSettings(options = {}) {
   const targetDir = typeof options === 'string' ? options : options?.agDir;
   const settings = loadCustomPlanSettings(targetDir);
@@ -2285,6 +2504,33 @@ function savePluginSettings(payload = {}, options = {}) {
     }
     if (nextUi.quickPrompts === null) {
       delete nextUi.quickPrompts;
+    }
+    if (incomingUiPrefs.codexUi === null) {
+      delete nextUi.codexUi;
+    } else if (incomingUiPrefs.codexUi && typeof incomingUiPrefs.codexUi === 'object' && !Array.isArray(incomingUiPrefs.codexUi)) {
+      const prevCodexUi = (settings.uiPreferences?.codexUi && typeof settings.uiPreferences.codexUi === 'object' && !Array.isArray(settings.uiPreferences.codexUi))
+        ? settings.uiPreferences.codexUi
+        : {};
+      const mergedCodexUi = {
+        ...prevCodexUi,
+        ...incomingUiPrefs.codexUi
+      };
+      if (incomingUiPrefs.codexUi.fonts && typeof incomingUiPrefs.codexUi.fonts === 'object' && !Array.isArray(incomingUiPrefs.codexUi.fonts)) {
+        const prevFonts = (prevCodexUi.fonts && typeof prevCodexUi.fonts === 'object' && !Array.isArray(prevCodexUi.fonts))
+          ? prevCodexUi.fonts
+          : {};
+        mergedCodexUi.fonts = {
+          ...prevFonts,
+          ...incomingUiPrefs.codexUi.fonts
+        };
+      }
+      nextUi.codexUi = sanitizeCodexUiConfig(mergedCodexUi);
+    } else if (Object.prototype.hasOwnProperty.call(incomingUiPrefs, 'codexUi')) {
+      if (settings.uiPreferences?.codexUi && typeof settings.uiPreferences.codexUi === 'object' && !Array.isArray(settings.uiPreferences.codexUi)) {
+        nextUi.codexUi = sanitizeCodexUiConfig(settings.uiPreferences.codexUi);
+      } else {
+        delete nextUi.codexUi;
+      }
     }
     settings.uiPreferences = nextUi;
   }
@@ -5476,6 +5722,9 @@ module.exports = {
   resolveAccountCustomPlan,
   getPluginSettings,
   savePluginSettings,
+  sanitizeCodexUiConfig,
+  scanUserInstalledFonts,
+  readSfntFontMeta,
   sanitizeContextPreferenceEntry,
   resolveCliExecutable,
   resolveCliWorkspace,

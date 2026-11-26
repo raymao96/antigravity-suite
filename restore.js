@@ -215,6 +215,7 @@ async function restore(options = {}) {
             'meter-context-unlock.js',
             'meter-terminals.js',
             'ag-enhancer-overlay.js',
+            'ag-codex-overlay.js',
             'pulse-capsule-overlay.js',
             'antigravity-hans-overlay.js',
             'live-host.js',

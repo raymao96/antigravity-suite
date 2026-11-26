@@ -23,6 +23,7 @@ const {
   launchCliSession,
   detectAvailableTerminals,
   pickTerminalExecutableDialog,
+  scanUserInstalledFonts,
   checkUpdateAsync,
   applyUpdateAsync,
   getContextUnlockStatus,
@@ -443,6 +444,19 @@ function registerIpcOnce() {
       return { ok: false, error: e.message };
     }
   });
+
+  ipcMain.handle('context-meter:list-fonts', async (event, options) => {
+    const url = isLocalMainFrameSender(event);
+    if (!url) throw new Error('仅允许本机主聊天窗口');
+    try {
+      return {
+        ok: true,
+        fonts: scanUserInstalledFonts({ force: Boolean(options?.force) })
+      };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  });
 }
 
 function getWindowWebContents(win) {
@@ -623,12 +637,15 @@ async function ensureMeterInjected(win, options = {}) {
     const hansSrc = readOverlayFile('antigravity-hans-overlay.js');
     const pulseSrc = readOverlayFile('pulse-capsule-overlay.js');
     const enhancerSrc = readOverlayFile('ag-enhancer-overlay.js');
+    const codexSrc = readOverlayFile('ag-codex-overlay.js');
     const hasHansFile = Boolean(hansSrc);
     const hasPulseFile = Boolean(pulseSrc);
     const hasEnhancerFile = Boolean(enhancerSrc);
+    const hasCodexFile = Boolean(codexSrc);
     const expectedHansFp = extractOverlayTag(hansSrc, /const\s+PATCH_FINGERPRINT\s*=\s*['"]([^'"]+)['"]/);
     const expectedPulseVer = extractOverlayTag(pulseSrc, /const\s+CAPSULE_VERSION\s*=\s*['"]([^'"]+)['"]/);
     const expectedEnhancerVer = extractOverlayTag(enhancerSrc, /globalThis\.__AGEnhancer\s*=\s*\{[\s\S]*?version\s*:\s*['"]([^'"]+)['"]/);
+    const expectedCodexVer = extractOverlayTag(codexSrc, /globalThis\.__AGCodexOverlay\s*=\s*\{[\s\S]*?version\s*:\s*['"]([^'"]+)['"]/);
     const expectedPort = Number(liveInfo?.port || 0);
 
     let state = null;
@@ -639,7 +656,8 @@ async function ensureMeterInjected(win, options = {}) {
           liveAlive: ${expectedPort ? `Boolean(window.__AGContextMeterLive && window.__AGContextMeterLive.port === ${expectedPort})` : 'true'},
           hansAlive: ${hasHansFile ? `Boolean(window.__antigravityZhPatchInstalled === true && window.__observedDocument === document${expectedHansFp ? ` && window.__antigravityZhPatchFingerprint === ${JSON.stringify(expectedHansFp)}` : ''})` : 'true'},
           pulseAlive: ${hasPulseFile ? `Boolean(window.__AGY_CTX_CAPSULE_ACTIVE__ === true${expectedPulseVer ? ` && window.__AGY_CTX_CAPSULE_VERSION__ === ${JSON.stringify(expectedPulseVer)}` : ''} && (document.querySelector('[data-agy-context-capsule="1"]') || !document.querySelector('.agy-composer-footer')))` : 'true'},
-          enhancerAlive: ${hasEnhancerFile ? `Boolean(window.__AGEnhancer${expectedEnhancerVer ? ` && window.__AGEnhancer.version === ${JSON.stringify(expectedEnhancerVer)}` : ''} && typeof window.__AGEnhancer.isAlive === 'function' && window.__AGEnhancer.isAlive())` : 'true'}
+          enhancerAlive: ${hasEnhancerFile ? `Boolean(window.__AGEnhancer${expectedEnhancerVer ? ` && window.__AGEnhancer.version === ${JSON.stringify(expectedEnhancerVer)}` : ''} && typeof window.__AGEnhancer.isAlive === 'function' && window.__AGEnhancer.isAlive())` : 'true'},
+          codexAlive: ${hasCodexFile ? `Boolean(window.__AGCodexOverlay${expectedCodexVer ? ` && window.__AGCodexOverlay.version === ${JSON.stringify(expectedCodexVer)}` : ''} && typeof window.__AGCodexOverlay.isAlive === 'function' && window.__AGCodexOverlay.isAlive())` : 'true'}
         }))()`;
         const res = await wc.executeJavaScript(probeExpr);
         if (res && typeof res === 'object') state = res;
@@ -651,8 +669,9 @@ async function ensureMeterInjected(win, options = {}) {
     const hansAlive = Boolean(state?.hansAlive);
     const pulseAlive = Boolean(state?.pulseAlive);
     const enhancerAlive = Boolean(state?.enhancerAlive);
+    const codexAlive = Boolean(state?.codexAlive);
 
-    if (!options.force && meterAlive && liveAlive && hansAlive && pulseAlive && enhancerAlive) {
+    if (!options.force && meterAlive && liveAlive && hansAlive && pulseAlive && enhancerAlive && codexAlive) {
       return true;
     }
 
@@ -689,6 +708,14 @@ async function ensureMeterInjected(win, options = {}) {
         await wc.executeJavaScript(enhancerSrc);
       } catch (e) {
         console.warn('[Context Meter] enhancer overlay inject warning:', e?.message || e);
+      }
+    }
+
+    if (hasCodexFile && (options.force || !codexAlive)) {
+      try {
+        await wc.executeJavaScript(codexSrc);
+      } catch (e) {
+        console.warn('[Context Meter] codex overlay inject warning:', e?.message || e);
       }
     }
 

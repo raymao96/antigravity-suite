@@ -373,6 +373,25 @@
       border-radius:7px;
       background:var(--ag-bg-subcard);
       border:1px solid var(--ag-border-subcard);
+      transition:opacity .15s ease;
+    }
+    .settings-pref-row[data-disabled="true"]{
+      opacity:.5;
+      pointer-events:none;
+    }
+    #settings-card-codex-ui .settings-status-note{
+      flex:none;
+      white-space:normal;
+      overflow:visible;
+      text-overflow:clip;
+      padding:7px 10px;
+      border-radius:7px;
+      background:var(--ag-bg-subcard);
+      border:1px solid var(--ag-border-subcard);
+      color:var(--ag-text-muted);
+      font-size:12px;
+      line-height:1.5;
+      text-wrap:pretty;
     }
     .settings-pref-check{
       cursor:pointer;

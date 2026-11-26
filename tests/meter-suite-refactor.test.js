@@ -3020,7 +3020,7 @@ test('需求 13: 远程浮窗整行热区勾选、CLI 多路复用器指定主�
 
   vm.runInContext(CAPSULE_SRC, envCap.sandbox);
   const capsApi = envCap.win.__AGY_CTX_CAPSULE_API__;
-  assert.equal(capsApi.version, '1.5.1');
+  assert.equal(capsApi.version, '1.5.2');
 
   capsApi.renderFooterCapsule(footerEl, {
     contextUsed: 181000,
@@ -10540,7 +10540,8 @@ test('需求 25: UI 主题色系一致性静态门禁与动态主题变量绑定
     ['src/renderer/suite-settings.css', fs.readFileSync(path.join(ROOT, 'src/renderer/suite-settings.css'), 'utf8')],
     ['src/renderer/suite-settings.js', fs.readFileSync(path.join(ROOT, 'src/renderer/suite-settings.js'), 'utf8')],
     ['src/renderer/suite-settings.html', fs.readFileSync(path.join(ROOT, 'src/renderer/suite-settings.html'), 'utf8')],
-    ['ag-enhancer-overlay.js', fs.readFileSync(path.join(ROOT, 'ag-enhancer-overlay.js'), 'utf8')]
+    ['ag-enhancer-overlay.js', fs.readFileSync(path.join(ROOT, 'ag-enhancer-overlay.js'), 'utf8')],
+    ['ag-codex-overlay.js', fs.readFileSync(path.join(ROOT, 'ag-codex-overlay.js'), 'utf8')]
   ];
   const forbiddenPatterns = [
     { name: '硬编码翠绿 #10b981', re: /#10b981/i },
@@ -14914,10 +14915,18 @@ test('PR #5 安全返修：宿主机目录根边界、敏感路径黑名单、Sy
       tunnelEnabled: false,
       enabledChannels: { lan: true, tailscale: true, bonjour: true, tunnel: false }
     };
+    const createdProjects = [];
     const secHandler = remoteMod.createRemoteHttpHandler(secCfg, {
       homeDir: fakeHome,
       configDir,
-      allowDiskFallback: true,
+      localApiConnect: async () => ({
+        call: async (method, body) => {
+          if (method === 'ResolveFolder') return {};
+          assert.equal(method, 'CreateProject');
+          createdProjects.push(body.project);
+          return {};
+        }
+      }),
       performAction: async () => ({ ok: true, actionResult: { ok: true } }),
       fetchSnapshot: async () => ({ ok: true, sessionId: 's-1', messages: [] })
     });
@@ -15012,6 +15021,10 @@ test('PR #5 安全返修：宿主机目录根边界、敏感路径黑名单、Sy
     assert.equal(okProjRes.status, 200, `合法 $HOME 子目录注册项目必须成功: ${JSON.stringify(okProjRes.json)}`);
     assert.equal(okProjRes.json.ok, true);
     assert.equal(okProjRes.json.project?.name, 'legit-proj-32');
+    assert.equal(createdProjects.length, 1);
+    assert.equal(createdProjects[0].id, okProjRes.json.project.id);
+    assert.equal(createdProjects[0].name, 'legit-proj-32');
+    assert.equal(createdProjects[0].projectResources.resources[0].folderUri, okProjRes.json.project.folderUri);
   } finally {
     fs.rmSync(sandboxBase, { recursive: true, force: true });
   }

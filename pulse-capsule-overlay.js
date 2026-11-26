@@ -3,7 +3,7 @@
  * 运行环境：客户端渲染进程 Main World / 浏览器扩展 MAIN World (同源 Connect-RPC + React Fiber 精准会话隔离)
  */
 (function () {
-    const CAPSULE_VERSION = '1.5.1';
+    const CAPSULE_VERSION = '1.5.2';
     if (window.__AGY_CTX_CAPSULE_ACTIVE__) {
         if (window.__AGY_CTX_CAPSULE_VERSION__ === CAPSULE_VERSION) return;
         try { window.__AGY_CTX_CAPSULE_DISPOSE__?.(); } catch {}
@@ -1663,7 +1663,7 @@
         if (tooltipEl && document.body.contains(tooltipEl)) return tooltipEl;
         tooltipEl = document.createElement('div');
         tooltipEl.id = '__agy_ctx_capsule_tooltip__';
-        tooltipEl.className = 'notranslate bg-popover text-popover-foreground border border-border';
+        tooltipEl.className = 'notranslate';
         tooltipEl.setAttribute('translate', 'no');
         tooltipEl.style.cssText = [
             'position: fixed',
@@ -1687,19 +1687,26 @@
         return tooltipEl;
     }
 
-    // 精准检测白天/黑夜模式 (支持 html/body class、data-theme、color-scheme 及面板真实背景色采样)
+    // 精准检测白天/黑夜模式 (支持 Codex 覆写属性、html/body class、data-theme、color-scheme 及面板真实背景色采样)
     function isLightMode(refEl) {
         const html = document.documentElement;
         const body = document.body;
-        if (html.classList.contains('light') || (body && body.classList.contains('light'))) return true;
-        if (html.classList.contains('dark') || (body && body.classList.contains('dark'))) return false;
+        const agMode = (html.getAttribute('data-ag-theme-mode') || '').toLowerCase();
+        if (agMode === 'light') return true;
+        if (agMode === 'dark') return false;
+        const meterHost = document.getElementById('ag-context-meter');
+        const meterTheme = (meterHost && meterHost.getAttribute('data-theme') || '').toLowerCase();
+        if (meterTheme === 'light') return true;
+        if (meterTheme === 'dark') return false;
+        if (html.classList.contains('light') || (body && (body.classList.contains('light') || body.classList.contains('theme-light') || body.classList.contains('light-theme') || body.classList.contains('vscode-light')))) return true;
+        if (html.classList.contains('dark') || (body && (body.classList.contains('dark') || body.classList.contains('theme-dark') || body.classList.contains('dark-theme') || body.classList.contains('vscode-dark')))) return false;
         const themeAttr = (html.getAttribute('data-theme') || (body && body.getAttribute('data-theme')) || '').toLowerCase();
         if (themeAttr.includes('light')) return true;
         if (themeAttr.includes('dark')) return false;
 
         let cur = refEl || body || html;
         let depth = 0;
-        while (cur && depth < 10) {
+        while (cur && depth < 30) {
             depth++;
             try {
                 const bg = getComputedStyle(cur).backgroundColor;
@@ -2413,7 +2420,7 @@
         installNetworkSniffer();
         domObserver.observe(root, { childList: true, subtree: true });
         if (document.documentElement) {
-            domObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme', 'style'] });
+            domObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme', 'data-ag-theme-mode', 'style'] });
         }
         renderAllFooters();
         pollCycle();

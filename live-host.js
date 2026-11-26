@@ -17,6 +17,7 @@ const {
   launchCliSession,
   detectAvailableTerminals,
   pickTerminalExecutableDialog,
+  scanUserInstalledFonts,
   getContextUnlockStatus,
   applyContextUnlock,
   restoreContextUnlock
@@ -38,6 +39,7 @@ const ALLOWED_ROUTES = [
   '/launch-cli',
   '/list-terminals',
   '/pick-terminal-path',
+  '/list-fonts',
   '/context-unlock-status',
   '/context-unlock-apply',
   '/context-unlock-restore',
@@ -727,6 +729,12 @@ async function startEmbeddedLiveBridge(options = {}) {
           const result = await pickTerminalExecutableDialog({});
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify(result));
+          return;
+        }
+        if (req.url === '/list-fonts') {
+          const fonts = scanUserInstalledFonts({ force: Boolean(request?.force) });
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ ok: true, fonts }));
           return;
         }
         if (req.url === '/context-unlock-status') {

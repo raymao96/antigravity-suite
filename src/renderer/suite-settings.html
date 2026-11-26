@@ -126,6 +126,10 @@
               <input id="set-feat-quota" type="checkbox" class="settings-checkbox" checked />
             </label>
             <label class="settings-feature-item">
+              <span class="settings-feature-name">侧栏：模型额度卡</span>
+              <input id="set-feat-sidebar-quota" type="checkbox" class="settings-checkbox" checked />
+            </label>
+            <label class="settings-feature-item">
               <span class="settings-feature-name">顶部：手机远程入口</span>
               <input id="set-feat-remote" type="checkbox" class="settings-checkbox" checked />
             </label>
@@ -138,6 +142,67 @@
               <input id="set-feat-chatnav" type="checkbox" class="settings-checkbox" checked />
             </label>
           </div>
+        </div>
+
+        <div id="settings-card-codex-ui" class="settings-card-box">
+          <div class="settings-card-hdr">
+            <span class="settings-card-title">Codex 主题与侧栏额度样式</span>
+          </div>
+          <div class="settings-pref-list">
+            <label class="settings-pref-row settings-pref-check">
+              <div class="settings-pref-meta">
+                <span class="settings-pref-name">启用 Codex 纯白 / 炭黑界面主题</span>
+                <span class="settings-pref-desc">覆盖宿主编辑器与对话区为高对比度纯白 / 炭黑配色，并同步原生标题栏</span>
+              </div>
+              <input id="set-codex-theme" type="checkbox" class="settings-checkbox" />
+            </label>
+            <div class="settings-pref-row">
+              <div class="settings-pref-meta">
+                <span class="settings-pref-name">侧边栏额度显示范围</span>
+                <span class="settings-pref-desc">控制左下角额度卡片默认追踪全部模型或固定显示指定模型池</span>
+              </div>
+              <div class="settings-select-wrap">
+                <select id="set-codex-pool-filter" class="settings-select" aria-label="侧边栏额度显示范围">
+                  <option value="all">自动跟随当前模型</option>
+                  <option value="gemini-only">固定仅显示 Gemini</option>
+                  <option value="claude-only">固定仅显示 Claude / GPT</option>
+                </select>
+              </div>
+            </div>
+            <div class="settings-pref-row">
+              <div class="settings-pref-meta">
+                <span class="settings-pref-name">当前模型组样式</span>
+                <span class="settings-pref-desc">切换当前正在使用模型池的进度条与仪表样式</span>
+              </div>
+              <div class="settings-select-wrap">
+                <select id="set-codex-quota-style" class="settings-select" aria-label="当前模型组样式">
+                  <option value="bar">连续进度条</option>
+                  <option value="segments">五段格</option>
+                  <option value="rings">双圆环</option>
+                  <option value="gauge">仪表盘</option>
+                  <option value="dots">点阵</option>
+                  <option value="compact">精简刻度</option>
+                </select>
+              </div>
+            </div>
+            <div id="codex-quota-other-row" class="settings-pref-row">
+              <div class="settings-pref-meta">
+                <span class="settings-pref-name">其他模型组样式</span>
+                <span class="settings-pref-desc">设置未在使用中模型池的展示方式或将其隐藏</span>
+              </div>
+              <div class="settings-select-wrap">
+                <select id="set-codex-quota-other" class="settings-select" aria-label="其他模型组样式">
+                  <option value="hidden">隐藏</option>
+                  <option value="lines">进度细线</option>
+                  <option value="text">纯文字</option>
+                  <option value="segments">迷你五段</option>
+                  <option value="rings">迷你圆环</option>
+                  <option value="rows">双列横条</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="settings-status-note">提示：SVG 视觉样式预览以及界面 / 对话 / 代码三区自定义本地字体，也可在 Antigravity 原生「设置 → Suite 外观与额度」中直接配置。</div>
         </div>
 
         <div class="settings-card-box">

@@ -65,6 +65,8 @@ async function queryLiveWindow() {
               active: Boolean(window.__AGContextMeter),
               hansActive: Boolean(window.__antigravityZhPatchInstalled === true && window.__observedDocument === document),
               enhancerActive: Boolean(window.__AGEnhancer && typeof window.__AGEnhancer.isAlive === 'function' && window.__AGEnhancer.isAlive()),
+              codexActive: Boolean(window.__AGCodexOverlay && typeof window.__AGCodexOverlay.isAlive === 'function' && window.__AGCodexOverlay.isAlive()),
+              sidebarQuotaActive: Boolean(document.getElementById('ag-quota')),
               quotaBadgeText: root?.getElementById('ag-quota-text')?.textContent?.trim() || null,
               quickBarActive: Boolean(document.getElementById('ag-quick-capsule-bar')),
               pulseActive: Boolean(window.__AGY_CTX_CAPSULE_ACTIVE__ === true && document.querySelector('[data-agy-context-capsule="1"]')),

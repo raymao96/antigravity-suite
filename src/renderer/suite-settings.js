@@ -10,6 +10,9 @@
   let uiCliModelDropdown = null;
   let uiCliMuxHostDropdown = null;
   let uiBaseCurrencyDropdown = null;
+  let uiCodexPoolFilterDropdown = null;
+  let uiCodexQuotaStyleDropdown = null;
+  let uiCodexQuotaOtherDropdown = null;
 
   const SUITE_EN_UI_DICT = {
     'Antigravity Suite 统一设置': 'Antigravity Suite Settings',
@@ -407,7 +410,33 @@
     '当前版本与仓库同步': 'Current version is up to date',
     '已完成热更新': 'Updated and applied immediately',
     '更新未完成（当前版本与配置不受影响），请检查网络或代理后重试': 'Update incomplete (your current version and settings are safe); check your network or proxy and try again',
-    '暂时无法连接更新服务器，请检查网络或代理设置后重试': 'Unable to reach the update server; check your network or proxy and try again'
+    '暂时无法连接更新服务器，请检查网络或代理设置后重试': 'Unable to reach the update server; check your network or proxy and try again',
+    '侧栏：模型额度卡': 'Sidebar: Model Quota',
+    'Codex 主题与侧栏额度样式': 'Codex Theme & Sidebar Quota Style',
+    '启用 Codex 纯白 / 炭黑界面主题': 'Enable Codex Pure Light / Charcoal Theme',
+    '覆盖宿主编辑器与对话区为高对比度纯白 / 炭黑配色，并同步原生标题栏': 'Override host editor and chat with high-contrast pure light / charcoal palettes and sync native titlebar',
+    '侧边栏额度显示范围': 'Sidebar Quota Display Scope',
+    '控制左下角额度卡片默认追踪全部模型或固定显示指定模型池': 'Choose whether the sidebar quota card follows the active model or pins a specific pool',
+    '自动跟随当前模型': 'Auto-follow Active Model',
+    '固定仅显示 Gemini': 'Pin Gemini Only',
+    '固定仅显示 Claude / GPT': 'Pin Claude / GPT Only',
+    '当前模型组样式': 'Active Pool Style',
+    '切换当前正在使用模型池的进度条与仪表样式': 'Choose the progress bar or gauge style for the active model pool',
+    '连续进度条': 'Continuous Bar',
+    '五段格': '5 Segments',
+    '双圆环': 'Dual Rings',
+    '仪表盘': 'Gauge',
+    '点阵': 'Dot Matrix',
+    '精简刻度': 'Compact Scale',
+    '其他模型组样式': 'Other Pools Style',
+    '设置未在使用中模型池的展示方式或将其隐藏': 'Choose how inactive model pools are displayed or hide them',
+    '隐藏': 'Hidden',
+    '进度细线': 'Thin Lines',
+    '纯文字': 'Text Only',
+    '迷你五段': 'Mini Segments',
+    '迷你圆环': 'Mini Rings',
+    '双列横条': 'Dual Rows',
+    '提示：SVG 视觉样式预览以及界面 / 对话 / 代码三区自定义本地字体，也可在 Antigravity 原生「设置 → Suite 外观与额度」中直接配置。': 'Tip: SVG style previews and custom local fonts (UI / Chat / Code) can also be configured directly in Antigravity Settings → Suite Appearance & Quota.'
   };
 
   function translateSuiteDynamicFragmentEn(fragment) {
@@ -545,6 +574,57 @@
     showChatNav: true
   };
   let suiteFeatureFlags = { ...DEFAULT_SUITE_FEATURE_FLAGS };
+
+  const CODEX_QUOTA_STYLES = ['segments', 'bar', 'rings', 'gauge', 'dots', 'compact'];
+  const CODEX_QUOTA_OTHER_STYLES = ['lines', 'text', 'segments', 'rings', 'rows', 'hidden'];
+  const CODEX_QUOTA_POOL_FILTERS = ['all', 'gemini-only', 'claude-only'];
+  const DEFAULT_CODEX_UI = {
+    quotaSidebar: true,
+    quotaStyle: 'bar',
+    quotaOtherStyle: 'hidden',
+    quotaPoolFilter: 'all',
+    codexTheme: false,
+    deadlockHealer: true,
+    zoomShortcuts: true,
+    fonts: { mode: 'global', global: '', ui: '', chat: '', code: '' }
+  };
+
+  function normalizeCodexUiConfig(raw, base = DEFAULT_CODEX_UI) {
+    const ref = base && typeof base === 'object' ? base : DEFAULT_CODEX_UI;
+    const src = raw && typeof raw === 'object' ? raw : {};
+    const srcFonts = src.fonts && typeof src.fonts === 'object' ? src.fonts : {};
+    const refFonts = ref.fonts && typeof ref.fonts === 'object' ? ref.fonts : DEFAULT_CODEX_UI.fonts;
+    const rawStyle = String(src.quotaStyle ?? ref.quotaStyle ?? 'bar').trim().toLowerCase();
+    const rawOther = String(src.quotaOtherStyle ?? ref.quotaOtherStyle ?? 'hidden').trim().toLowerCase();
+    const rawFilter = String(src.quotaPoolFilter ?? ref.quotaPoolFilter ?? 'all').trim().toLowerCase();
+    const rawMode = srcFonts.mode !== undefined ? srcFonts.mode : refFonts.mode;
+    return {
+      quotaSidebar: src.quotaSidebar !== undefined ? Boolean(src.quotaSidebar) : ref.quotaSidebar !== false,
+      quotaStyle: CODEX_QUOTA_STYLES.includes(rawStyle) ? rawStyle : 'bar',
+      quotaOtherStyle: CODEX_QUOTA_OTHER_STYLES.includes(rawOther) ? rawOther : 'hidden',
+      quotaPoolFilter: CODEX_QUOTA_POOL_FILTERS.includes(rawFilter) ? rawFilter : 'all',
+      codexTheme: src.codexTheme !== undefined ? Boolean(src.codexTheme) : Boolean(ref.codexTheme),
+      deadlockHealer: src.deadlockHealer !== undefined ? Boolean(src.deadlockHealer) : ref.deadlockHealer !== false,
+      zoomShortcuts: src.zoomShortcuts !== undefined ? Boolean(src.zoomShortcuts) : ref.zoomShortcuts !== false,
+      fonts: {
+        mode: rawMode === 'split' ? 'split' : 'global',
+        global: typeof srcFonts.global === 'string' ? srcFonts.global : (typeof refFonts.global === 'string' ? refFonts.global : ''),
+        ui: typeof srcFonts.ui === 'string' ? srcFonts.ui : (typeof refFonts.ui === 'string' ? refFonts.ui : ''),
+        chat: typeof srcFonts.chat === 'string' ? srcFonts.chat : (typeof refFonts.chat === 'string' ? refFonts.chat : ''),
+        code: typeof srcFonts.code === 'string' ? srcFonts.code : (typeof refFonts.code === 'string' ? refFonts.code : '')
+      }
+    };
+  }
+
+  function cloneCodexUiConfig(cfg) {
+    const norm = normalizeCodexUiConfig(cfg);
+    return {
+      ...norm,
+      fonts: { ...norm.fonts }
+    };
+  }
+
+  let suiteCodexUi = cloneCodexUiConfig(DEFAULT_CODEX_UI);
 
   const QUICK_POOL_GROUPS = [
     { id: 'daily', title: '🔥 日常高频与上下文', titleEn: '🔥 Daily & Context' },
@@ -1241,6 +1321,23 @@
         }
       }
     }
+    const lsCodexUi = localStorage?.getItem?.('ag_suite_codex_ui');
+    if (lsCodexUi) {
+      const parsedCodex = JSON.parse(lsCodexUi);
+      if (parsedCodex && typeof parsedCodex === 'object') {
+        suiteCodexUi = normalizeCodexUiConfig(parsedCodex, suiteCodexUi);
+      }
+    }
+    if (typeof window !== 'undefined') {
+      const hostCodexUi = window.__AGContextMeterSettings?.uiPreferences?.codexUi;
+      if (hostCodexUi && typeof hostCodexUi === 'object') {
+        suiteCodexUi = normalizeCodexUiConfig(hostCodexUi, suiteCodexUi);
+      }
+      const liveCodexUi = window.__AGCodexOverlay?.getConfig?.();
+      if (liveCodexUi && typeof liveCodexUi === 'object') {
+        suiteCodexUi = normalizeCodexUiConfig(liveCodexUi, suiteCodexUi);
+      }
+    }
   } catch {}
 
   function isRealShadowDomTree() {
@@ -1257,6 +1354,9 @@
     try { uiCliMuxHostDropdown = enhanceCustomSelect('set-cli-mux-host-select'); } catch {}
     try { uiLangDropdown = enhanceCustomSelect('set-ui-language-select'); } catch {}
     try { uiBaseCurrencyDropdown = enhanceCustomSelect('set-base-currency-select'); } catch {}
+    try { uiCodexPoolFilterDropdown = enhanceCustomSelect('set-codex-pool-filter'); } catch {}
+    try { uiCodexQuotaStyleDropdown = enhanceCustomSelect('set-codex-quota-style'); } catch {}
+    try { uiCodexQuotaOtherDropdown = enhanceCustomSelect('set-codex-quota-other'); } catch {}
   }
 
   function transplantConfigControlsOnce() {
@@ -1412,6 +1512,7 @@
       localStorage?.setItem?.('antigravityHansLang', hansLangVal);
       localStorage?.setItem?.('antigravityHansEnglishLabels', suiteEnhancerPrefs.englishLabels ? '1' : '0');
       localStorage?.setItem?.('ag_suite_feature_flags', JSON.stringify(suiteFeatureFlags));
+      localStorage?.setItem?.('ag_suite_codex_ui', JSON.stringify(suiteCodexUi));
       localStorage?.setItem?.('ag_suite_quick_pool', JSON.stringify(suiteQuickPool));
       if (suiteQuickPrompts === null) {
         localStorage?.removeItem?.('ag_suite_quick_prompts');
@@ -1441,6 +1542,7 @@
             hansCode: curEntry.hansCode,
             englishLabels: Boolean(suiteEnhancerPrefs.englishLabels),
             featureFlags: { ...suiteFeatureFlags },
+            codexUi: cloneCodexUiConfig(suiteCodexUi),
             quickPool: { ...suiteQuickPool },
             quickPrompts: suiteQuickPrompts ? suiteQuickPrompts.map(item => ({ ...item })) : null
           }
@@ -1640,6 +1742,9 @@
       try { uiCliMuxHostDropdown?.refresh?.(); } catch {}
       try { uiLangDropdown?.refresh?.(); } catch {}
       try { uiBaseCurrencyDropdown?.refresh?.(); } catch {}
+      try { uiCodexPoolFilterDropdown?.refresh?.(); } catch {}
+      try { uiCodexQuotaStyleDropdown?.refresh?.(); } catch {}
+      try { uiCodexQuotaOtherDropdown?.refresh?.(); } catch {}
       if (!isZhBase) ensureSuiteShadowObserver(true);
     } finally {
       suiteTranslateApplying = false;
@@ -1826,6 +1931,58 @@
       await saveSuiteUiPrefs({ featureFlags: { ...suiteFeatureFlags } });
     }
     return { ...suiteFeatureFlags };
+  }
+
+  function syncCodexUiControls() {
+    const chkSidebar = el('set-feat-sidebar-quota');
+    if (chkSidebar) chkSidebar.checked = suiteCodexUi.quotaSidebar !== false;
+    const chkTheme = el('set-codex-theme');
+    if (chkTheme) chkTheme.checked = Boolean(suiteCodexUi.codexTheme);
+
+    const selPool = el('set-codex-pool-filter');
+    if (selPool) {
+      selPool.value = suiteCodexUi.quotaPoolFilter || 'all';
+      try { uiCodexPoolFilterDropdown?.refresh?.(); } catch {}
+    }
+    const selStyle = el('set-codex-quota-style');
+    if (selStyle) {
+      selStyle.value = suiteCodexUi.quotaStyle || 'bar';
+      try { uiCodexQuotaStyleDropdown?.refresh?.(); } catch {}
+    }
+    const isPinned = (suiteCodexUi.quotaPoolFilter || 'all') !== 'all';
+    const otherRow = el('codex-quota-other-row');
+    if (otherRow) {
+      if (isPinned) otherRow.setAttribute('data-disabled', 'true');
+      else otherRow.removeAttribute('data-disabled');
+    }
+    const selOther = el('set-codex-quota-other');
+    if (selOther) {
+      selOther.value = suiteCodexUi.quotaOtherStyle || 'hidden';
+      selOther.disabled = isPinned;
+      if (isPinned) {
+        try { uiCodexQuotaOtherDropdown?.wrap?.classList?.remove?.('is-open'); } catch {}
+      }
+      try { uiCodexQuotaOtherDropdown?.refresh?.(); } catch {}
+    }
+  }
+
+  async function setSuiteCodexUi(partialCodex = {}, opts = {}) {
+    suiteCodexUi = normalizeCodexUiConfig(partialCodex, suiteCodexUi);
+    try {
+      localStorage?.setItem?.('ag_suite_codex_ui', JSON.stringify(suiteCodexUi));
+    } catch {}
+    syncCodexUiControls();
+    try {
+      window?.__AGCodexOverlay?.updateConfig?.(
+        (partialCodex && typeof partialCodex === 'object') ? partialCodex : cloneCodexUiConfig(suiteCodexUi),
+        { persist: false, broadcast: false }
+      );
+    } catch {}
+    dispatchSuitePrefsChanged();
+    if (opts.syncHost !== false) {
+      await saveSuiteUiPrefs({ codexUi: cloneCodexUiConfig(suiteCodexUi) });
+    }
+    return cloneCodexUiConfig(suiteCodexUi);
   }
 
   let dockBadgeStatusState = {
@@ -2515,6 +2672,9 @@
     if (uiPrefs.quickPool && typeof uiPrefs.quickPool === 'object') {
       suiteQuickPool = sanitizeQuickPoolState(uiPrefs.quickPool);
     }
+    if (uiPrefs.codexUi && typeof uiPrefs.codexUi === 'object') {
+      suiteCodexUi = normalizeCodexUiConfig(uiPrefs.codexUi, suiteCodexUi);
+    }
     if (typeof applyHostAppearancePreferences === 'function') {
       applyHostAppearancePreferences(uiPrefs);
     }
@@ -2541,6 +2701,8 @@
     syncEnhancerPrefControls();
     syncDockBadgeControls();
     applySuiteFeatureFlags();
+    syncFeatureFlagControls();
+    syncCodexUiControls();
     renderQuickBuiltinPool();
     if (!editingQuickPrompts) {
       const listEl = el('quick-prompts-editor-list');
@@ -4002,22 +4164,65 @@
     });
   }
 
+  const onSuitePrefsChangedInSettings = ev => {
+    if (typeof state !== 'undefined' && state?.disposed) {
+      try { window.removeEventListener?.('ag-suite-prefs-changed', onSuitePrefsChangedInSettings); } catch {}
+      return;
+    }
+    const detail = ev?.detail;
+    if (!detail || typeof detail !== 'object') return;
+    if (detail.featureFlags && typeof detail.featureFlags === 'object') {
+      let flagsChanged = false;
+      for (const k of Object.keys(DEFAULT_SUITE_FEATURE_FLAGS)) {
+        if (typeof detail.featureFlags[k] === 'boolean' && suiteFeatureFlags[k] !== detail.featureFlags[k]) {
+          suiteFeatureFlags[k] = detail.featureFlags[k];
+          flagsChanged = true;
+        }
+      }
+      if (flagsChanged) {
+        syncFeatureFlagControls();
+        applySuiteFeatureFlags();
+      }
+    }
+    if (detail.codexUi && typeof detail.codexUi === 'object') {
+      const nextCodex = normalizeCodexUiConfig(detail.codexUi, suiteCodexUi);
+      if (JSON.stringify(nextCodex) !== JSON.stringify(suiteCodexUi)) {
+        suiteCodexUi = nextCodex;
+        syncCodexUiControls();
+      }
+    }
+    if ('locale' in detail || 'hansCode' in detail || 'capsuleLang' in detail) {
+      const incoming = findSupportedLocaleEntry(detail.locale || detail.hansCode || detail.capsuleLang);
+      if (incoming.code !== suiteEnhancerPrefs.locale) {
+        suiteEnhancerPrefs.locale = incoming.code;
+        suiteEnhancerPrefs.capsuleLang = incoming.capsuleLang;
+      }
+      if (activeSettingsTab === 'remote' && remoteSettingsState.data) {
+        renderRemoteSettingsChannels();
+      }
+      renderDockBadgeStatusNote();
+      applySuiteShadowLocale();
+    }
+  };
+
+  const onCodexConfigChanged = ev => {
+    if (typeof state !== 'undefined' && state?.disposed) {
+      try { window.removeEventListener?.('ag-codex-config-changed', onCodexConfigChanged); } catch {}
+      return;
+    }
+    const incoming = ev?.detail?.codexUi;
+    if (!incoming || typeof incoming !== 'object') return;
+    const nextCodex = normalizeCodexUiConfig(incoming, suiteCodexUi);
+    if (JSON.stringify(nextCodex) !== JSON.stringify(suiteCodexUi)) {
+      suiteCodexUi = nextCodex;
+      syncCodexUiControls();
+    }
+  };
+
   try {
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-      window.addEventListener('ag-suite-prefs-changed', ev => {
-        if (ev?.detail && ('locale' in ev.detail || 'hansCode' in ev.detail || 'capsuleLang' in ev.detail)) {
-          const incoming = findSupportedLocaleEntry(ev.detail.locale || ev.detail.hansCode || ev.detail.capsuleLang);
-          if (incoming.code !== suiteEnhancerPrefs.locale) {
-            suiteEnhancerPrefs.locale = incoming.code;
-            suiteEnhancerPrefs.capsuleLang = incoming.capsuleLang;
-          }
-          if (activeSettingsTab === 'remote' && remoteSettingsState.data) {
-            renderRemoteSettingsChannels();
-          }
-          renderDockBadgeStatusNote();
-          applySuiteShadowLocale();
-        }
-      });
+      window.addEventListener('ag-suite-prefs-changed', onSuitePrefsChangedInSettings);
+      window.addEventListener('ag-codex-config-changed', onCodexConfigChanged);
     }
   } catch {}
 
@@ -4396,8 +4601,36 @@
     });
   });
 
+  el('set-feat-sidebar-quota')?.addEventListener('change', e => {
+    void setSuiteCodexUi({ quotaSidebar: Boolean(e?.target?.checked) });
+  });
+
+  el('set-codex-theme')?.addEventListener('change', e => {
+    void setSuiteCodexUi({ codexTheme: Boolean(e?.target?.checked) });
+  });
+
+  el('set-codex-pool-filter')?.addEventListener('change', e => {
+    const val = String(e?.target?.value ?? 'all').trim();
+    void setSuiteCodexUi({ quotaPoolFilter: val });
+  });
+
+  el('set-codex-quota-style')?.addEventListener('change', e => {
+    const val = String(e?.target?.value ?? 'bar').trim();
+    void setSuiteCodexUi({ quotaStyle: val });
+  });
+
+  el('set-codex-quota-other')?.addEventListener('change', e => {
+    const val = String(e?.target?.value ?? 'hidden').trim();
+    void setSuiteCodexUi({ quotaOtherStyle: val });
+  });
+
   el('btn-reset-feature-toggles')?.addEventListener('click', () => {
     void setSuiteFeatureFlags({ ...DEFAULT_SUITE_FEATURE_FLAGS });
+    if (suiteCodexUi.quotaSidebar !== true) {
+      void setSuiteCodexUi({ quotaSidebar: true });
+    } else {
+      syncCodexUiControls();
+    }
   });
 
   el('btn-toggle-heat-advanced')?.addEventListener('click', () => {
@@ -4438,6 +4671,8 @@
   transplantConfigControlsOnce();
   syncEnhancerPrefControls();
   applySuiteFeatureFlags();
+  syncFeatureFlagControls();
+  syncCodexUiControls();
   syncDockBadgeControls();
   renderQuickBuiltinPool();
   renderQuickPromptsEditor();
