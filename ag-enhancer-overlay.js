@@ -9438,6 +9438,7 @@
     const projectMap = new Map();
     const convs = [];
     const seenConv = new Set();
+    const convProjectMap = new Map();
 
     const addProject = (raw) => {
       const id = String(raw?.id || '').trim();
@@ -9503,13 +9504,20 @@
             const gName = String(g.label || '').trim();
             if (!gId || gName === 'swarm/swarm_board') continue;
             const entries = Array.isArray(g.entries) ? g.entries : [];
-            if ((gId === 'outside-of-project' || gId === 'standalone') && entries.length === 0) continue;
+            const convIds = Array.isArray(g.conversationIds) ? g.conversationIds : [];
+            if ((gId === 'outside-of-project' || gId === 'standalone') && entries.length === 0 && convIds.length === 0) continue;
             addProject({
               id: gId,
               name: gName || gId,
               kind: g.kind || 'project',
               isCollapsed: collapsedById.get(gId)
             });
+            for (const rawCid of convIds) {
+              const cid = String(rawCid || '').trim();
+              if (cid && !convProjectMap.has(cid)) {
+                convProjectMap.set(cid, { projectId: gId, projectName: gName || '' });
+              }
+            }
             for (const entry of entries) {
               const cid = String(entry?.cascadeId || entry?.conversation?.conversationId || '').trim();
               if (!cid || seenConv.has(cid)) continue;
@@ -9517,6 +9525,9 @@
               const rawSummary = String(entry?.conversation?.summary || '').replace(/\s+/g, ' ').trim();
               const cachedZh = (uiLang !== 'en' && !sidebarUserRenamedIds.has(cid)) ? sidebarZhCache.get(cid) : '';
               const pid = String(entry?.projectId || convGroupMap.get(cid) || gId).trim();
+              if (pid && !convProjectMap.has(cid)) {
+                convProjectMap.set(cid, { projectId: pid, projectName: gName || '' });
+              }
               convs.push({
                 id: cid,
                 projectId: pid,
@@ -9526,6 +9537,14 @@
                 workspaceUri: String(entry?.workspaceUriStr || '')
               });
             }
+          }
+        }
+        for (const [cid, gid] of convGroupMap.entries()) {
+          if (cid && gid && !convProjectMap.has(cid)) {
+            convProjectMap.set(cid, {
+              projectId: gid,
+              projectName: projectMap.get(gid)?.name || ''
+            });
           }
         }
       }
@@ -9551,7 +9570,8 @@
 
     return {
       projects: Array.from(projectMap.values()),
-      conversations: convs
+      conversations: convs,
+      convProjectMap
     };
   }
 
@@ -9581,11 +9601,13 @@
 
     const storeCatalog = preloadedStoreCatalog || extractSidebarStoreCatalog();
     const storeById = new Map(storeCatalog.conversations.map((c) => [c.id, c]));
+    const fiberProjMap = storeCatalog.convProjectMap instanceof Map ? storeCatalog.convProjectMap : null;
 
     for (const row of rows) {
       const id = extractSidebarRowId(row);
       if (!id || byId.has(id)) continue;
       const storeMeta = storeById.get(id);
+      const groupMeta = fiberProjMap ? fiberProjMap.get(id) : null;
       const title = getSidebarRowDisplayTitle(row);
       const active = isSidebarRowActive(row, currentId);
       const domBusy = Boolean(row.querySelector('[data-testid="status-loading-spinner"], button[aria-label*="停止"], button[aria-label*="Stop"]'));
@@ -9595,8 +9617,8 @@
         id,
         title: title.slice(0, 80),
         active,
-        projectId: storeMeta?.projectId || domProjectMap.get(id) || '',
-        projectName: storeMeta?.projectName || '',
+        projectId: storeMeta?.projectId || groupMeta?.projectId || domProjectMap.get(id) || '',
+        projectName: storeMeta?.projectName || groupMeta?.projectName || '',
         domBusy,
         domUnread,
         pinned,

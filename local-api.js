@@ -87,6 +87,11 @@ function request(url, body, token, timeoutMs = 20000) {
   });
 }
 
+function resolveRpcServicePath(method) {
+  const clean = String(method || '').trim().replace(/^\/+/, '');
+  return clean.includes('/') ? clean : `exa.language_server_pb.LanguageServerService/${clean}`;
+}
+
 function requestConnectStreamFirstFrame(baseOrigin, method, body, token, timeoutMs = 1500) {
   return new Promise((resolve) => {
     const MAX_FRAME_BYTES = 32 * 1024 * 1024;
@@ -104,7 +109,7 @@ function requestConnectStreamFirstFrame(baseOrigin, method, body, token, timeout
     const timer = setTimeout(() => finish(null), Math.max(200, Number(timeoutMs) || 1500));
     if (typeof timer.unref === 'function') timer.unref();
     try {
-      const targetUrl = `${String(baseOrigin || '').replace(/\/+$/, '')}/exa.language_server_pb.LanguageServerService/${method}`;
+      const targetUrl = `${String(baseOrigin || '').replace(/\/+$/, '')}/${resolveRpcServicePath(method)}`;
       const payloadBuf = Buffer.from(JSON.stringify(body || {}), 'utf8');
       const frame = Buffer.alloc(5 + payloadBuf.length);
       frame[0] = 0;
@@ -739,7 +744,7 @@ async function connectOrigin(rawOrigin, page = null, origins = null, extraMeta =
     ...(mergedMeta.port ? { port: mergedMeta.port } : {}),
     ...(Array.isArray(mergedMeta.pages) ? { pages: mergedMeta.pages } : {}),
     call: async (method, body) => {
-      const endpoint = `${origin}/exa.language_server_pb.LanguageServerService/${method}`;
+      const endpoint = `${origin}/${resolveRpcServicePath(method)}`;
       try {
         return JSON.parse(await request(endpoint, body, activeToken));
       } catch (err) {
@@ -780,7 +785,7 @@ function discoverFromHubDaemonFiles(options = {}) {
       },
       page: null,
       call: async (method, body) => {
-        const endpoint = `${item.origin}/exa.language_server_pb.LanguageServerService/${method}`;
+        const endpoint = `${item.origin}/${resolveRpcServicePath(method)}`;
         try {
           return JSON.parse(await request(endpoint, body, activeToken));
         } catch (err) {

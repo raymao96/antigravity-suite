@@ -29205,3 +29205,195 @@ test('pulse-capsule-overlay: M532-M537 兜底、短窗 TPS 过滤与窄屏 4 档
 
   envCap.win.__AGY_CTX_CAPSULE_DISPOSE__();
 });
+
+test('remote catalog: 电脑端已归档或已删除且从 GetAllCascadeTrajectories 消失的旧会话应被二次核对清理，不永久残留于磁盘缓存', async () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-remote-reconcile-'));
+  const stateDir = path.join(tmpRoot, 'state');
+  const configDir = path.join(tmpRoot, 'config');
+  const projDir = path.join(configDir, 'projects');
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.mkdirSync(projDir, { recursive: true });
+
+  const prevAppData = process.env.APPDATA;
+  const prevStateDir = process.env.AG_METER_STATE_DIR;
+  const prevCtxStateDir = process.env.AG_CONTEXT_METER_STATE_DIR;
+  const prevConfigDir = process.env.AG_CONFIG_DIR;
+
+  try {
+    process.env.APPDATA = stateDir;
+    process.env.AG_METER_STATE_DIR = stateDir;
+    process.env.AG_CONTEXT_METER_STATE_DIR = stateDir;
+    process.env.AG_CONFIG_DIR = configDir;
+
+    fs.writeFileSync(path.join(projDir, 'proj-1.json'), JSON.stringify({
+      id: 'proj-1',
+      name: 'Main Project',
+      projectResources: { resources: [{ folderUri: 'file:///tmp/ws-main' }] }
+    }));
+    fs.writeFileSync(path.join(projDir, 'proj-2.json'), JSON.stringify({
+      id: 'proj-2',
+      name: 'Collapsed Project',
+      projectResources: { resources: [{ folderUri: 'file:///tmp/ws-collapsed' }] }
+    }));
+
+    const nowMs = Date.now();
+    const catalogPath = path.join(stateDir, 'remote-session-catalog.json');
+    fs.writeFileSync(catalogPath, JSON.stringify({
+      version: 2,
+      updatedAt: nowMs - 10000,
+      conversations: [
+        { id: 'conv-keep', title: 'Keep Active', projectId: 'proj-1', projectName: 'Main Project', archived: false, updatedAt: nowMs - 1000, status: 'idle' },
+        { id: 'conv-stuck-ungrouped', title: 'Previously Ungrouped', projectId: 'ungrouped', projectName: '未归属项目', archived: false, updatedAt: nowMs - 1500, status: 'unknown' },
+        { id: 'conv-deleted', title: 'Deleted On Desktop', projectId: 'proj-1', projectName: 'Main Project', archived: false, updatedAt: nowMs - 2000, status: 'idle' },
+        { id: 'conv-archived-conv', title: 'Archived Via ConversationService', projectId: 'proj-1', projectName: 'Main Project', archived: false, updatedAt: nowMs - 2500, status: 'idle' },
+        { id: 'conv-alive-unloaded', title: 'Unloaded But Alive', projectId: 'proj-1', projectName: 'Main Project', archived: false, updatedAt: nowMs - 2800, status: 'idle' },
+        { id: 'conv-subagent-leak', title: 'Leaked Subagent', projectId: 'proj-1', projectName: 'Main Project', archived: false, updatedAt: nowMs - 2900, status: 'idle' },
+        { id: 'conv-legacy-fallback', title: 'Legacy Host Deleted', projectId: 'proj-1', projectName: 'Main Project', archived: false, updatedAt: nowMs - 3000, status: 'idle' },
+        { id: 'conv-transient-err', title: 'Transient Error Keep', projectId: 'proj-1', projectName: 'Main Project', archived: false, updatedAt: nowMs - 4000, status: 'idle' }
+      ]
+    }));
+
+    delete require.cache[require.resolve('../mobile-remote.js')];
+    const remoteMod = require('../mobile-remote.js');
+
+    const snap = await remoteMod.enrichSnapshotWithCatalog({
+      ok: true,
+      sessionId: 'conv-keep',
+      busy: false,
+      conversations: [
+        { id: 'conv-keep', title: 'Keep Active', active: true, projectId: '' },
+        { id: 'conv-stuck-ungrouped', title: 'Previously Ungrouped', active: false, projectId: '' }
+      ],
+      projects: []
+    }, {
+      stateDir,
+      configDir,
+      bypassCache: true,
+      localApiConnect: async () => ({
+        call: async (method, body) => {
+          if (method === 'GetAllCascadeTrajectories') {
+            return {
+              trajectorySummaries: {
+                'conv-keep': {
+                  summary: 'Keep Active',
+                  status: 'CASCADE_RUN_STATUS_IDLE',
+                  lastModifiedTime: new Date(nowMs - 1000).toISOString(),
+                  trajectoryMetadata: { projectId: 'proj-1', rootConversationId: 'conv-keep' }
+                }
+              }
+            };
+          }
+          if (method === 'product.v1.ConversationService/ListConversations') {
+            return {
+              conversations: [
+                {
+                  id: 'conv-keep',
+                  metadata: { projectId: 'proj-1', rootConversationId: 'conv-keep' },
+                  annotations: { title: 'Keep Active' },
+                  state: { runState: 'RUN_STATE_IDLE', updateTime: new Date(nowMs - 1000).toISOString() }
+                },
+                {
+                  id: 'conv-stuck-ungrouped',
+                  metadata: { projectId: 'proj-1', rootConversationId: 'conv-stuck-ungrouped' },
+                  annotations: { title: 'Previously Ungrouped' },
+                  state: { runState: 'RUN_STATE_IDLE', updateTime: new Date(nowMs - 1500).toISOString() }
+                },
+                {
+                  id: 'conv-collapsed-unloaded',
+                  metadata: { projectId: 'proj-2', rootConversationId: 'conv-collapsed-unloaded' },
+                  annotations: { title: 'Collapsed Unloaded Chat' },
+                  state: { summary: 'Fallback Summary', runState: 'RUN_STATE_IDLE', updateTime: new Date(nowMs - 1800).toISOString() }
+                }
+              ]
+            };
+          }
+          if (method === 'product.v1.ConversationService/GetConversation') {
+            const cid = body?.conversationId;
+            if (cid === 'conv-deleted') {
+              // 模拟 local-api.js 截断至 200 字符的真实 Connect 404 not_found 响应
+              throw new Error('HTTP 404: {"code":"not_found","message":"not_found: conversation conv-deleted-00000000-0000-0000-0000-000000000000 not found: conversation conv-deleted-00000000-0000-0000-0000-000000000000 not found (error ID: 517c');
+            }
+            if (cid === 'conv-archived-conv') {
+              // 真实宿主 GetCascadeTrajectory 不含 annotations.archived，仅 ConversationService/GetConversation 返回
+              return {
+                id: 'conv-archived-conv',
+                metadata: { projectId: 'proj-1', rootConversationId: 'conv-archived-conv' },
+                annotations: { title: 'Archived Via ConversationService', archived: true },
+                state: { runState: 'RUN_STATE_IDLE' }
+              };
+            }
+            if (cid === 'conv-alive-unloaded') {
+              return {
+                id: 'conv-alive-unloaded',
+                metadata: { projectId: 'proj-1', rootConversationId: 'conv-alive-unloaded' },
+                annotations: { title: 'Unloaded But Alive' },
+                state: { runState: 'RUN_STATE_IDLE' }
+              };
+            }
+            if (cid === 'conv-subagent-leak') {
+              return {
+                id: 'conv-subagent-leak',
+                metadata: { projectId: 'proj-1', parentConversationId: 'conv-keep', rootConversationId: 'conv-keep' },
+                state: { runState: 'RUN_STATE_IDLE' }
+              };
+            }
+            if (cid === 'conv-legacy-fallback') {
+              throw new Error('HTTP 404: {"code":"unimplemented","message":"service product.v1.ConversationService is not implemented on this legacy host build"}');
+            }
+            if (cid === 'conv-transient-err') {
+              throw new Error('ETIMEDOUT');
+            }
+          }
+          if (method === 'GetCascadeTrajectory') {
+            if (body?.cascadeId === 'conv-archived-conv') {
+              // 验证不会因 GetCascadeTrajectory 无 annotations.archived 而漏放
+              return { trajectory: { cascadeId: 'conv-archived-conv', steps: [] }, status: 'CASCADE_RUN_STATUS_IDLE' };
+            }
+            if (body?.cascadeId === 'conv-legacy-fallback') {
+              throw new Error('HTTP 404: {"code":"not_found","message":"not_found: trajectory not found"}');
+            }
+          }
+          return {};
+        }
+      })
+    });
+
+    const ids = snap.conversations.map((c) => c.id);
+    assert.ok(ids.includes('conv-keep'), '活跃会话应保留');
+    assert.ok(ids.includes('conv-stuck-ungrouped'), '原先卡在 ungrouped 的会话应保留');
+    assert.ok(ids.includes('conv-collapsed-unloaded'), '未点开且侧栏折叠的非归档会话应从 ListConversations 自动补全');
+    const stuckItem = snap.conversations.find((c) => c.id === 'conv-stuck-ungrouped');
+    const collapsedItem = snap.conversations.find((c) => c.id === 'conv-collapsed-unloaded');
+    assert.equal(stuckItem?.projectId, 'proj-1', '原先卡在 ungrouped 的未加载会话应无需点击直接归位至 proj-1');
+    assert.equal(stuckItem?.projectName, 'Main Project', '归位后项目名称不得残留未归属项目');
+    assert.equal(collapsedItem?.projectId, 'proj-2', '折叠未加载会话应直接归属 proj-2');
+    assert.equal(collapsedItem?.projectName, 'Collapsed Project', '折叠未加载会话应解析出正确项目名');
+    assert.equal(collapsedItem?.status, 'idle', 'RUN_STATE_IDLE 应映射为 idle 状态');
+    assert.equal(snap.projects.some((p) => p.id === 'ungrouped'), false, '全部归位后不应再出现未归属项目分组');
+    assert.ok(ids.includes('conv-alive-unloaded'), '仅从内存轨迹卸载但未归档/未删除的会话应保留');
+    assert.ok(ids.includes('conv-transient-err'), '临时超时未确认删除的会话应保留（防缩水）');
+    assert.equal(ids.includes('conv-deleted'), false, 'ConversationService 返回截断 404 not_found 的已删除会话应被清理');
+    assert.equal(ids.includes('conv-archived-conv'), false, 'ConversationService 返回 annotations.archived=true 的会话应被清理');
+    assert.equal(ids.includes('conv-subagent-leak'), false, '漏入根目录的 Subagent 会话应被识别并移除');
+    assert.equal(ids.includes('conv-legacy-fallback'), false, '旧版宿主 ConversationService unimplemented 时应回退 GetCascadeTrajectory 清理');
+
+    const persisted = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
+    const persistedDeleted = persisted.conversations.find((c) => c.id === 'conv-deleted');
+    const persistedArchived = persisted.conversations.find((c) => c.id === 'conv-archived-conv');
+    const persistedLegacy = persisted.conversations.find((c) => c.id === 'conv-legacy-fallback');
+    assert.equal(persistedDeleted?.archived, true, '已删除会话落盘应标记 archived=true 墓碑');
+    assert.equal(persistedArchived?.archived, true, '已归档会话落盘应标记 archived=true 墓碑');
+    assert.equal(persistedLegacy?.archived, true, '旧版回退确认删除的会话落盘应标记 archived=true 墓碑');
+    assert.ok(persisted.subagentIds.includes('conv-subagent-leak'), 'Subagent 应归入 subagentIds 防止再次回流');
+  } finally {
+    if (prevAppData === undefined) delete process.env.APPDATA;
+    else process.env.APPDATA = prevAppData;
+    if (prevStateDir === undefined) delete process.env.AG_METER_STATE_DIR;
+    else process.env.AG_METER_STATE_DIR = prevStateDir;
+    if (prevCtxStateDir === undefined) delete process.env.AG_CONTEXT_METER_STATE_DIR;
+    else process.env.AG_CONTEXT_METER_STATE_DIR = prevCtxStateDir;
+    if (prevConfigDir === undefined) delete process.env.AG_CONFIG_DIR;
+    else process.env.AG_CONFIG_DIR = prevConfigDir;
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});

@@ -1969,7 +1969,8 @@ const CREDIBLE_TRAJ_IDLE_STATUSES = new Set([
   'CASCADE_RUN_STATUS_COMPLETED',
   'CASCADE_RUN_STATUS_STOPPED',
   'CASCADE_RUN_STATUS_CANCELED',
-  'CASCADE_RUN_STATUS_CANCELLED'
+  'CASCADE_RUN_STATUS_CANCELLED',
+  'RUN_STATE_IDLE'
 ]);
 const CREDIBLE_STATUS_VALUES = new Set(['waiting', 'running', 'error', 'idle']);
 
@@ -1991,6 +1992,8 @@ function normalizeTrajectoryStatus(rawStatus, termReason, options = {}) {
   );
   if (
     s === 'CASCADE_RUN_STATUS_RUNNING' ||
+    s === 'RUN_STATE_RUNNING' ||
+    s === 'RUN_STATE_CANCELLING' ||
     options.subagentRunning ||
     options.domBusy ||
     options.strongDomBusy ||
@@ -2248,7 +2251,12 @@ function classifyLanguageServerRpcError(err, method = '') {
       }
     } catch {}
   }
-  const structCode = String(parsedBody?.code || err?.connectCode || '').trim().toLowerCase();
+  let truncatedCode = '';
+  if (!parsedBody && rawBody.startsWith('{')) {
+    const codeMatch = rawBody.match(/"code"\s*:\s*"([^"]+)"/i);
+    if (codeMatch) truncatedCode = codeMatch[1];
+  }
+  const structCode = String(parsedBody?.code || truncatedCode || err?.connectCode || '').trim().toLowerCase();
   const structMessage = String(parsedBody?.message || '').trim().toLowerCase();
   const isGatewayErrorStatus = httpStatus === 502 || httpStatus === 503 || httpStatus === 504;
   const EXPLICIT_HTTP_REJECT_STATUSES = new Set([400, 404, 405, 409, 412, 422, 501]);
@@ -2275,6 +2283,8 @@ function classifyLanguageServerRpcError(err, method = '') {
     ok: false,
     kind: isConfirmedRejected ? 'confirmed_not_executed' : 'error_unknown',
     confirmedNotExecuted: isConfirmedRejected,
+    httpStatus,
+    connectCode: structCode,
     error: msg || `${method || 'RPC'} 调用失败`
   };
 }
@@ -2421,7 +2431,7 @@ function createSessionCatalogStore() {
         const savedStatus = (CREDIBLE_STATUS_VALUES.has(item.status) || item.status === 'unknown') ? item.status : 'unknown';
         map.set(cid, { ...item, id: cid, status: savedStatus, statusLabel: statusToLabel(savedStatus) });
       }
-      entry = { dir, filePath, map, subagentIds, subagentRoots, subagentStates, lastSig: '', lastActiveSessionId: '', catalogRevision: '' };
+      entry = { dir, filePath, map, subagentIds, subagentRoots, subagentStates, lastSig: '', lastActiveSessionId: '', catalogRevision: '', missingProbeCache: new Map() };
       registryByDir.set(dir, entry);
     }
     return entry;
@@ -2472,9 +2482,36 @@ function createSessionCatalogStore() {
     try {
       const api = await resolveLocalApi(options);
       if (!api || typeof api.call !== 'function') return null;
+      const fetchActiveServiceConvs = async (client) => {
+        const map = {};
+        let pageToken = '';
+        let ok = false;
+        for (let page = 0; page < 5; page++) {
+          const reqBody = pageToken
+            ? { pageSize: 100, includeArchived: false, pageToken }
+            : { pageSize: 100, includeArchived: false };
+          const res = await withRaceTimeout(
+            Promise.resolve()
+              .then(() => client.call('product.v1.ConversationService/ListConversations', reqBody))
+              .catch(() => null),
+            1200,
+            null
+          );
+          if (!res || !Array.isArray(res.conversations)) break;
+          ok = true;
+          for (const item of res.conversations) {
+            const cid = String(item?.id || '').trim();
+            if (cid) map[cid] = item;
+          }
+          const nextTok = String(res.nextPageToken || '').trim();
+          if (!nextTok || nextTok === pageToken || res.conversations.length === 0) break;
+          pageToken = nextTok;
+        }
+        return ok ? map : null;
+      };
       const runBatch = async (client, allowThrow) => {
         let trajFailed = false;
-        const [trajRes, listProjRes] = await Promise.all([
+        const [trajRes, listProjRes, serviceConvs] = await Promise.all([
           withRaceTimeout(
             Promise.resolve()
               .then(() => client.call('GetAllCascadeTrajectories', {}))
@@ -2486,9 +2523,10 @@ function createSessionCatalogStore() {
             1500,
             null
           ),
-          withRaceTimeout(Promise.resolve().then(() => client.call('ListProjects', {})).catch(() => null), 1000, null)
+          withRaceTimeout(Promise.resolve().then(() => client.call('ListProjects', {})).catch(() => null), 1000, null),
+          fetchActiveServiceConvs(client).catch(() => null)
         ]);
-        return { trajRes, listProjRes, trajFailed };
+        return { trajRes, listProjRes, serviceConvs, trajFailed };
       };
       let batch = await runBatch(api, !customConnect).catch(() => null);
       if ((!batch || batch.trajFailed) && !customConnect) {
@@ -2500,13 +2538,17 @@ function createSessionCatalogStore() {
       }
       const trajRes = batch?.trajRes || null;
       const listProjRes = batch?.listProjRes || null;
+      const serviceConvs = (batch?.serviceConvs && typeof batch.serviceConvs === 'object') ? batch.serviceConvs : null;
       const hasSummaries = Boolean(trajRes && trajRes.trajectorySummaries && typeof trajRes.trajectorySummaries === 'object');
+      const hasServiceConvs = Boolean(serviceConvs);
       const data = {
         trajOk: hasSummaries,
+        serviceConvsOk: hasServiceConvs,
         summaries: hasSummaries ? trajRes.trajectorySummaries : {},
+        serviceConvs: hasServiceConvs ? serviceConvs : {},
         projectIds: Array.isArray(listProjRes?.projectIds) ? listProjRes.projectIds : []
       };
-      if (!customConnect && hasSummaries) {
+      if (!customConnect && (hasSummaries || hasServiceConvs)) {
         trajCache.at = Date.now();
         trajCache.data = data;
       }
@@ -2550,37 +2592,51 @@ function createSessionCatalogStore() {
       if (c && c.id) snapConvMap.set(String(c.id), c);
     }
     const summaries = trajData?.summaries || {};
+    const serviceConvs = trajData?.serviceConvs || {};
     const rootTrajs = new Map();
+    const rootServiceConvs = new Map();
     const subagentRollup = new Map();
-    const candidateIds = new Set([...store.map.keys(), ...Object.keys(summaries), ...snapConvMap.keys()]);
+    const candidateIds = new Set([
+      ...store.map.keys(),
+      ...Object.keys(summaries),
+      ...Object.keys(serviceConvs),
+      ...snapConvMap.keys()
+    ]);
     const seenSubIds = new Set();
     const rootIds = [];
 
     for (const cid of candidateIds) {
       const t = summaries[cid];
+      const lc = serviceConvs[cid];
       const sc = snapConvMap.get(cid);
       const cached = store.map.get(cid);
-      const subInfo = inspectSubagentRecord(cid, t, sc || cached, store.subagentIds, store.subagentRoots);
+      const subTrajHint = t || (lc?.metadata ? { trajectoryMetadata: lc.metadata } : null);
+      const subInfo = inspectSubagentRecord(cid, subTrajHint, sc || cached, store.subagentIds, store.subagentRoots);
       if (subInfo.isSub) {
         store.subagentIds.add(cid);
         seenSubIds.add(cid);
         const rootId = subInfo.rootId || store.subagentRoots.get(cid) || store.subagentStates.get(cid)?.rootId || '';
         if (rootId) store.subagentRoots.set(cid, rootId);
         const prevSub = store.subagentStates.get(cid);
-        const hasChildData = Boolean(t || sc);
+        const hasChildData = Boolean(t || lc || sc);
         const childStatus = hasChildData
-          ? normalizeTrajectoryStatus(t?.status, t?.latestExecutorTerminationReason, {
+          ? normalizeTrajectoryStatus(t?.status || lc?.state?.runState, t?.latestExecutorTerminationReason, {
               domBusy: Boolean(sc?.domBusy),
               domStatus: sc?.status,
               fallbackStatus: prevSub?.status
             })
           : (prevSub?.status || 'unknown');
-        const childArchived = t?.annotations?.archived === true;
+        const childArchived = t?.annotations?.archived === true || lc?.annotations?.archived === true;
         if (!childArchived && (childStatus === 'waiting' || childStatus === 'running') && rootId) {
           store.subagentStates.set(cid, {
             rootId,
             status: childStatus,
-            updatedAt: Math.max(parseIsoTimestampMs(t?.lastModifiedTime), parseIsoTimestampMs(sc?.timeKey), Number(prevSub?.updatedAt) || 0)
+            updatedAt: Math.max(
+              parseIsoTimestampMs(t?.lastModifiedTime),
+              parseIsoTimestampMs(lc?.state?.updateTime),
+              parseIsoTimestampMs(sc?.timeKey),
+              Number(prevSub?.updatedAt) || 0
+            )
           });
         } else if (hasChildData && (childArchived || childStatus === 'idle' || childStatus === 'error')) {
           store.subagentStates.delete(cid);
@@ -2591,7 +2647,12 @@ function createSessionCatalogStore() {
             if (childStatus === 'waiting') prevRoll.waiting = true;
             else if (childStatus === 'running') prevRoll.running = true;
           }
-          const modMs = Math.max(parseIsoTimestampMs(t?.lastModifiedTime), parseIsoTimestampMs(sc?.timeKey), Number(prevSub?.updatedAt) || 0);
+          const modMs = Math.max(
+            parseIsoTimestampMs(t?.lastModifiedTime),
+            parseIsoTimestampMs(lc?.state?.updateTime),
+            parseIsoTimestampMs(sc?.timeKey),
+            Number(prevSub?.updatedAt) || 0
+          );
           if (modMs > prevRoll.maxUpdatedAt) prevRoll.maxUpdatedAt = modMs;
           subagentRollup.set(rootId, prevRoll);
         }
@@ -2599,6 +2660,7 @@ function createSessionCatalogStore() {
         continue;
       }
       if (t) rootTrajs.set(cid, t);
+      if (lc) rootServiceConvs.set(cid, lc);
       rootIds.push(cid);
     }
 
@@ -2646,49 +2708,194 @@ function createSessionCatalogStore() {
     const hasPendingApprovals = (Array.isArray(snap.pendingApprovals) && snap.pendingApprovals.length > 0)
       || (Array.isArray(snap.pendingPrompts) && snap.pendingPrompts.length > 0);
 
+    // 当全量轨迹列表成功返回但旧缓存中的非归档会话同时从轨迹、活跃会话列表与桌面快照消失时，优先通过 ConversationService/GetConversation 二次核对是否已在电脑端归档或删除（旧版宿主不支持时回退 GetCascadeTrajectory）
+    const reconcileArchivedIds = new Set();
+    const reconcileSubagentRoots = new Map();
+    const reconcileProjectIds = new Map();
+    const serviceConvsOk = Boolean(trajData && trajData.serviceConvsOk === true);
+    if ((trajFetchedOk || serviceConvsOk) && !options.skipMissingReconcile) {
+      const missingProbeTtlMs = 60000;
+      const maxProbes = Number.isFinite(Number(options.maxMissingProbes)) ? Math.max(0, Number(options.maxMissingProbes)) : 10;
+      const missingCandidates = [];
+      for (const id of rootIds) {
+        const prev = store.map.get(id);
+        const t = rootTrajs.get(id);
+        const lc = rootServiceConvs.get(id);
+        const sc = snapConvMap.get(id);
+        if (t || (lc && lc.annotations?.archived !== true)) {
+          store.missingProbeCache.delete(id);
+          continue;
+        }
+        const isActive = Boolean((activeSessionId && id === activeSessionId) || sc?.active);
+        if (!prev || prev.archived || sc || isActive) continue;
+        if (prev.projectId && archivedProjectIds?.has(prev.projectId)) continue;
+        const probeRec = store.missingProbeCache.get(id);
+        if (!probeRec || (nowMs - probeRec.checkedAt) >= missingProbeTtlMs) {
+          missingCandidates.push({ id, updatedAt: Number(prev.updatedAt) || 0, checkedAt: probeRec?.checkedAt || 0 });
+        }
+      }
+      if (missingCandidates.length && maxProbes > 0) {
+        missingCandidates.sort((a, b) => (a.checkedAt - b.checkedAt) || (b.updatedAt - a.updatedAt));
+        const batch = missingCandidates.slice(0, maxProbes);
+        await Promise.all(batch.map(async ({ id: cid }) => {
+          const convOutcome = await callLocalLanguageServerDetailed(
+            'product.v1.ConversationService/GetConversation',
+            { conversationId: cid },
+            800,
+            options
+          );
+          if (convOutcome.ok && convOutcome.result && typeof convOutcome.result === 'object') {
+            const rawConv = convOutcome.result;
+            const conv = (rawConv.conversation && typeof rawConv.conversation === 'object') ? rawConv.conversation : rawConv;
+            const hasConvFields = Boolean(conv.id || conv.metadata || conv.annotations || conv.state);
+            if (hasConvFields) {
+              const parentId = String(conv.metadata?.parentConversationId || '').trim();
+              const rootId = String(conv.metadata?.rootConversationId || '').trim();
+              if (parentId || (rootId && rootId !== cid)) {
+                reconcileSubagentRoots.set(cid, (rootId && rootId !== cid) ? rootId : parentId);
+                store.missingProbeCache.delete(cid);
+                return;
+              }
+              const isConvArchived = Boolean(
+                conv.archived === true ||
+                conv.annotations?.archived === true ||
+                conv.metadata?.archived === true
+              );
+              if (isConvArchived) {
+                reconcileArchivedIds.add(cid);
+                store.missingProbeCache.delete(cid);
+              } else {
+                const probedPid = String(conv.metadata?.projectId || '').trim();
+                if (probedPid) reconcileProjectIds.set(cid, probedPid);
+                store.missingProbeCache.set(cid, { state: 'alive', checkedAt: nowMs });
+              }
+              return;
+            }
+          } else if (!convOutcome.ok) {
+            const isConvUnimplemented = convOutcome.httpStatus === 501 ||
+              convOutcome.connectCode === 'unimplemented' ||
+              /\bunimplemented\b|unknown service|404 page not found/i.test(String(convOutcome.error || ''));
+            if (!isConvUnimplemented) {
+              const isConvNotFound = convOutcome.kind === 'confirmed_not_executed' && (
+                convOutcome.connectCode === 'not_found' ||
+                (convOutcome.httpStatus === 404 && /\bnot[_ ]?found\b|does not exist|no such/i.test(String(convOutcome.error || '')))
+              );
+              if (isConvNotFound) {
+                reconcileArchivedIds.add(cid);
+                store.missingProbeCache.delete(cid);
+              } else {
+                store.missingProbeCache.set(cid, { state: 'retry', checkedAt: nowMs - 45000 });
+              }
+              return;
+            }
+          }
+
+          const outcome = await callLocalLanguageServerDetailed(
+            'GetCascadeTrajectory',
+            { cascadeId: cid, trajectoryVerbosity: 0 },
+            800,
+            options
+          );
+          if (outcome.ok && outcome.result && typeof outcome.result === 'object') {
+            const res = outcome.result;
+            const isTrajArchived = Boolean(
+              res.archived === true ||
+              res.annotations?.archived === true ||
+              res.trajectory?.archived === true ||
+              res.trajectory?.annotations?.archived === true ||
+              res.trajectory?.trajectoryMetadata?.archived === true
+            );
+            if (isTrajArchived) {
+              reconcileArchivedIds.add(cid);
+              store.missingProbeCache.delete(cid);
+            } else {
+              store.missingProbeCache.set(cid, { state: res.trajectory ? 'alive' : 'unknown', checkedAt: nowMs });
+            }
+          } else if (!outcome.ok) {
+            const isNotFound = outcome.kind === 'confirmed_not_executed' && (
+              outcome.connectCode === 'not_found' ||
+              (outcome.httpStatus === 404 && /\bnot[_ ]?found\b|does not exist|no such/i.test(String(outcome.error || '')))
+            );
+            if (isNotFound) {
+              reconcileArchivedIds.add(cid);
+              store.missingProbeCache.delete(cid);
+            } else {
+              store.missingProbeCache.set(cid, { state: 'retry', checkedAt: nowMs - 45000 });
+            }
+          }
+        }));
+        if (store.missingProbeCache.size > 1000) {
+          for (const k of store.missingProbeCache.keys()) {
+            if (store.missingProbeCache.size <= 1000) break;
+            store.missingProbeCache.delete(k);
+          }
+        }
+      }
+    }
+
     for (const id of rootIds) {
+      if (reconcileSubagentRoots.has(id)) {
+        const subRoot = reconcileSubagentRoots.get(id);
+        store.subagentIds.add(id);
+        if (subRoot) store.subagentRoots.set(id, subRoot);
+        store.map.delete(id);
+        continue;
+      }
       const prev = store.map.get(id);
       const t = rootTrajs.get(id);
+      const lc = rootServiceConvs.get(id);
       const sc = snapConvMap.get(id);
       const roll = subagentRollup.get(id);
       const isActive = Boolean((activeSessionId && id === activeSessionId) || sc?.active);
 
       const snapPid = String(sc?.projectId || '').trim();
       const trajPid = String(t?.trajectoryMetadata?.projectId || '').trim();
+      const convPid = String(lc?.metadata?.projectId || reconcileProjectIds.get(id) || '').trim();
       const wsPid = t ? matchWorkspaceToProjectId(t, projectsMeta) : '';
-      let projectId = (snapPid && snapPid !== 'ungrouped') ? snapPid : (trajPid || wsPid || String(prev?.projectId || '').trim());
+      const prevPidRaw = String(prev?.projectId || '').trim();
+      const prevPid = prevPidRaw === 'ungrouped' ? '' : prevPidRaw;
+      let projectId = (snapPid && snapPid !== 'ungrouped') ? snapPid : (trajPid || convPid || wsPid || prevPid);
       if (projectId === 'outside-of-project' && !projectNameMap.has('outside-of-project')) {
         projectNameMap.set('outside-of-project', '独立对话');
       }
       const projArchived = Boolean(projectId && archivedProjectIds?.has(projectId));
+      const trajArchived = Boolean(t && (t.archived === true || t.annotations?.archived === true || t.trajectoryMetadata?.archived === true));
+      const lcArchived = Boolean(lc && (lc.archived === true || lc.annotations?.archived === true || lc.metadata?.archived === true));
+      const reconciledArchived = reconcileArchivedIds.has(id);
 
-      const archived = ((t?.annotations?.archived === true || projArchived) && !isActive)
+      const archived = ((trajArchived || lcArchived || projArchived || reconciledArchived) && !isActive)
         ? true
-        : ((t && !projArchived) ? false : Boolean(prev?.archived && !isActive));
+        : (((t || lc) && !projArchived && !trajArchived && !lcArchived) ? false : Boolean(prev?.archived && !isActive));
 
       const snapTitle = String(sc?.title || '').trim();
       const isUsefulSnapTitle = Boolean(snapTitle && snapTitle !== id.slice(0, 8));
-      const trajTitle = String(t?.annotations?.title || t?.summary || '').trim();
+      const trajTitle = String(t?.annotations?.title || lc?.annotations?.title || t?.summary || lc?.state?.summary || '').trim();
       const title = (isUsefulSnapTitle ? snapTitle : '') || trajTitle || prev?.title || snapTitle || id.slice(0, 8);
 
-      const modMs = parseIsoTimestampMs(t?.lastModifiedTime);
+      const modMs = Math.max(
+        parseIsoTimestampMs(t?.lastModifiedTime),
+        parseIsoTimestampMs(lc?.state?.updateTime),
+        parseIsoTimestampMs(lc?.metadata?.createTime)
+      );
       const scTimeMs = parseIsoTimestampMs(sc?.timeKey);
       const subMs = roll?.maxUpdatedAt || 0;
       const updatedAt = Math.max(modMs, scTimeMs, subMs, Number(prev?.updatedAt) || 0) || nowMs;
 
       const viewMs = Math.max(
         parseIsoTimestampMs(t?.annotations?.lastUserViewTime),
+        parseIsoTimestampMs(lc?.annotations?.lastUserViewTime),
         Number(prev?.lastViewedAt) || 0,
         isActive ? Math.max(updatedAt, 1) : 0
       );
 
       const pinned = Boolean(
         sc?.pinned !== undefined ? sc.pinned
-          : (t?.annotations?.pinned !== undefined ? t.annotations.pinned : prev?.pinned)
+          : (t?.annotations?.pinned !== undefined ? t.annotations.pinned
+            : (lc?.annotations?.pinned !== undefined ? lc.annotations.pinned : prev?.pinned))
       );
 
       const hasStrongActiveDomBusy = Boolean(isActive && (snap.strongDomBusy || snap.busySignal));
-      const status = normalizeTrajectoryStatus(t?.status, t?.latestExecutorTerminationReason, {
+      const status = normalizeTrajectoryStatus(t?.status || lc?.state?.runState, t?.latestExecutorTerminationReason, {
         hasPendingApprovals: isActive && hasPendingApprovals,
         activeBusy: isActive && Boolean(snap.busy),
         strongDomBusy: hasStrongActiveDomBusy,
@@ -2701,7 +2908,7 @@ function createSessionCatalogStore() {
       if (
         isActive &&
         status === 'idle' &&
-        CREDIBLE_TRAJ_IDLE_STATUSES.has(String(t?.status || '').trim()) &&
+        CREDIBLE_TRAJ_IDLE_STATUSES.has(String(t?.status || lc?.state?.runState || '').trim()) &&
         !hasStrongActiveDomBusy &&
         !sc?.domBusy &&
         !roll?.running &&
@@ -2710,10 +2917,13 @@ function createSessionCatalogStore() {
         snap = { ...snap, busy: false };
       }
 
+      const prevValidProjName = (prevPid && prevPid === projectId && prev?.projectName && prev.projectName !== '未归属项目')
+        ? prev.projectName
+        : '';
       const projectName = String(
         projectNameMap.get(projectId) ||
         sc?.projectName ||
-        prev?.projectName ||
+        prevValidProjName ||
         (projectId ? projectId : '未归属项目')
       );
 
