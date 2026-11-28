@@ -23,7 +23,7 @@
 
 3. **📱 Ultra-Fast Mobile & Desktop Remote Control (Much Faster Than Official)**
    - **Direct local speed & flexible channels**: Scan the QR code under **`📱 Remote`** and add to iOS/Android Home Screen for a full-screen PWA app (desktop browsers get an adaptive wide layout). Automatically picks the fastest route across **LAN** (same Wi-Fi), **Tailscale** (auto HTTPS without browser warnings), local network auto-discovery, and a **default no-login Cloudflare Quick Tunnel (custom domains supported)** — toggle any channel in **`⚙️` → `📱 Remote`**.
-   - **Full mobile/desktop workspace**: Browse project-grouped history, create projects within `$HOME`, inspect diffs/artifacts, upload images/files, manage queued messages (send now / edit / cancel), review approval cards, sync the quick-prompts bar (**`⚡Send / ✎Insert`**), receive background **Web Push alerts & PWA unread icon badges**, and send safely via `Cmd/Ctrl + Enter` (with Safari IME protection).
+   - **Full mobile/desktop workspace**: Browse project-grouped history, create projects within `$HOME`, inspect diffs/artifacts, upload images/files, manage queued messages (send now / edit / cancel), review approval cards, sync the quick-prompts bar (**`⚡Send / ✎Insert`**), auto-fold long messages & code blocks (synced with desktop) with a left-edge message rail for tap/scrub jumping, receive background **Web Push alerts & PWA unread icon badges**, and send safely via `Cmd/Ctrl + Enter` (with Safari IME protection).
 
    <p align="center">
      <img src="../assets/mobile-preview.jpg" alt="Mobile PWA remote control preview" width="82%">
@@ -33,7 +33,7 @@
    - **14 built-in recommended prompts** + **10 one-click popular templates**, plus custom prompts supporting **`Insert`** (stage in composer to add logs) vs **`⚡Send`** (submit immediately with `↵`), protected by draft guard and **`⌘/Ctrl + click`** inversion.
    - One-click **`✨ Optimize` / `↩ Undo`** using fast lightweight models and context-aware **`Tab / →`** next-step suggestions.
 5. **🧰 Quick Desktop Utilities**
-   - **`⌘1`–`⌘9`** (hold `⌘` for badges), **`⌘⇧[` / `⌘⇧]`**, and **`⌃Tab`** to switch chats instantly; floating message navigator bar; inline **`Edit` + `⌘S`** editing inside preview panes.
+   - **`⌘1`–`⌘9`** (hold `⌘` for badges), **`⌘⇧[` / `⌘⇧]`**, and **`⌃Tab`** to switch chats instantly; floating message navigator bar; **long message & code block folding** (auto-folds long code blocks and older replies with leading preview while keeping streaming/latest replies expanded, synced with mobile and toggled in **`⚙️` → `⚡ Chat & Efficiency`**); inline **`Edit` + `⌘S`** editing inside preview panes; **right-click context menu** on chat file/folder links to copy decoded paths, folder paths, `path:line` anchors, or reveal in Finder.
    - **`>_ CLI`** one-click Antigravity CLI (`agy`) launcher supporting popular macOS terminals (plus optional proxy settings for CLI & update checks under **`⚙️` → `🧰 Terminal & Network`**). Compatible with Antigravity **`2.32.x–2.34.0`** and common Node version managers.
 6. **📊 Context Window, 240K Auto-Compact & Dual Quota Capsules**
    - Top-bar ring meter, token breakdown, 52-week heatmap, API cost comparison, and **Gemini 4 / Claude** 5-hour + weekly quota capsules (`G4` / `C`). Configure plan tiers and billing currency in **`⚙️` → `📊 Plan & Subscription`**.

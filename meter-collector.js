@@ -747,6 +747,314 @@ async function resolveCollectCsrfToken(origin, signal, options = {}, isSupersede
   throw new Error('后台鉴权信息尚未就绪');
 }
 
+function isCheckpointTrajectoryStep(step) {
+  return Boolean(step && typeof step === 'object' && ((step.checkpoint && typeof step.checkpoint === 'object') || /CHECKPOINT/i.test(String(step.type || ''))));
+}
+
+function extractGeneratorRowMaxStepIndex(row) {
+  if (!row || typeof row !== 'object') return -1;
+  let maxIdx = -1;
+  if (Array.isArray(row.stepIndices)) {
+    for (const v of row.stepIndices) if (Number.isFinite(Number(v)) && Number(v) > maxIdx) maxIdx = Math.trunc(Number(v));
+  }
+  const single = row.stepIndex ?? row.step_index;
+  return (single !== undefined && single !== null && Number.isFinite(Number(single))) ? Math.max(maxIdx, Math.trunc(Number(single))) : maxIdx;
+}
+
+function parseTrajectoryTimestampMs(val) {
+  if (!val) return 0;
+  if (typeof val === 'number' && Number.isFinite(val)) {
+    const ms = val < 1e11 ? val * 1000 : val;
+    return ms > 946684800000 ? ms : 0;
+  }
+  if (typeof val === 'string') {
+    const t = Date.parse(val.trim().replace(/(\.\d{3})\d+(Z|[+-]\d{2}:?\d{2})$/, '$1$2'));
+    return Number.isFinite(t) && t > 946684800000 ? t : 0;
+  }
+  if (typeof val === 'object') {
+    const sec = Number(val.seconds ?? val.unixSeconds ?? val.secs ?? 0);
+    const nanos = Number(val.nanos ?? 0);
+    if (Number.isFinite(sec) && sec > 946684800) return Math.round(sec * 1000 + (Number.isFinite(nanos) ? nanos / 1e6 : 0));
+  }
+  return 0;
+}
+
+function estimateTokensQuick(text) {
+  if (!text || typeof text !== 'string') return 0;
+  let ascii = 0, nonAscii = 0;
+  for (let i = 0, len = Math.min(text.length, 250000); i < len; i++) {
+    if (text.charCodeAt(i) < 128) ascii++; else nonAscii++;
+  }
+  return Math.ceil(ascii / 4 + nonAscii / 1.5);
+}
+
+function estimatePostCheckpointStepText(step) {
+  if (!step || typeof step !== 'object') return '';
+  const parts = [];
+  const pushUniq = (s) => { if (typeof s === 'string' && s && !parts.includes(s)) parts.push(s); };
+  const pushCalls = (list) => {
+    if (!Array.isArray(list)) return;
+    for (const tc of list) {
+      if (!tc) continue;
+      const args = tc.argumentsJson ?? tc.arguments ?? tc.args ?? tc.function?.arguments;
+      pushUniq(typeof args === 'string' ? args : (args && typeof args === 'object' ? JSON.stringify(args) : ''));
+    }
+  };
+  if (step.checkpoint && typeof step.checkpoint === 'object') {
+    const sum = step.checkpoint.sessionSummary || step.checkpoint.summary || '';
+    if (typeof sum === 'string' && sum) parts.push(sum);
+  } else if (/CHECKPOINT/i.test(String(step.type || ''))) {
+    const topSum = step.sessionSummary || step.summary || '';
+    if (typeof topSum === 'string' && topSum) parts.push(topSum);
+  }
+  if (step.userInput) {
+    const u = step.userInput;
+    if (typeof u.userResponse === 'string' && u.userResponse) parts.push(u.userResponse);
+    if (typeof u.text === 'string' && u.text && u.text !== u.userResponse) parts.push(u.text);
+    if (Array.isArray(u.items)) for (const it of u.items) pushUniq(it?.text);
+  }
+  if (step.plannerResponse) {
+    const pr = step.plannerResponse;
+    const mainResp = (typeof pr.modifiedResponse === 'string' && pr.modifiedResponse) ? pr.modifiedResponse : (typeof pr.response === 'string' ? pr.response : '');
+    if (mainResp) parts.push(mainResp);
+    if (typeof pr.thinking === 'string' && pr.thinking) parts.push(pr.thinking);
+    if (typeof pr.text === 'string' && pr.text && pr.text !== mainResp) parts.push(pr.text);
+    pushCalls(pr.toolCalls);
+  }
+  pushUniq(step.metadata?.toolCall?.argumentsJson);
+  if (typeof step.content === 'string' && step.content) parts.push(step.content);
+  else if (Array.isArray(step.content)) {
+    for (const c of step.content) {
+      if (typeof c === 'string' && c) parts.push(c);
+      else if (c && typeof c.text === 'string' && c.text) parts.push(c.text);
+    }
+  }
+  for (const k of ['text', 'thinking', 'response', 'message']) pushUniq(step[k]);
+  pushCalls(step.toolCalls || step.tool_calls);
+  return parts.join('\n');
+}
+
+function isCollectorShadowOrImageModel(modelId) {
+  if (!modelId) return false;
+  const s = String(modelId).toUpperCase();
+  return s.includes('_M50') || s === 'M50' || s.includes('FLASH_LITE') || s.includes('_M21') || s === 'M21' || s.includes('IMAGE') || s.includes('BANANA');
+}
+
+function parseCollectorDurationSec(raw) {
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) return raw;
+  if (!raw) return 0;
+  if (typeof raw === 'string') {
+    const m = raw.trim().match(/^(\d+(?:\.\d+)?)\s*(ms|s)?$/i);
+    if (!m) return 0;
+    const val = Number(m[1]);
+    return (Number.isFinite(val) && val >= 0) ? (String(m[2] || '').toLowerCase() === 'ms' ? val / 1000 : val) : 0;
+  }
+  if (typeof raw === 'object' && raw.seconds != null) {
+    const sec = Number(raw.seconds || 0);
+    return Number.isFinite(sec) && sec >= 0 ? sec + Number(raw.nanos || 0) / 1e9 : 0;
+  }
+  return 0;
+}
+
+function extractCollectorOutputTokens(mu) {
+  if (!mu || typeof mu !== 'object') return 0;
+  const direct = Math.max(0, parseInt(mu.outputTokens ?? mu.completionTokens ?? '0', 10) || 0);
+  if (direct > 0) return direct;
+  return Math.max(0, parseInt(mu.thinkingOutputTokens ?? '0', 10) || 0) + Math.max(0, parseInt(mu.responseOutputTokens ?? '0', 10) || 0);
+}
+
+function extractUsageTriplet(mu) {
+  if (!mu || typeof mu !== 'object') return '';
+  let i = Math.max(0, parseInt(mu.inputTokens ?? mu.promptTokens ?? '0', 10) || 0);
+  const c = Math.max(0, parseInt(mu.cacheReadTokens ?? mu.cachedTokens ?? '0', 10) || 0);
+  const cr = Math.max(0, parseInt(mu.cacheCreationTokens ?? '0', 10) || 0);
+  const o = extractCollectorOutputTokens(mu);
+  if ((i + c + cr + o) === 0 && mu.totalTokens !== undefined) i = Math.max(0, parseInt(mu.totalTokens || '0', 10) || 0);
+  return (i + c + cr + o) > 0 ? `${i}:${c}:${cr}:${o}` : '';
+}
+
+function doesMetaMatchPostCheckpointStep(metaUsageObj, steps, cpIdx) {
+  const sig = extractUsageTriplet(metaUsageObj);
+  if (!sig || !Array.isArray(steps) || cpIdx < 0) return false;
+  const matchStep = (st) => {
+    if (!st || typeof st !== 'object') return false;
+    const meta = st.metadata || st;
+    const mu = meta.modelUsage || st.modelUsage || st.checkpoint?.modelUsage || st.checkpoint?.usage || meta.checkpoint?.modelUsage || meta.checkpoint?.usage || st.usage || null;
+    const m = (mu && (mu.model || mu.modelId)) || meta.generatorModel || st.model || '';
+    return !isCollectorShadowOrImageModel(m) && extractUsageTriplet(mu) === sig;
+  };
+  return !steps.slice(0, cpIdx).some(matchStep) && steps.slice(cpIdx + 1).some(matchStep);
+}
+
+function evaluatePostCheckpointSlice(postSlice, startIsCheckpoint = true) {
+  let baseUsed = 0, baseIn = 0, baseCached = 0, baseCreate = 0, baseOut = 0, deltaTok = 0;
+  let hasExactUsage = false, postSpeed = null, postSpeedStepOffset = -1, postSpeedCreatedMs = 0, postSpeedUsageSig = '', exactRelIdx = 0;
+
+  for (let idx = 0; idx < postSlice.length; idx++) {
+    const st = postSlice[idx];
+    if (!st || typeof st !== 'object') continue;
+    const meta = st.metadata || st;
+    const isCp = (idx === 0 && startIsCheckpoint) || isCheckpointTrajectoryStep(st);
+    const mu = meta.modelUsage || st.modelUsage || st.checkpoint?.modelUsage || st.checkpoint?.usage || meta.checkpoint?.modelUsage || meta.checkpoint?.usage || st.usage || null;
+    const stepModel = (mu && (mu.model || mu.modelId)) || meta.generatorModel || st.model || '';
+    const hasFields = Boolean(mu && typeof mu === 'object' && (
+      mu.inputTokens !== undefined || mu.promptTokens !== undefined || mu.cacheReadTokens !== undefined || mu.cachedTokens !== undefined ||
+      mu.cacheCreationTokens !== undefined || mu.outputTokens !== undefined || mu.completionTokens !== undefined ||
+      mu.thinkingOutputTokens !== undefined || mu.responseOutputTokens !== undefined || mu.totalTokens !== undefined
+    ));
+    if (isCp) { postSpeed = null; postSpeedStepOffset = -1; postSpeedCreatedMs = 0; postSpeedUsageSig = ''; }
+    let adoptedMu = false;
+    if (hasFields && !isCollectorShadowOrImageModel(stepModel)) {
+      let inTok = Math.max(0, parseInt(mu.inputTokens ?? mu.promptTokens ?? '0', 10) || 0);
+      const cRead = Math.max(0, parseInt(mu.cacheReadTokens ?? mu.cachedTokens ?? '0', 10) || 0);
+      const cCreate = Math.max(0, parseInt(mu.cacheCreationTokens ?? '0', 10) || 0);
+      const outTok = extractCollectorOutputTokens(mu);
+      let tot = inTok + cRead + cCreate + outTok;
+      if (tot === 0 && mu.totalTokens !== undefined) {
+        const totFallback = Math.max(0, parseInt(mu.totalTokens || '0', 10) || 0);
+        if (totFallback > 0) { inTok = totFallback; tot = totFallback; }
+      }
+      if (tot > 0) {
+        baseIn = inTok; baseCached = cRead; baseCreate = cCreate; baseOut = outTok; baseUsed = tot; deltaTok = 0;
+        hasExactUsage = true; adoptedMu = true; exactRelIdx = idx;
+        if (!isCp) {
+          postSpeed = null; postSpeedStepOffset = -1; postSpeedCreatedMs = 0; postSpeedUsageSig = '';
+          if (outTok >= 30) {
+            const streamSec = parseCollectorDurationSec(meta.streamingDuration ?? st.streamingDuration ?? mu.streamingDuration);
+            const ttftSec = parseCollectorDurationSec(meta.timeToFirstToken ?? st.timeToFirstToken ?? mu.timeToFirstToken);
+            const tStart = parseTrajectoryTimestampMs(meta.createdAt || meta.created_at || meta.startedAt || st.createdAt || st.created_at);
+            const tEnd = parseTrajectoryTimestampMs(meta.finishedGeneratingAt || meta.completedAt || meta.updatedAt || st.finishedGeneratingAt || st.completedAt || st.updatedAt);
+            const wallDur = (tStart > 0 && tEnd > tStart) ? (tEnd - tStart) / 1000 : 0;
+            const totalDur = (ttftSec > 0 && streamSec > 0) ? (ttftSec + streamSec) : (wallDur > 0 ? wallDur : streamSec);
+            const denom = streamSec >= 1.0 ? streamSec : (streamSec === 0 && totalDur >= 1.0 ? totalDur : 0);
+            if (denom >= 1.0 && denom < 600) {
+              const streamTps = Number((outTok / denom).toFixed(1));
+              postSpeed = {
+                tps: totalDur > 0 ? Number((outTok / totalDur).toFixed(1)) : streamTps,
+                streamingTps: streamSec >= 1.0 ? streamTps : null,
+                duration: Number((totalDur || denom).toFixed(2)),
+                ttft: ttftSec > 0 ? Number(ttftSec.toFixed(2)) : null,
+                streamingSec: streamSec > 0 ? Number(streamSec.toFixed(2)) : null,
+                outputTokens: outTok, thinkingTokens: 0, responseTokens: outTok
+              };
+              postSpeedStepOffset = idx;
+              postSpeedCreatedMs = tEnd || tStart || 0;
+              postSpeedUsageSig = `${inTok}:${cRead}:${cCreate}:${outTok}`;
+            }
+          }
+        }
+      }
+    }
+    if (adoptedMu) continue;
+    if (isCp) {
+      const summaryTok = estimateTokensQuick(estimatePostCheckpointStepText(st));
+      baseCached = 12500; baseIn = summaryTok; baseCreate = 0; baseOut = 0; baseUsed = 12500 + summaryTok; deltaTok = 0;
+      continue;
+    }
+    if (isCollectorShadowOrImageModel(stepModel) && hasFields) continue;
+    const stepType = String(st.type || st.role || (st.plannerResponse ? 'PLANNER_RESPONSE' : '')).toUpperCase();
+    const isPlanner = stepType.includes('PLANNER') || stepType.includes('MODEL') || stepType.includes('ASSISTANT') || Boolean(st.plannerResponse);
+    if (isPlanner) {
+      postSpeed = null; postSpeedStepOffset = -1; postSpeedCreatedMs = 0; postSpeedUsageSig = '';
+    }
+    const estText = estimatePostCheckpointStepText(st);
+    if (estText) {
+      const stepTok = estimateTokensQuick(estText);
+      deltaTok += stepTok;
+      if (isPlanner) {
+        const tStart = parseTrajectoryTimestampMs(meta.createdAt || meta.created_at || meta.startedAt || st.createdAt || st.created_at);
+        const tEnd = parseTrajectoryTimestampMs(meta.finishedGeneratingAt || meta.completedAt || meta.updatedAt || st.finishedGeneratingAt || st.completedAt || st.updatedAt);
+        const durSec = (tStart > 0 && tEnd > tStart) ? (tEnd - tStart) / 1000 : 0;
+        if (stepTok > 5 && durSec >= 0.2 && durSec < 600) {
+          postSpeed = {
+            tps: Number((stepTok / durSec).toFixed(1)), streamingTps: null, duration: Number(durSec.toFixed(2)),
+            ttft: null, streamingSec: null, outputTokens: stepTok, thinkingTokens: 0, responseTokens: stepTok
+          };
+          postSpeedStepOffset = idx;
+          postSpeedCreatedMs = tEnd || tStart || 0;
+          postSpeedUsageSig = '';
+        }
+      }
+    }
+  }
+
+  const totIn = baseIn + baseCached + baseCreate;
+  return {
+    postUsed: baseUsed + deltaTok,
+    postInput: totIn + deltaTok,
+    postCached: baseCached,
+    postCacheCreate: baseCreate,
+    postOutput: baseOut,
+    postHitRate: totIn > 0 ? Number(((baseCached / totIn) * 100).toFixed(1)) : 100,
+    postSpeed,
+    postSpeedStepOffset,
+    postSpeedCreatedMs,
+    postSpeedUsageSig,
+    exactRelIdx,
+    hasExactUsage
+  };
+}
+
+function resolveCollectorContextLimits(modelStr, modelId, mergedConfigs, capabilitiesById, observedRuntimeBudget) {
+  const combined = `${modelId || ''} ${modelStr || ''}`.trim();
+  const upper = combined.toUpperCase();
+  let physicalMaxTokens = 0;
+  if (capabilitiesById && typeof capabilitiesById === 'object') {
+    for (const [k, cap] of Object.entries(capabilitiesById)) {
+      const mx = Number(cap?.maxTokens || 0);
+      if (mx > 0 && combined && (k.toLowerCase() === String(modelId || '').toLowerCase() || k.toLowerCase() === String(modelStr || '').toLowerCase())) {
+        physicalMaxTokens = mx; break;
+      }
+    }
+  }
+  if (!physicalMaxTokens && Array.isArray(mergedConfigs)) {
+    for (const cfg of mergedConfigs) {
+      if (!cfg) continue;
+      const cid = String(cfg.modelId || cfg.modelOrAlias?.model || cfg.model || '').toLowerCase();
+      const lbl = String(cfg.label || '').toLowerCase();
+      if ((modelId && cid === String(modelId).toLowerCase()) || (modelStr && (lbl === String(modelStr).toLowerCase() || cid === String(modelStr).toLowerCase()))) {
+        const mx = Number(cfg.maxTokens || 0);
+        if (mx > 0) { physicalMaxTokens = mx; break; }
+      }
+    }
+  }
+  if (!physicalMaxTokens) {
+    if (upper.includes('GPT_OSS') || upper.includes('GPT-OSS') || upper.includes('120B')) physicalMaxTokens = 131072;
+    else if (upper.includes('CLAUDE') || upper.includes('OPUS') || upper.includes('SONNET')) physicalMaxTokens = /5[._-]5|M40[0-5]/.test(upper) ? 1000000 : 200000;
+    else if (upper.includes('GEMINI') || upper.includes('NEON') || upper.includes('CARBON') || upper.includes('ARGON') || upper.includes('HYDROGEN') || upper.includes('ORCHESTRATOR') || upper.includes('FLASH') || /M41[789]|M427|M43[78]|M52[5-8]|M53[2-7]|M667|M669|M681|M31[89]|M320/.test(upper)) physicalMaxTokens = 1048576;
+    else if (combined) physicalMaxTokens = 256000;
+  }
+
+  let customFixed = 0;
+  try {
+    const customSettings = loadCustomPlanSettings();
+    if (customSettings?.contextScopeMode !== 'per_model') {
+      if (customSettings?.contextUnifiedPreference?.mode === 'fixed' && Number(customSettings.contextUnifiedPreference.limitTokens) > 0) {
+        customFixed = Math.round(Number(customSettings.contextUnifiedPreference.limitTokens));
+      }
+    } else if (customSettings?.contextPreferences && typeof customSettings.contextPreferences === 'object') {
+      const candKeys = [modelId, modelStr, resolveStableModelId(modelId, mergedConfigs), resolveStableModelId(modelStr, mergedConfigs)]
+        .map((v) => String(v || '').trim().toLowerCase()).filter(Boolean);
+      for (const [k, entry] of Object.entries(customSettings.contextPreferences)) {
+        if (!entry || entry.mode !== 'fixed' || !(Number(entry.limitTokens) > 0)) continue;
+        const entryKeys = [k, entry.modelId, entry.label].map((v) => String(v || '').trim().toLowerCase()).filter(Boolean);
+        if (candKeys.some((ck) => entryKeys.includes(ck))) { customFixed = Math.round(Number(entry.limitTokens)); break; }
+      }
+    }
+  } catch { }
+
+  const rtBudget = Number(observedRuntimeBudget) > 0 ? Math.round(Number(observedRuntimeBudget)) : 0;
+  const compressionBudget = customFixed > 0
+    ? customFixed
+    : (rtBudget > 0 ? rtBudget : (physicalMaxTokens > 0 && physicalMaxTokens < 512000 ? physicalMaxTokens : (physicalMaxTokens >= 512000 ? 512000 : (combined ? 256000 : 0))));
+  return {
+    compressionBudget: compressionBudget || null,
+    runtimeBudget: rtBudget || null,
+    customFixedLimit: customFixed || null,
+    physicalMaxTokens: physicalMaxTokens || null
+  };
+}
+
 async function collect(origin, id, options = {}) {
   if (!/^https:\/\/127\.0\.0\.1:\d+$/.test(origin) || !/^[a-f\d-]{36}$/i.test(id)) throw new Error('无效本机会话');
   const key = `${origin}/${id}`;
@@ -810,6 +1118,7 @@ async function collect(origin, id, options = {}) {
       let wsPath = null;
       let session = null;
       let stepCapabilities = {};
+      let steps = [];
       let attachments = [];
       const attachmentTotal = empty();
       const postCheckpointAttachmentTotal = empty();
@@ -822,7 +1131,7 @@ async function collect(origin, id, options = {}) {
         if (!trajectory) throw new Error('未取得会话历史，无法完整统计');
         wsPath = extractWorkspaceFromTrajectory(trajectory);
         if (wsPath) conversationWorkspaces.set(id.toLowerCase(), wsPath);
-        const steps = trajectory.steps || [];
+        steps = trajectory.steps || [];
         const expected = Number(full.numTotalSteps ?? steps.length);
         while (steps.length < expected) {
           if (isSuperseded()) return { version: '0.8.5', conversation: id, abortedStale: true, scannedAt: Date.now(), errors: [] };
@@ -888,15 +1197,25 @@ async function collect(origin, id, options = {}) {
         cachedHostUserStatus?.availableModelDetails || null,
         stepCapabilities
       );
+      const modelCapabilitiesById = {
+        ...(cachedHostUserStatus?.availableModelDetails || {}),
+        ...stepCapabilities
+      };
+      const tailRows = Array.isArray(tail.generatorMetadata) ? tail.generatorMetadata : [];
       let latestModel = null;
       let latestGeneratorMeta = null;
       let latestCallId = null;
-      const reversedTail = (tail.generatorMetadata || []).slice().reverse();
-      for (const m of reversedTail) {
+      let latestMetaRow = null;
+      let latestRowIdx = -1;
+      const reversedTail = tailRows.slice().reverse();
+      for (let rIdx = tailRows.length - 1; rIdx >= 0; rIdx--) {
+        const m = tailRows[rIdx];
         latest = summarize(m, { cascadeModelConfigs: mergedCascadeConfigs });
         if (latest) {
           latestGeneratorMeta = m;
           latestModel = m.chatModel;
+          latestMetaRow = m;
+          latestRowIdx = rIdx;
           const callMeta = parseGeneratorCall(m, id, 'desktop', { cascadeModelConfigs: mergedCascadeConfigs });
           latestCallId = callMeta?.callId || null;
           break;
@@ -910,40 +1229,190 @@ async function collect(origin, id, options = {}) {
           if (m === latestGeneratorMeta) continue;
           const candSum = summarize(m, { cascadeModelConfigs: mergedCascadeConfigs });
           if (!candSum) continue;
-          if (referenceLatest && !referenceLatest.budget && candSum.budget) {
-            referenceLatest.budget = candSum.budget;
-          }
+          if (referenceLatest && !referenceLatest.budget && candSum.budget) referenceLatest.budget = candSum.budget;
           if (isSummarizerMeta) {
             if (candSum.model) {
               referenceLatest.model = candSum.model;
               referenceLatest.modelId = candSum.modelId || referenceLatest.modelId;
               referenceLatest.modelRaw = candSum.modelRaw || referenceLatest.modelRaw;
             }
-            if (m.chatModel && (!referenceChatModel?.tools?.length && m.chatModel.tools?.length)) {
-              referenceChatModel = m.chatModel;
-            }
+            if (m.chatModel && (!referenceChatModel?.tools?.length && m.chatModel.tools?.length)) referenceChatModel = m.chatModel;
           }
           if (referenceLatest?.budget && (!isSummarizerMeta || referenceChatModel?.tools?.length)) break;
         }
+      }
+      if (latest && latestRowIdx >= 0) {
+        const hadPriorHighCache = tailRows.slice(0, latestRowIdx).some((r) => {
+          const s = summarize(r, { cascadeModelConfigs: mergedCascadeConfigs });
+          return (s?.cached || 0) >= 50000;
+        });
+        const totalIn = Number(latest.input || 0);
+        const uncachedIn = Number(latest.uncachedInput ?? Math.max(0, totalIn - Number(latest.cached || 0)));
+        latest.cacheDropDetected = Boolean(
+          totalIn >= 150000 && latest.cacheHitRate != null && latest.cacheHitRate < 25 && (hadPriorHighCache || uncachedIn >= 240000)
+        );
+        latest.cacheCliffRisk = (latest.actual || 0) >= 328000 ? 'critical' : ((latest.actual || 0) >= 240000 ? 'warn' : 'none');
       }
       const systemSourceModel = referenceChatModel || latestModel;
       const system = systemSourceModel ? measure((systemSourceModel.promptSections || []).map(p => p.content || '').join('\n') || systemSourceModel.systemPrompt || '') : empty();
       const definitions = systemSourceModel ? measure(JSON.stringify(systemSourceModel.tools || [])) : empty();
       session.groups.system = system; session.groups.definitions = definitions;
-      add(total, system); add(total, definitions);
+      if (total) { add(total, system); add(total, definitions); }
       const postCompactActiveTotal = (!largeTrajectoryFallbackReason && session.postCheckpoint)
         ? add(add(add({ ...session.postCheckpoint.textTotal }, postCheckpointAttachmentTotal), system), definitions)
         : null;
-      if (!largeTrajectoryFallbackReason && !session.currentError && isCheckpointNewerThanGenerator(session, latestGeneratorMeta, latest)) {
-        latest = buildPostCompactSummary({
-          session: { ...session, postCompactActiveTotal },
-          postCheckpointAttachmentTotal,
-          system,
-          definitions,
-          previousLatest: referenceLatest || latest
-        });
+
+      // 检测最新 CHECKPOINT（/compact）步骤：若最新 GeneratorMetadata 早于 CHECKPOINT，立即废弃压缩前旧值并回落至压缩后真值
+      let lastCheckpointStepIdx = -1;
+      if (!largeTrajectoryFallbackReason) {
+        for (let sIdx = steps.length - 1; sIdx >= 0; sIdx--) {
+          if (isCheckpointTrajectoryStep(steps[sIdx])) {
+            lastCheckpointStepIdx = sIdx;
+            break;
+          }
+        }
       }
-      if (session.currentError) {
+      const scannedNow = Date.now();
+      const fallbackStepModel = (() => {
+        if (largeTrajectoryFallbackReason) return '';
+        for (let sIdx = steps.length - 1; sIdx >= 0; sIdx--) {
+          const st = steps[sIdx];
+          const mid = st?.metadata?.modelUsage?.model || st?.modelUsage?.model || st?.metadata?.generatorModel || st?.userInput?.userConfig?.plannerConfig?.planModel || '';
+          if (mid) return String(mid);
+        }
+        return '';
+      })();
+      const activeModelStr = referenceLatest?.model || latest?.model || latestModel?.modelDisplayName || latestModel?.model || fallbackStepModel || '';
+      const activeModelId = referenceLatest?.modelId || latest?.modelId || latest?.modelRaw || fallbackStepModel || '';
+      const resolvedLimits = resolveCollectorContextLimits(
+        activeModelStr,
+        activeModelId,
+        mergedCascadeConfigs,
+        modelCapabilitiesById,
+        referenceLatest?.budget ?? latest?.budget
+      );
+
+      const inspectStepsBySig = (sig) => {
+        if (!sig || largeTrajectoryFallbackReason) return { index: -1, count: 0 };
+        let hit = -1;
+        let hitCount = 0;
+        for (let sIdx = 0; sIdx < steps.length; sIdx++) {
+          const st = steps[sIdx], meta = st?.metadata || st;
+          const mu = meta?.modelUsage || st?.modelUsage || st?.checkpoint?.modelUsage || st?.checkpoint?.usage || meta?.checkpoint?.modelUsage || meta?.checkpoint?.usage || st?.usage || null;
+          const sm = (mu && (mu.model || mu.modelId)) || meta?.generatorModel || st?.model || '';
+          if (!isCollectorShadowOrImageModel(sm) && extractUsageTriplet(mu) === sig) {
+            hitCount += 1;
+            if (hitCount === 1) hit = sIdx;
+            else hit = -1;
+          }
+        }
+        return { index: hitCount === 1 ? hit : -1, count: hitCount };
+      };
+      const resolveUniqueStepBySig = (sig) => inspectStepsBySig(sig).index;
+
+      if (!largeTrajectoryFallbackReason && lastCheckpointStepIdx >= 0) {
+        const rawMetaStep = extractGeneratorRowMaxStepIndex(latestMetaRow);
+        const metaUsageObj = latestModel?.usage || latestMetaRow?.usage || null;
+        const metaMaxStep = rawMetaStep >= 0 ? rawMetaStep : resolveUniqueStepBySig(extractUsageTriplet(metaUsageObj));
+        const cpStep = steps[lastCheckpointStepIdx];
+        const cpTimeMs = parseTrajectoryTimestampMs(cpStep?.metadata?.createdAt || cpStep?.createdAt || cpStep?.metadata?.completedAt);
+        const metaTimeMs = parseTrajectoryTimestampMs(latestModel?.chatStartMetadata?.createdAt || latestMetaRow?.createdAt);
+        const metaPredatesCheckpoint = !latestMetaRow || (
+          metaMaxStep >= 0
+            ? metaMaxStep <= lastCheckpointStepIdx
+            : ((metaTimeMs > 0 && cpTimeMs > 0) ? metaTimeMs <= cpTimeMs : !doesMetaMatchPostCheckpointStep(metaUsageObj, steps, lastCheckpointStepIdx))
+        );
+        if (metaPredatesCheckpoint) {
+          const priorUsed = Number(latest?.actual ?? latest?.used ?? 0) || 0;
+          const postEval = evaluatePostCheckpointSlice(steps.slice(lastCheckpointStepIdx));
+          const { postUsed, postInput, postCached, postCacheCreate, postOutput, postHitRate, postSpeed, postSpeedStepOffset, postSpeedCreatedMs, postSpeedUsageSig, exactRelIdx } = postEval;
+          const effBudget = resolvedLimits.compressionBudget || 512000;
+          const postPct = effBudget > 0 ? (postUsed / effBudget) * 100 : null;
+          latest = {
+            ...(latest || {}),
+            used: postUsed, actual: postUsed, estimate: postUsed, budget: effBudget,
+            runtimeBudget: resolvedLimits.runtimeBudget, physicalMaxTokens: resolvedLimits.physicalMaxTokens,
+            estimated: false, exceeded: false, network: false, error: '', errorClassification: { kind: 'none' },
+            input: postInput, cached: postCached, cacheCreation: postCacheCreate || 0, uncachedInput: Math.max(0, postInput - postCached),
+            cacheHitRate: postHitRate, output: postOutput, speed: postSpeed,
+            speedStepIndex: postSpeed && postSpeedStepOffset >= 0 ? (lastCheckpointStepIdx + postSpeedStepOffset) : -1,
+            speedCreatedAtMs: postSpeed ? postSpeedCreatedMs : 0, speedUsageSignature: postSpeed ? postSpeedUsageSig : '',
+            metaMaxStepIndex: -1, exactUsageStepIndex: lastCheckpointStepIdx + exactRelIdx, percent: postPct,
+            model: activeModelStr,
+            modelId: latest?.modelId || resolveStableModelId(activeModelId || activeModelStr, mergedCascadeConfigs) || null,
+            modelRaw: latest?.modelRaw || activeModelId || activeModelStr,
+            status: 'reported', compressionDetected: true,
+            compressionBefore: priorUsed > postUsed ? priorUsed : 0, compressionAfter: postUsed,
+            compressionDrop: priorUsed > postUsed ? (priorUsed - postUsed) : 0,
+            cacheDropDetected: false, cacheCliffRisk: postUsed >= 328000 ? 'critical' : (postUsed >= 240000 ? 'warn' : 'none'),
+            postCompactAtGeneratorCount: count, lastCheckpointStepIdx, stepCount: steps.length, updatedAtMs: scannedNow
+          };
+        }
+      }
+
+      if (latest && !latest.compressionDetected) {
+        const effBudget = resolvedLimits.compressionBudget || latest.budget || null;
+        const rawGmStep = extractGeneratorRowMaxStepIndex(latestMetaRow);
+        const gmTimeMs = parseTrajectoryTimestampMs(latestModel?.chatStartMetadata?.createdAt || latestMetaRow?.createdAt);
+        const gmSig = extractUsageTriplet(latestModel?.usage || latestMetaRow?.usage);
+        const gmSigMatch = inspectStepsBySig(gmSig);
+        const gmMaxStep = rawGmStep >= 0 ? rawGmStep : gmSigMatch.index;
+        let lastInlineUsageIdx = -1, plannerTurnCount = 0;
+        if (!largeTrajectoryFallbackReason) {
+          for (let sIdx = Math.max(0, lastCheckpointStepIdx + 1); sIdx < steps.length; sIdx++) {
+            const st = steps[sIdx], meta = st?.metadata || st, mu = meta?.modelUsage || st?.modelUsage || st?.usage || null;
+            const sm = (mu && (mu.model || mu.modelId)) || meta?.generatorModel || st?.model || '';
+            if (extractUsageTriplet(mu) && !isCollectorShadowOrImageModel(sm)) { lastInlineUsageIdx = sIdx; plannerTurnCount += 1; continue; }
+            const sType = String(st?.type || st?.role || (st?.plannerResponse ? 'PLANNER_RESPONSE' : '')).toUpperCase();
+            if (!isCheckpointTrajectoryStep(st) && (sType.includes('PLANNER') || sType.includes('MODEL') || sType.includes('ASSISTANT') || Boolean(st?.plannerResponse))) plannerTurnCount += 1;
+          }
+        }
+        let laterUsageIdx = -1;
+        if (!largeTrajectoryFallbackReason && gmMaxStep >= 0) {
+          for (let sIdx = gmMaxStep + 1; sIdx < steps.length; sIdx++) {
+            const st = steps[sIdx], meta = st?.metadata || st, mu = meta?.modelUsage || st?.modelUsage || st?.usage || null;
+            const sm = (mu && (mu.model || mu.modelId)) || meta?.generatorModel || st?.model || '';
+            if (extractUsageTriplet(mu) && !isCollectorShadowOrImageModel(sm)) { laterUsageIdx = sIdx; break; }
+          }
+          if (laterUsageIdx < 0 && gmMaxStep < steps.length - 1) {
+            const stAtGm = steps[gmMaxStep], metaAtGm = stAtGm?.metadata || stAtGm;
+            const muAtGm = metaAtGm?.modelUsage || stAtGm?.modelUsage || stAtGm?.usage || null;
+            if (extractUsageTriplet(muAtGm) && steps.slice(gmMaxStep + 1).some((s) => Boolean(estimatePostCheckpointStepText(s)))) {
+              laterUsageIdx = gmMaxStep;
+            }
+          }
+        } else if (!largeTrajectoryFallbackReason && rawGmStep < 0 && gmMaxStep < 0 && gmSigMatch.count >= 2 && lastInlineUsageIdx >= 0) {
+          // 仅当无步骤索引且用量签名在多轮重复出现（>= 2 次）导致归属不唯一时，回退至最新步骤切片重新计算并清空不可证旧速度
+          laterUsageIdx = lastInlineUsageIdx;
+        }
+        if (laterUsageIdx >= 0 && (gmMaxStep < 0 || laterUsageIdx > gmMaxStep || (laterUsageIdx === gmMaxStep && gmMaxStep < steps.length - 1))) {
+          const ev = evaluatePostCheckpointSlice(steps.slice(laterUsageIdx), false);
+          latest = {
+            ...latest,
+            used: ev.postUsed, actual: ev.postUsed, estimate: ev.postUsed,
+            budget: effBudget, runtimeBudget: resolvedLimits.runtimeBudget, physicalMaxTokens: resolvedLimits.physicalMaxTokens,
+            input: ev.postInput, cached: ev.postCached, cacheCreation: ev.postCacheCreate || 0, uncachedInput: Math.max(0, ev.postInput - ev.postCached),
+            cacheHitRate: ev.postHitRate, output: ev.postOutput, speed: ev.postSpeed,
+            speedStepIndex: ev.postSpeed && ev.postSpeedStepOffset >= 0 ? (laterUsageIdx + ev.postSpeedStepOffset) : -1,
+            speedCreatedAtMs: ev.postSpeed ? ev.postSpeedCreatedMs : 0, speedUsageSignature: ev.postSpeed ? ev.postSpeedUsageSig : '',
+            metaMaxStepIndex: rawGmStep, exactUsageStepIndex: laterUsageIdx + ev.exactRelIdx,
+            percent: effBudget > 0 && !latest.exceeded ? (ev.postUsed / effBudget) * 100 : latest.percent,
+            lastCheckpointStepIdx, stepCount: steps.length, updatedAtMs: scannedNow
+          };
+        } else {
+          const unprovenUnindexedSpeed = !largeTrajectoryFallbackReason && rawGmStep < 0 && gmMaxStep < 0 && (lastCheckpointStepIdx >= 0 || plannerTurnCount > 1);
+          const keepSpeed = Boolean(latest.speed && !unprovenUnindexedSpeed);
+          latest = {
+            ...latest, budget: effBudget, runtimeBudget: resolvedLimits.runtimeBudget, physicalMaxTokens: resolvedLimits.physicalMaxTokens,
+            percent: (latest.actual != null && effBudget > 0 && !latest.exceeded) ? (latest.actual / effBudget) * 100 : latest.percent,
+            speed: keepSpeed ? latest.speed : null,
+            speedStepIndex: keepSpeed ? gmMaxStep : -1, speedCreatedAtMs: keepSpeed ? gmTimeMs : 0, speedUsageSignature: keepSpeed ? gmSig : '',
+            metaMaxStepIndex: rawGmStep, exactUsageStepIndex: gmMaxStep, lastCheckpointStepIdx, stepCount: largeTrajectoryFallbackReason ? Number(session.steps || 0) : steps.length, updatedAtMs: scannedNow
+          };
+        }
+      }
+
+      if (session.currentError && (!latest?.compressionDetected || session.currentError.index > lastCheckpointStepIdx)) {
         const fromStep = summarize({ chatModel: { retryInfos: [{ error: session.currentError.text }] } }, {
           currentModel: latest?.model || latestModel?.modelDisplayName || latestModel?.model || '',
           cascadeModelConfigs: mergedCascadeConfigs,
@@ -966,10 +1435,6 @@ async function collect(origin, id, options = {}) {
       }
     const unknownFiles = attachments.filter(a => a.status !== 'parsed').length;
     const compactCascadeConfigs = mergedCascadeConfigs.map(sanitizeCascadeModelConfig).filter(Boolean);
-    const modelCapabilitiesById = {
-      ...(cachedHostUserStatus?.availableModelDetails || {}),
-      ...stepCapabilities
-    };
     const result = {
       version: '0.8.5',
       conversation: id,
@@ -995,7 +1460,7 @@ async function collect(origin, id, options = {}) {
           ? '会话归档体积超出单次扫描上限，已保留精确上下文用量并跳过全量历史正文估算'
           : '全量可读取历史 + 上传附件 + 当前系统提示与工具定义；不将每轮重复输入累加；非服务端分词结果'
       },
-      scannedAt: Date.now(),
+      scannedAt: scannedNow,
       errors: largeTrajectoryFallbackReason ? [largeTrajectoryFallbackReason] : []
     };
     if (isSuperseded()) {

@@ -58,6 +58,8 @@ const ALLOWED_ROUTES = [
   '/brain-stats',
   '/read-local-file',
   '/write-local-file',
+  '/stat-local-path',
+  '/reveal-local-path',
   '/open-external-url',
   '/remote-info',
   '/remote-tunnel',
@@ -216,20 +218,32 @@ function applySuiteRepoUpdate() {
   }
 }
 
-// 解析并校验可编辑本地文件路径，禁止读写系统关键目录与敏感凭据目录
-function resolveSafeEditablePath(rawInput) {
+// 解析并校验可探测/可定位的本地路径（仅允许绝对路径或 file:// URI，拒绝控制字符与非本地协议）
+function resolveSafeLocalPath(rawInput) {
   const input = String(rawInput || '').trim();
-  if (!input) return null;
+  if (!input || /[\r\n\0]/.test(input)) return null;
   let fsPath = input;
   if (/^file:\/\//i.test(input)) {
     try {
-      fsPath = fileURLToPath(input);
+      const parsed = new URL(input);
+      if (parsed.protocol !== 'file:') return null;
+      parsed.hash = '';
+      parsed.search = '';
+      fsPath = fileURLToPath(parsed);
     } catch {
       return null;
     }
+  } else if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(input)) {
+    return null;
   }
   if (!path.isAbsolute(fsPath)) return null;
-  const resolved = path.resolve(fsPath);
+  return path.resolve(fsPath);
+}
+
+// 解析并校验可编辑本地文件路径，禁止读写系统关键目录与敏感凭据目录
+function resolveSafeEditablePath(rawInput) {
+  const resolved = resolveSafeLocalPath(rawInput);
+  if (!resolved) return null;
   const blockedPrefixes = [
     '/System',
     '/usr',
@@ -1041,6 +1055,70 @@ async function startEmbeddedLiveBridge(options = {}) {
           res.end(JSON.stringify({ ok: true, filePath, bytes: Buffer.byteLength(request.content, 'utf8') }));
           return;
         }
+        if (req.url === '/stat-local-path') {
+          const safePath = resolveSafeLocalPath(request?.path);
+          res.setHeader('Content-Type', 'application/json');
+          if (!safePath) {
+            res.end(JSON.stringify({ ok: false, error: '路径格式不合法' }));
+            return;
+          }
+          try {
+            if (!fs.existsSync(safePath)) {
+              res.end(JSON.stringify({ ok: true, exists: false, isDirectory: false, isFile: false, path: safePath }));
+              return;
+            }
+            const stat = fs.statSync(safePath);
+            res.end(JSON.stringify({
+              ok: true,
+              exists: true,
+              isDirectory: stat.isDirectory(),
+              isFile: stat.isFile(),
+              path: safePath
+            }));
+          } catch (statErr) {
+            res.end(JSON.stringify({ ok: false, error: statErr?.message || '读取路径信息失败' }));
+          }
+          return;
+        }
+        if (req.url === '/reveal-local-path') {
+          const safePath = resolveSafeLocalPath(request?.path);
+          res.setHeader('Content-Type', 'application/json');
+          if (!safePath) {
+            res.end(JSON.stringify({ ok: false, error: '路径格式不合法' }));
+            return;
+          }
+          if (!fs.existsSync(safePath)) {
+            res.end(JSON.stringify({ ok: false, notFound: true, error: '目标文件或文件夹不存在（可能已被移动或删除）' }));
+            return;
+          }
+          if (request?.dryRun === true) {
+            res.end(JSON.stringify({ ok: true, path: safePath, dryRun: true }));
+            return;
+          }
+          const execOpts = { timeout: 5000 };
+          let cmd = '';
+          let args = [];
+          if (process.platform === 'darwin') {
+            cmd = '/usr/bin/open';
+            args = ['-R', safePath];
+          } else if (process.platform === 'win32') {
+            cmd = 'explorer.exe';
+            const isDir = fs.statSync(safePath).isDirectory();
+            args = isDir ? [safePath] : [`/select,${safePath}`];
+          } else {
+            cmd = 'xdg-open';
+            const isDir = fs.statSync(safePath).isDirectory();
+            args = [isDir ? safePath : path.dirname(safePath)];
+          }
+          execFile(cmd, args, execOpts, (err) => {
+            if (err) {
+              res.end(JSON.stringify({ ok: false, error: err.message || '打开系统文件管理器失败' }));
+              return;
+            }
+            res.end(JSON.stringify({ ok: true, path: safePath }));
+          });
+          return;
+        }
         if (req.url === '/open-external-url') {
           const safeUrl = resolveSafeExternalUrl(request?.url);
           res.setHeader('Content-Type', 'application/json');
@@ -1393,5 +1471,6 @@ if (require.main === module) {
 module.exports = {
   startEmbeddedLiveBridge,
   resolveSafeExternalUrl,
-  resolveSafeEditablePath
+  resolveSafeEditablePath,
+  resolveSafeLocalPath
 };

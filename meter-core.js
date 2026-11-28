@@ -692,25 +692,31 @@
     const serviceLimit = classification.serviceLimit || null;
 
     const usage = lastRetry ? lastRetry.usage : m.usage;
-    const input = number(usage?.inputTokens), cached = number(usage?.cacheReadTokens);
+    let input = number(usage?.inputTokens ?? usage?.promptTokens);
+    const cached = number(usage?.cacheReadTokens ?? usage?.cachedTokens);
+    const cacheCreate = number(usage?.cacheCreationTokens);
     const thinking = number(usage?.thinkingOutputTokens), responseTokens = number(usage?.responseOutputTokens);
-    const rawOutput = number(usage?.outputTokens);
+    const rawOutput = number(usage?.outputTokens ?? usage?.completionTokens);
     const combinedOutput = (thinking !== null || responseTokens !== null) ? ((thinking || 0) + (responseTokens || 0)) : null;
     const output = (rawOutput !== null && rawOutput > 0)
       ? rawOutput
       : ((combinedOutput !== null && combinedOutput > 0) ? combinedOutput : (rawOutput ?? responseTokens));
-    const hasInput = (input || 0) + (cached || 0) > 0;
+    if (((input || 0) + (cached || 0) + (cacheCreate || 0) + (output || 0)) === 0 && usage?.totalTokens !== undefined) {
+      const tf = number(usage.totalTokens);
+      if (tf !== null && tf > 0) input = tf;
+    }
+    const hasInput = (input || 0) + (cached || 0) + (cacheCreate || 0) > 0;
 
     // 解耦维度：错误发生时不强制归零已有上下文用量
     const prevContext = options.previousValidContext || null;
-    const totalInputTokens = (input || 0) + (cached || 0);
+    const totalInputTokens = (input || 0) + (cached || 0) + (cacheCreate || 0);
     const actualCached = hasInput ? (cached || 0) : (prevContext?.cached || 0);
-    const uncachedInput = hasInput ? (input || 0) : (prevContext?.uncachedInput ?? null);
+    const uncachedInput = hasInput ? ((input || 0) + (cacheCreate || 0)) : (prevContext?.uncachedInput ?? null);
     const cacheHitRate = hasInput && totalInputTokens > 0
       ? Number(((actualCached / totalInputTokens) * 100).toFixed(1))
       : (prevContext?.cacheHitRate ?? null);
 
-    let actual = hasInput && !error ? (input || 0) + (cached || 0) + (output || 0) : null;
+    let actual = hasInput && !error ? totalInputTokens + (output || 0) : null;
     if (actual === null && prevContext && prevContext.actual != null && !exceeded) {
       actual = prevContext.actual;
     }
@@ -770,6 +776,7 @@
       estimated: actual === null,
       input: hasInput ? totalInputTokens : (prevContext?.input || null),
       cached: actualCached,
+      cacheCreation: hasInput ? (cacheCreate || 0) : (prevContext?.cacheCreation || 0),
       uncachedInput,
       cacheHitRate,
       output: output ?? (prevContext?.output ?? null),

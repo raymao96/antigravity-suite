@@ -2118,6 +2118,7 @@ test('需求 6: #badge-remote 与 #ag-remote-popover 挂载、一码三用融合
 });
 
 
+
 // =========================================================================
 // 需求 7: #ag-chat-nav-float 对话导航胶囊移除内圈边框并改用 shadcn/ui 风格 Lucide SVG 图标
 // =========================================================================
@@ -2633,6 +2634,7 @@ test('需求 11: Cloudflare 隧道 Token 提取、公网融合 URL、弹窗开�
 });
 
 
+
 // =========================================================================
 // 需求 12: “局域网”命名、四通道复选框启停门禁（停用返回 403）及客户页直选入口
 // =========================================================================
@@ -2789,6 +2791,7 @@ test('需求 12: 局域网命名、通道复选框启停与后端 403 拦截、�
     fs.rmSync(tmpState, { recursive: true, force: true });
   }
 });
+
 
 
 // =========================================================================
@@ -3022,7 +3025,7 @@ test('需求 13: 远程浮窗整行热区勾选、CLI 多路复用器指定主�
 
   vm.runInContext(CAPSULE_SRC, envCap.sandbox);
   const capsApi = envCap.win.__AGY_CTX_CAPSULE_API__;
-  assert.equal(capsApi.version, '1.5.5');
+  assert.equal(capsApi.version, '1.6.5');
 
   capsApi.renderFooterCapsule(footerEl, {
     contextUsed: 181000,
@@ -3663,6 +3666,7 @@ test('需求 15: Cloudflare Tunnel Token/Hostname 预校验、表单错误保留
   }
 });
 
+
 // =========================================================================
 // 需求 16: 远程网页端支持跟随系统、固定浅色、固定深色三态外观切换与实时同步
 // =========================================================================
@@ -3838,6 +3842,7 @@ test('需求 16: 远程网页端支持跟随系统、固定浅色、固定深色
     fs.rmSync(tmpState, { recursive: true, force: true });
   }
 });
+
 
 // =========================================================================
 // 需求 17: Antigravity v2.33.0+ 裸进程识别、运行时长解析与调试参数探测
@@ -4609,6 +4614,7 @@ test('需求 19: 远程同设备跨通道去重合并、打开自动切换最快
 });
 
 
+
 // =========================================================================
 // 需求 20: QuickBar 右对齐建议/免CLI提示词优化 + 手机端防假1ms/发送锁定/分组模型滑窗/按项目聚合历史
 // =========================================================================
@@ -5131,6 +5137,7 @@ test('需求 20: QuickBar 右对齐建议、免 CLI 提示词优化及手机端 
   }
 });
 
+
 test('需求 21: Tab 补全 8 字截断悬停完整展示、单色 SVG 上方优化按钮、快捷提示词自定义、设置整合及 agy remote 多浏览器隔离', async () => {
   const http = require('node:http');
   const tmpState = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-req19-'));
@@ -5566,6 +5573,7 @@ test('需求 21: Tab 补全 8 字截断悬停完整展示、单色 SVG 上方优
   }
 });
 
+
 // =========================================================================
 // 需求 22: 远程设置默认启用免登录零配置隧道 + cloudflared 一键复制安装命令引导
 // =========================================================================
@@ -5681,6 +5689,7 @@ test('需求 22: 远程设置默认免登录零配置可用与 cloudflared 一�
     fs.rmSync(tmpState, { recursive: true, force: true });
   }
 });
+
 
 // =========================================================================
 // 需求 23: 提示词优化轻量快速模型优先、多模型自动回退与完整错误信息保留
@@ -8251,7 +8260,7 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
       steps40.push({ type: 'CORTEX_STEP_TYPE_PLANNER_RESPONSE', plannerResponse: { thinking: `思考 ${i}`, response: `回复 **#${i}**` } });
     }
     const sigMockConnect = async () => ({
-      call: async (method) => {
+      call: async (method, params) => {
         if (method === 'GetAllCascadeTrajectories') {
           return {
             trajectorySummaries: {
@@ -8282,7 +8291,7 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
       projects: []
     });
     const snapSig1 = await remoteMod.enrichSnapshotWithCatalog(baseSnapReq(), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: sigMockConnect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: sigMockConnect
     });
     assert.equal(trajRpcCount, 1);
     assert.equal(snapSig1.totalMessages, 40);
@@ -8293,7 +8302,7 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
     // 时间推进 12s（远超 3500ms TTL），因签名一致应零 RPC 命中缓存
     mockNow += 12000;
     const snapSig2 = await remoteMod.enrichSnapshotWithCatalog(baseSnapReq(), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: sigMockConnect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: sigMockConnect
     });
     assert.equal(trajRpcCount, 1, '签名一致时超 TTL 仍应命中缓存，不得重拉 GetCascadeTrajectory');
     assert.equal(snapSig2.messages.length, 6);
@@ -8303,7 +8312,7 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
     trajModTime = '2026-11-19T10:00:15Z';
     mockNow += 500;
     await remoteMod.enrichSnapshotWithCatalog(baseSnapReq(), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: sigMockConnect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: sigMockConnect
     });
     assert.equal(trajRpcCount, 2, 'trajSig 变更后必须失效并重新拉取轨迹');
 
@@ -8321,7 +8330,7 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
     failSigTraj = true;
     mockNow += 500;
     const snapFailFallback = await remoteMod.enrichSnapshotWithCatalog(baseSnapReq(), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: sigMockConnect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: sigMockConnect
     });
     assert.equal(trajRpcCount, 4);
     assert.equal(snapFailFallback.totalMessages, 40, '拉取失败时应安全降级返回旧缓存的 40 条历史');
@@ -8331,7 +8340,7 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
     failSigTraj = false;
     mockNow += 1000;
     const snapRecovered = await remoteMod.enrichSnapshotWithCatalog(baseSnapReq(), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: sigMockConnect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: sigMockConnect
     });
     assert.equal(trajRpcCount, 5, '服务恢复后即使签名未再变且超过任意周期，也必须重拉此前失败未能更新的轨迹');
     assert.equal(snapRecovered.totalMessages, 42);
@@ -8343,7 +8352,7 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
     let warm1ModTime = '2026-11-19T10:05:00Z';
     let warm1ReplyText = '回复 **#warm1-init**';
     const warm1Connect = async () => ({
-      call: async (method) => {
+      call: async (method, params) => {
         if (method === 'GetAllCascadeTrajectories') {
           return {
             trajectorySummaries: {
@@ -8356,7 +8365,7 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
           };
         }
         if (method === 'GetCascadeTrajectory') {
-          warm1Rpc += 1;
+          if (params?.cascadeId === 'sess-warm-poll-1') warm1Rpc += 1;
           return {
             trajectory: {
               steps: [
@@ -8385,7 +8394,7 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
     // 第 1 次 2500ms 轮询（距预热 +500ms < 3500ms）：应命中预热缓存，不得延长 at，且不能将空签名升级为已验证 S1
     mockNow += 500;
     const warm1Poll1 = await remoteMod.enrichSnapshotWithCatalog(makeWarmSnap('sess-warm-poll-1'), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: warm1Connect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: warm1Connect
     });
     assert.equal(warm1Rpc, 1);
     assert.ok(warm1Poll1.messages.some((m) => String(m.text || '').includes('#warm1-init')));
@@ -8394,14 +8403,14 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
     warm1ReplyText = '回复 **#warm1-ttl-refetched**';
     mockNow += 2500;
     await remoteMod.enrichSnapshotWithCatalog(makeWarmSnap('sess-warm-poll-1'), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: warm1Connect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: warm1Connect
     });
     assert.equal(warm1Rpc, 1, '距实际预热 3000ms < 3500ms 内命中缓存');
 
     // 再推进 2500ms（距上次轮询仅 2500ms，但距实际预热拉取已 5500ms >= 3500ms）：TTL 必须到期并重拉最新轨迹！
     mockNow += 2500;
     const warm1Poll3 = await remoteMod.enrichSnapshotWithCatalog(makeWarmSnap('sess-warm-poll-1'), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: warm1Connect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: warm1Connect
     });
     assert.equal(warm1Rpc, 2, '连续 2500ms 轮询不得滑动刷新 at，超时后必须基于实际拉取时间过期重拉');
     assert.ok(warm1Poll3.messages.some((m) => String(m.text || '').includes('#warm1-ttl-refetched')));
@@ -8409,7 +8418,7 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
     // 确认第 2 次真实拉取已将 S1 绑定为已验证签名，后续 S1 空闲轮询零 RPC，直到签名变更 S2 立刻重拉
     mockNow += 2500;
     await remoteMod.enrichSnapshotWithCatalog(makeWarmSnap('sess-warm-poll-1'), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: warm1Connect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: warm1Connect
     });
     assert.equal(warm1Rpc, 2, '签名 S1 验证锁定后空闲轮询应零 RPC');
 
@@ -8418,7 +8427,7 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
     warm1ReplyText = '回复 **#warm1-sig-S2**';
     mockNow += 2500;
     const warm1Poll5 = await remoteMod.enrichSnapshotWithCatalog(makeWarmSnap('sess-warm-poll-1'), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: warm1Connect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: warm1Connect
     });
     assert.equal(warm1Rpc, 3, '预热周期后摘要签名推进到 S2 必须立刻重拉并展示最新内容');
     assert.ok(warm1Poll5.messages.some((m) => String(m.text || '').includes('#warm1-sig-S2')));
@@ -8429,7 +8438,7 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
     let warm2ModTime = '2026-11-19T10:06:00Z';
     let warm2ReplyText = '回复 **#warm2-v1**';
     const warm2Connect = async () => ({
-      call: async (method) => {
+      call: async (method, params) => {
         if (method === 'GetAllCascadeTrajectories') {
           return {
             trajectorySummaries: {
@@ -8442,7 +8451,7 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
           };
         }
         if (method === 'GetCascadeTrajectory') {
-          warm2Rpc += 1;
+          if (params?.cascadeId === 'sess-warm-poll-2') warm2Rpc += 1;
           return {
             trajectory: {
               steps: [
@@ -8459,7 +8468,7 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
     await remoteMod.warmConversationSession('sess-warm-poll-2', { localApiConnect: warm2Connect });
     mockNow += 400;
     const warm2Poll1 = await remoteMod.enrichSnapshotWithCatalog(makeWarmSnap('sess-warm-poll-2'), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: warm2Connect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: warm2Connect
     });
     assert.equal(warm2Rpc, 1);
     assert.ok(warm2Poll1.messages.some((m) => String(m.text || '').includes('#warm2-v1')));
@@ -8470,7 +8479,7 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
     warm2ReplyText = '回复 **#warm2-v2**';
     mockNow += 1200;
     const warm2Poll2 = await remoteMod.enrichSnapshotWithCatalog(makeWarmSnap('sess-warm-poll-2'), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: warm2Connect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: warm2Connect
     });
     assert.equal(warm2Rpc, 2, '预热 TTL 窗口内观测签名从 S1 变为 S2 必须立刻重拉');
     assert.ok(warm2Poll2.messages.some((m) => String(m.text || '').includes('#warm2-v2')));
@@ -8522,10 +8531,10 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
       }
     });
     const dedupP1 = remoteMod.enrichSnapshotWithCatalog(makeWarmSnap('sess-inflight-dedup'), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: dedupConnect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: dedupConnect
     });
     const dedupP2 = remoteMod.enrichSnapshotWithCatalog(makeWarmSnap('sess-inflight-dedup'), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: dedupConnect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: dedupConnect
     });
     await waitUntil(() => dedupRpcCount === 1);
     await new Promise((r) => setImmediate(r));
@@ -8573,14 +8582,14 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
       }
     });
     const req1S1 = remoteMod.enrichSnapshotWithCatalog(makeWarmSnap('sess-race-order1'), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: race1Connect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: race1Connect
     });
     await waitUntil(() => race1Rpc === 1);
     race1StepCount = 12;
     race1ModTime = '2026-11-19T10:10:15Z';
     mockNow += 200;
     const req1S2 = remoteMod.enrichSnapshotWithCatalog(makeWarmSnap('sess-race-order1'), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: race1Connect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: race1Connect
     });
     await waitUntil(() => race1Rpc === 2);
 
@@ -8592,7 +8601,7 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
 
     mockNow += 15000;
     const poll1After = await remoteMod.enrichSnapshotWithCatalog(makeWarmSnap('sess-race-order1'), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: race1Connect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: race1Connect
     });
     assert.equal(race1Rpc, 2, '稳定态 S2 应命中最新缓存，不再重拉');
     assert.ok(poll1After.messages.some((m) => String(m.text || '').includes('#race1-S2-fresh')));
@@ -8635,14 +8644,14 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
       }
     });
     const req2S1 = remoteMod.enrichSnapshotWithCatalog(makeWarmSnap('sess-race-order2'), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: race2Connect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: race2Connect
     });
     await waitUntil(() => race2Rpc === 1);
     race2StepCount = 14;
     race2ModTime = '2026-11-19T10:12:15Z';
     mockNow += 200;
     const req2S2 = remoteMod.enrichSnapshotWithCatalog(makeWarmSnap('sess-race-order2'), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: race2Connect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: race2Connect
     });
     await waitUntil(() => race2Rpc === 2);
 
@@ -8654,7 +8663,7 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
 
     mockNow += 15000;
     const poll2After = await remoteMod.enrichSnapshotWithCatalog(makeWarmSnap('sess-race-order2'), {
-      stateDir, configDir, msgLimit: 6, bypassCache: false, localApiConnect: race2Connect
+      stateDir, configDir, msgLimit: 6, bypassCache: false, skipMissingReconcile: true, localApiConnect: race2Connect
     });
     assert.equal(race2Rpc, 2, '迟到的 S1 返回后绝不得覆盖 S2 缓存');
     assert.ok(poll2After.messages.some((m) => String(m.text || '').includes('#race2-S2-fresh')));
@@ -8719,6 +8728,9 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
     assert.match(twHtml, /⚡直接傳送/);
     assert.match(twHtml, /未歸屬專案/);
     assert.match(twHtml, /推播通知設定/);
+    assert.match(twHtml, /顯示程式碼/);
+    assert.match(twHtml, /摺疊程式碼/);
+    assert.match(twHtml, /目前對話尚未配對專案資料夾/);
     assert.match(twHtml, /html: '無法連線'/);
     assert.match(twHtml, /無法連線至推播服務/);
     assert.doesNotMatch(twHtml, /不可[达達]/);
@@ -8819,11 +8831,26 @@ test('PR #5 / 远程需求 28: 远程端切换防轮询假死与中止旧请求�
       webPushManager: { observeCatalogItems: () => ({ completedUnreadCount: 0 }) }
     });
     const twOnly = { 'accept-language': 'zh-TW' };
+    for (const [source, expected] of [
+      ['projectOrder 必须是项目 ID 数组', 'projectOrder 應為專案 ID 陣列'],
+      ['projectOrder 请求数组长度超出上限 (500)', 'projectOrder 陣列的項目數超過上限（500）'],
+      ['projectOrder 包含非字符串的项目 ID', 'projectOrder 包含非字串格式的專案 ID'],
+      ['projectOrder 不能为空', '請至少提供一個專案 ID'],
+      ['未提供有效的可排序项目 ID', '未提供有效的專案 ID，無法排序']
+    ]) {
+      const orderHandler = remoteMod.createRemoteHttpHandler(cfg, {
+        catalogStore: { setProjectOrder() { throw Object.assign(new Error(source), { status: 400 }); } }
+      });
+      const orderResponse = await invokeHttp('POST', '/api/projects/order', {
+        ...twOnly, 'content-type': 'application/json'
+      }, true, orderHandler, { projectOrder: [] });
+      assert.equal(JSON.parse(orderResponse.body).error, expected);
+    }
     const snapResponse = await invokeHttp('GET', '/api/snapshot', twOnly, true, localizedHandler);
     const snapshot = JSON.parse(snapResponse.body);
     assert.equal(snapshot.title, '對話 12345678');
     assert.equal(snapshot.contextBadge, '獨立檢視');
-    assert.equal(snapshot.pulseText, '讀取失敗');
+    assert.equal(snapshot.pulseText, '無法讀取');
     assert.equal(snapshot.conversations[0].title, rawTitle);
     assert.equal(snapshot.projects[0].name, '未命名项目');
     assert.equal(snapshot.messages[0].text, rawUserText);
@@ -27995,7 +28022,14 @@ test('Tailscale 离线防误报 + 自定义 Tailscale 节点支持（Loon 内置
     const prevSkipProbes = process.env.AG_REMOTE_SKIP_PROBES;
     process.env.AG_REMOTE_SKIP_PROBES = '1';
     try {
-      const remoteInfo = mr.buildRemoteInfo();
+      const remoteInfo = mr.buildRemoteInfo({
+        hostMeta: stoppedMeta,
+        addresses: {
+          tailscale: [],
+          lan: [{ iface: 'en0', address: '192.168.50.10', kind: 'lan' }],
+          physicalLan: [{ iface: 'en0', address: '192.168.50.10', kind: 'lan' }]
+        }
+      });
       assert.equal(remoteInfo.tailscaleCustomHost, 'custom-proxy.tailnet123.ts.net');
       const tsCh = remoteInfo.channels.find((c) => c.key === 'tailscale');
       assert.ok(tsCh && tsCh.available, '设置 tailscaleCustomHost 后 Tailscale 通道应标记为可用');
@@ -28167,6 +28201,7 @@ test('Tailscale 离线防误报 + 自定义 Tailscale 节点支持（Loon 内置
     fs.rmSync(tmpState, { recursive: true, force: true });
   }
 });
+
 
 test('超大会话上下文扫描防 96MB 断流降级与 scan 解除统计延迟死锁', async () => {
   const https = require('node:https');
@@ -29159,7 +29194,7 @@ test('pulse-capsule-overlay: M532-M537 兜底、短窗 TPS 过滤与窄屏 4 档
 
   vm.runInContext(CAPSULE_SRC, envCap.sandbox);
   const capsApi = envCap.win.__AGY_CTX_CAPSULE_API__;
-  assert.equal(capsApi.version, '1.5.5');
+  assert.equal(capsApi.version, '1.6.5');
 
   // 1. M532-M537 Neon 模型名称与 1M 上下文兜底
   assert.equal(capsApi.resolveModelDisplayName('MODEL_PLACEHOLDER_M532'), 'Gemini 4 Neon (High)');
@@ -29204,6 +29239,3266 @@ test('pulse-capsule-overlay: M532-M537 兜底、短窗 TPS 过滤与窄屏 4 档
   assert.equal(btn.querySelector('.agy-ctx-speed-val')?.textContent, '92 tok/s');
 
   envCap.win.__AGY_CTX_CAPSULE_DISPOSE__();
+});
+
+
+test('根治默认项目假分组、修复文件目录跨项目串台并支持多目录项目浏览 (#49)', async () => {
+  delete require.cache[require.resolve('../mobile-remote.js')];
+  const remoteMod = require('../mobile-remote.js');
+  const freshEnhancerSrc = fs.readFileSync(path.join(ROOT, 'ag-enhancer-overlay.js'), 'utf8');
+
+  // 1. 静态门禁：禁止伪造 default / dom:默认项目 分组
+  assert.equal(freshEnhancerSrc.includes("ensureGroup('default'"), false, 'ag-enhancer-overlay.js 不得伪造 default 默认项目组');
+  assert.equal(freshEnhancerSrc.includes("ensureGroup('dom:默认项目'"), false, 'ag-enhancer-overlay.js 不得伪造 dom:默认项目 分组');
+
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-test-49-'));
+  try {
+    const fakeHome = path.join(tmpRoot, 'home');
+    const configDir = path.join(fakeHome, '.gemini', 'config');
+    const projectsDir = path.join(configDir, 'projects');
+    const stateDir = path.join(tmpRoot, 'state');
+    const codebaseDir = path.join(fakeHome, 'codebase');
+    const sharedArmyDir = path.join(fakeHome, 'shared', '_army');
+    const makeFontDir = path.join(codebaseDir, 'make-font');
+    const insightRepoDir = path.join(codebaseDir, 'InsightOS');
+    const insightSiteDir = path.join(fakeHome, 'shared', 'ws_works', 'InsightOS');
+    const agSuiteDir = path.join(codebaseDir, 'antigravity-suite');
+    const agSuiteSubDir = path.join(agSuiteDir, 'src');
+    const unregisteredRepoDir = path.join(codebaseDir, 'unregistered-sibling');
+
+    for (const d of [projectsDir, stateDir, sharedArmyDir, makeFontDir, insightRepoDir, insightSiteDir, agSuiteSubDir, unregisteredRepoDir]) {
+      fs.mkdirSync(d, { recursive: true });
+    }
+    fs.writeFileSync(path.join(makeFontDir, 'font.txt'), 'font');
+    fs.writeFileSync(path.join(sharedArmyDir, 'ledger.md'), '# army');
+    fs.writeFileSync(path.join(insightRepoDir, 'insight-app.ts'), 'export const app = 1;');
+    fs.writeFileSync(path.join(insightSiteDir, 'release-note.md'), '# InsightOS Site');
+    fs.writeFileSync(path.join(agSuiteDir, 'cli.js'), '// ag-suite');
+    fs.writeFileSync(path.join(agSuiteSubDir, 'app.js'), '// sub');
+
+    const writeProjJson = (id, name, folderPaths) => {
+      fs.writeFileSync(path.join(projectsDir, `${id}.json`), JSON.stringify({
+        id,
+        name,
+        projectResources: {
+          resources: folderPaths.map((fp) => ({ folderUri: 'file://' + fp }))
+        }
+      }, null, 2));
+    };
+    // 复现真实磁盘排序：0449 (%make-font + _army) 与 b6c2 (宽泛父目录 ~/codebase) 均排在 b9e0 (antigravity-suite) 之前
+    writeProjJson('0449-make-font', '%make-font', [makeFontDir, sharedArmyDir]);
+    writeProjJson('2628-insightos', 'InsightOS', [insightRepoDir, sharedArmyDir, insightSiteDir]);
+    writeProjJson('b6c2-global', '全局问题', [codebaseDir]);
+    writeProjJson('b9e0-ag-suite', 'antigravity-suite', [agSuiteDir]);
+    writeProjJson('default-cli-project', 'CLI Project', []);
+
+    // 2. matchWorkspaceToProjectId：防 _army 共享目录与 ~/codebase 宽泛父目录抢占归属
+    const metaMap = new Map([
+      ['0449-make-font', { id: '0449-make-font', name: '%make-font', workspacePaths: [makeFontDir, sharedArmyDir] }],
+      ['2628-insightos', { id: '2628-insightos', name: 'InsightOS', workspacePaths: [insightRepoDir, sharedArmyDir, insightSiteDir] }],
+      ['b6c2-global', { id: 'b6c2-global', name: '全局问题', workspacePaths: [codebaseDir] }],
+      ['b9e0-ag-suite', { id: 'b9e0-ag-suite', name: 'antigravity-suite', workspacePaths: [agSuiteDir] }]
+    ]);
+    assert.equal(
+      remoteMod.matchWorkspaceToProjectId({ workspaces: [{ workspaceFolderAbsoluteUri: 'file://' + agSuiteDir }] }, metaMap, { homeDir: fakeHome }),
+      'b9e0-ag-suite',
+      'antigravity-suite 不得被排前面的宽泛父目录 ~/codebase (全局问题) 抢占'
+    );
+    assert.equal(
+      remoteMod.matchWorkspaceToProjectId({ workspaces: [{ workspaceFolderAbsoluteUri: 'file://' + agSuiteSubDir }] }, metaMap, { homeDir: fakeHome }),
+      'b9e0-ag-suite',
+      '专属子目录应命中精确父项目 antigravity-suite'
+    );
+    assert.equal(
+      remoteMod.matchWorkspaceToProjectId({
+        workspaces: [
+          { workspaceFolderAbsoluteUri: 'file://' + sharedArmyDir },
+          { workspaceFolderAbsoluteUri: 'file://' + insightSiteDir }
+        ]
+      }, metaMap, { homeDir: fakeHome }),
+      '2628-insightos',
+      '含共享目录 _army 的多目录会话必须命中拥有专属目录的 InsightOS，不得被排第一的 %make-font 抢占'
+    );
+    assert.equal(
+      remoteMod.matchWorkspaceToProjectId({ workspaces: [{ workspaceFolderAbsoluteUri: 'file://' + sharedArmyDir }] }, metaMap, { homeDir: fakeHome }),
+      '',
+      '仅含多项目共享目录 _army 时不得随机归入排第一的 %make-font'
+    );
+    assert.equal(
+      remoteMod.matchWorkspaceToProjectId({ workspaces: [{ workspaceFolderAbsoluteUri: 'file://' + unregisteredRepoDir }] }, metaMap, { homeDir: fakeHome }),
+      '',
+      '~/codebase 下未注册的新仓库不得被宽泛父目录项目「全局问题」误抢归属'
+    );
+    assert.equal(
+      remoteMod.matchWorkspaceToProjectId({ workspaces: [{ workspaceFolderAbsoluteUri: 'file://' + codebaseDir }] }, metaMap, { homeDir: fakeHome }),
+      'b6c2-global',
+      '直接打开 ~/codebase 本身时应精确命中「全局问题」'
+    );
+
+    // 2b. 共享目录歧义与相同目录集测试：无法唯一确定归属时必须返回空值，严禁按修改时间或 ID 强行决胜
+    const soleSharedMap = new Map([
+      ['proj-a-sole-shared', { id: 'proj-a-sole-shared', name: 'SoleShared', workspacePaths: [sharedArmyDir], mtimeMs: 999999999 }],
+      ['proj-b-shared-plus-excl', { id: 'proj-b-shared-plus-excl', name: 'SharedPlusExcl', workspacePaths: [sharedArmyDir, insightSiteDir], mtimeMs: 100 }]
+    ]);
+    assert.equal(
+      remoteMod.matchWorkspaceToProjectId({ workspaces: [{ workspaceFolderAbsoluteUri: 'file://' + sharedArmyDir }] }, soleSharedMap, { homeDir: fakeHome }),
+      '',
+      '项目 A 仅挂载共享目录、项目 B 挂载同一共享目录及专属目录时，仅含共享目录的轨迹不得误归入项目 A'
+    );
+    assert.equal(
+      remoteMod.matchWorkspaceToProjectId({
+        workspaces: [
+          { workspaceFolderAbsoluteUri: 'file://' + sharedArmyDir },
+          { workspaceFolderAbsoluteUri: 'file://' + insightSiteDir }
+        ]
+      }, soleSharedMap, { homeDir: fakeHome }),
+      'proj-b-shared-plus-excl',
+      '同时包含专属目录时应唯一命中项目 B'
+    );
+
+    const dupSetMap = new Map([
+      ['proj-dup-1', { id: 'proj-dup-1', name: 'DupOne', workspacePaths: [makeFontDir, sharedArmyDir], mtimeMs: 100 }],
+      ['proj-dup-2', { id: 'proj-dup-2', name: 'DupTwo', workspacePaths: [makeFontDir, sharedArmyDir], mtimeMs: 999999999 }]
+    ]);
+    assert.equal(
+      remoteMod.matchWorkspaceToProjectId({
+        workspaces: [
+          { workspaceFolderAbsoluteUri: 'file://' + makeFontDir },
+          { workspaceFolderAbsoluteUri: 'file://' + sharedArmyDir }
+        ]
+      }, dupSetMap, { homeDir: fakeHome }),
+      '',
+      '多个项目共享完全相同目录集合时无法唯一确定归属，必须返回空字符串且不得以 mtimeMs 或 ID 决胜'
+    );
+    const eqLenDir1 = path.join(codebaseDir, 'eq-mod-1');
+    const eqLenDir2 = path.join(codebaseDir, 'eq-mod-2');
+    fs.mkdirSync(eqLenDir1, { recursive: true });
+    fs.mkdirSync(eqLenDir2, { recursive: true });
+    const tieExclMap = new Map([
+      ['proj-eq-1', { id: 'proj-eq-1', name: 'Eq1', workspacePaths: [eqLenDir1], mtimeMs: 100 }],
+      ['proj-eq-2', { id: 'proj-eq-2', name: 'Eq2', workspacePaths: [eqLenDir2], mtimeMs: 999999999 }]
+    ]);
+    assert.equal(
+      remoteMod.matchWorkspaceToProjectId({
+        workspaces: [
+          { workspaceFolderAbsoluteUri: 'file://' + eqLenDir1 },
+          { workspaceFolderAbsoluteUri: 'file://' + eqLenDir2 }
+        ]
+      }, tieExclMap, { homeDir: fakeHome }),
+      '',
+      '两个不同项目的专属目录等长并列命中时不得按 mtimeMs 或 ID 决胜，应返回空值'
+    );
+
+    // 3. ag-enhancer-overlay.js：置顶/无前置 project-header 会话与 fetchIsolatedConversationSnapshot 权威归属验证
+    const pinnedHexId = 'aaaa1111-2222-3333-4444-555566667777';
+    const isoHexId = 'bbbb1111-2222-3333-4444-555566667777';
+    const envEnh = createDomEnv();
+    envEnh.sandbox.setTimeout = setTimeout;
+    envEnh.sandbox.clearTimeout = clearTimeout;
+    envEnh.win.location = { pathname: '/c/' + pinnedHexId, search: '' };
+    envEnh.sandbox.location = envEnh.win.location;
+    envEnh.win.__APP_CONFIG__ = { csrfToken: 'csrf-49-test' };
+    envEnh.sandbox.__APP_CONFIG__ = envEnh.win.__APP_CONFIG__;
+    envEnh.sandbox.fetch = async (url, init) => {
+      const u = String(url || '');
+      if (u.includes('GetAllCascadeTrajectories')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            trajectorySummaries: {
+              [pinnedHexId]: {
+                summary: '置顶会话',
+                lastModifiedTime: new Date().toISOString(),
+                trajectoryMetadata: { projectId: 'b9e0-ag-suite' },
+                workspaces: [{ workspaceFolderAbsoluteUri: 'file://' + agSuiteDir }]
+              }
+            }
+          })
+        };
+      }
+      if (u.includes('GetCascadeTrajectory')) {
+        const reqBody = JSON.parse(String(init?.body || '{}'));
+        if (reqBody.cascadeId === isoHexId) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              numTotalSteps: 2,
+              trajectory: {
+                status: 'CASCADE_RUN_STATUS_IDLE',
+                summary: 'InsightOS 多目录会话',
+                trajectoryMetadata: {
+                  projectId: '2628-insightos',
+                  workspaces: [{ workspaceFolderAbsoluteUri: 'file://' + insightRepoDir }]
+                },
+                steps: [
+                  { type: 'CORTEX_STEP_TYPE_USER_INPUT', userInput: { userResponse: '检查多目录' } },
+                  { type: 'CORTEX_STEP_TYPE_PLANNER_RESPONSE', status: 'CORTEX_STEP_STATUS_DONE', plannerResponse: { response: '已完成检查' } }
+                ]
+              }
+            })
+          };
+        }
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true, uiPreferences: {} }) };
+    };
+    const sidebarEl = envEnh.doc.createElement('div');
+    sidebarEl.setAttribute('data-testid', 'conversation-list-sidebar');
+    // 模拟虚拟滚动截断：置顶会话行出现在任何 project-header 之前
+    const pinnedRow = envEnh.doc.createElement('div');
+    pinnedRow.setAttribute('data-testid', 'conversation-row-sidebar');
+    pinnedRow.setAttribute('data-cascade-id', pinnedHexId);
+    pinnedRow.setAttribute('data-pinned', 'true');
+    pinnedRow.textContent = '置顶会话';
+    const isoRow = envEnh.doc.createElement('div');
+    isoRow.setAttribute('data-testid', 'conversation-row-sidebar');
+    isoRow.setAttribute('data-cascade-id', isoHexId);
+    isoRow.textContent = '隔离会话';
+    sidebarEl.appendChild(pinnedRow);
+    sidebarEl.appendChild(isoRow);
+    envEnh.doc.body.appendChild(sidebarEl);
+
+    vm.runInContext(RENDERER_SRC, envEnh.sandbox);
+    vm.runInContext(freshEnhancerSrc, envEnh.sandbox);
+    const enh = envEnh.sandbox.__AGEnhancer;
+
+    const baseOverlaySnap = enh.getMobileSnapshot();
+    assert.equal(baseOverlaySnap.projectGroups.some((g) => g.name === '默认项目' || g.id === 'default'), false, '桌面虚拟列表截断时不得生成默认项目分组');
+    assert.notEqual(baseOverlaySnap.currentProjectId, 'default');
+    assert.notEqual(baseOverlaySnap.currentProjectName, '默认项目');
+
+    const isoSnap = await enh.getMobileSnapshotAsync({ conversationId: isoHexId });
+    assert.equal(isoSnap.isolated, true);
+    assert.equal(isoSnap.currentProjectId, '2628-insightos', '独立隔离快照必须优先采用 trajectoryMetadata.projectId 而非虚拟列表假分组');
+
+    // 3b. DOM 与 Fiber 分支归属冲突验证：当列表前置 project-header 或虚拟行 groupId 与权威归属冲突时，必须服从权威会话归属
+    await new Promise((r) => setTimeout(r, 30)); // 等待首次 refreshCascadeTrajectorySummaries 写入权威归属
+    // (i) DOM 分支冲突：在置顶行前插入另一个项目 (%make-font / 0449-make-font) 的 project-header，验证不被错归入 0449-make-font
+    const wrongDomHeader = envEnh.doc.createElement('button');
+    wrongDomHeader.setAttribute('data-testid', 'project-header');
+    wrongDomHeader.setAttribute('data-project-id', '0449-make-font');
+    wrongDomHeader.setAttribute('data-project-label', '%make-font');
+    wrongDomHeader.textContent = '%make-font';
+    const rightDomHeader = envEnh.doc.createElement('button');
+    rightDomHeader.setAttribute('data-testid', 'project-header');
+    rightDomHeader.setAttribute('data-project-id', 'b9e0-ag-suite');
+    rightDomHeader.setAttribute('data-project-label', 'antigravity-suite');
+    rightDomHeader.textContent = 'antigravity-suite';
+    sidebarEl.insertBefore(wrongDomHeader, pinnedRow);
+    sidebarEl.appendChild(rightDomHeader);
+
+    const domConflictSnap = enh.getMobileSnapshot();
+    assert.equal(domConflictSnap.currentProjectId, 'b9e0-ag-suite', 'DOM 分支：前置错误 project-header 不得覆盖已知权威归属 b9e0-ag-suite');
+    assert.equal(domConflictSnap.currentProjectName, 'antigravity-suite', 'DOM 分支：当前项目名必须保持权威 antigravity-suite 而非 %make-font');
+    const agDomGrp = domConflictSnap.projectGroups.find((g) => g.id === 'b9e0-ag-suite');
+    const wrongDomGrp = domConflictSnap.projectGroups.find((g) => g.id === '0449-make-font');
+    assert.ok(agDomGrp && agDomGrp.conversations.some((c) => c.id === pinnedHexId), 'DOM 分支：置顶会话必须归入权威组 b9e0-ag-suite');
+    assert.equal(Boolean(wrongDomGrp && wrongDomGrp.conversations.some((c) => c.id === pinnedHexId)), false, 'DOM 分支：置顶会话不得落入前置错误组 0449-make-font');
+
+    // (ii) Fiber 分支冲突：虚拟列表 items 将置顶会话置于 header-0449-make-font 下且携带冲突 groupId='0449-make-font'，而 Hook 状态权威归属为 b9e0-ag-suite
+    const hookGroups = [
+      { id: '0449-make-font', label: '%make-font', kind: 'project', entries: [] },
+      {
+        id: 'b9e0-ag-suite',
+        label: 'antigravity-suite',
+        kind: 'project',
+        entries: [{ cascadeId: pinnedHexId, projectId: 'b9e0-ag-suite', conversation: { conversationId: pinnedHexId, summary: '置顶会话' } }]
+      }
+    ];
+    sidebarEl.__reactFiber$test49 = {
+      memoizedProps: {},
+      memoizedState: { memoizedState: hookGroups, next: null },
+      return: {
+        memoizedProps: {
+          items: [
+            { type: 'header', id: 'header-0449-make-font', label: '%make-font', count: 1, isCollapsed: false },
+            { type: 'row', id: pinnedHexId, cascadeId: pinnedHexId, groupId: '0449-make-font' },
+            { type: 'header', id: 'header-b9e0-ag-suite', label: 'antigravity-suite', count: 1, isCollapsed: false }
+          ]
+        },
+        memoizedState: null,
+        return: null
+      }
+    };
+    const fiberConflictSnap = enh.getMobileSnapshot();
+    assert.equal(fiberConflictSnap.currentProjectId, 'b9e0-ag-suite', 'Fiber 分支：冲突虚拟行 groupId 不得覆盖 Hook 权威归属 b9e0-ag-suite');
+    assert.equal(fiberConflictSnap.currentProjectName, 'antigravity-suite');
+    const agFiberGrp = fiberConflictSnap.projectGroups.find((g) => g.id === 'b9e0-ag-suite');
+    const wrongFiberGrp = fiberConflictSnap.projectGroups.find((g) => g.id === '0449-make-font');
+    assert.ok(agFiberGrp && agFiberGrp.conversations.some((c) => c.id === pinnedHexId), 'Fiber 分支：置顶会话必须归入权威组 b9e0-ag-suite');
+    assert.equal(Boolean(wrongFiberGrp && wrongFiberGrp.conversations.some((c) => c.id === pinnedHexId)), false, 'Fiber 分支：置顶会话不得归入冲突 groupId 指定的 0449-make-font');
+
+    // (iii) entry.projectId='default' 污染值 + 语言服务元数据/摘要为真实项目 + Hook 分组为另一项目 (0449-make-font)：必须逐候选过滤并服从语言服务元数据/摘要，绝不短路落入 0449-make-font
+    const hookDefaultPolluted = [
+      {
+        id: '0449-make-font',
+        label: '%make-font',
+        kind: 'project',
+        entries: [{
+          cascadeId: pinnedHexId,
+          projectId: 'default',
+          conversation: {
+            conversationId: pinnedHexId,
+            summary: '置顶会话',
+            trajectoryMetadata: { projectId: 'b9e0-ag-suite' }
+          }
+        }]
+      },
+      { id: 'b9e0-ag-suite', label: 'antigravity-suite', kind: 'project', entries: [] }
+    ];
+    sidebarEl.__reactFiber$test49.memoizedState = { memoizedState: hookDefaultPolluted, next: null };
+    const defaultPollutedSnap = enh.getMobileSnapshot();
+    assert.equal(defaultPollutedSnap.currentProjectId, 'b9e0-ag-suite', 'entry.projectId=default 不得截断后续 trajectoryMetadata.projectId 也不得回退到外层错误 Hook 组');
+    assert.equal(defaultPollutedSnap.currentProjectName, 'antigravity-suite');
+    assert.ok(
+      defaultPollutedSnap.projectGroups.find((g) => g.id === 'b9e0-ag-suite')?.conversations.some((c) => c.id === pinnedHexId),
+      'entry.projectId=default 时会话仍须归入 trajectoryMetadata 指定的 b9e0-ag-suite'
+    );
+    assert.equal(
+      Boolean(defaultPollutedSnap.projectGroups.find((g) => g.id === '0449-make-font')?.conversations.some((c) => c.id === pinnedHexId)),
+      false,
+      'entry.projectId=default 时不得误落入外层 Hook 组 0449-make-font'
+    );
+
+    // 再验证 entry 无内嵌 trajectoryMetadata、但 cascadeSummaryMap 持有语言服务摘要 projectId 时，摘要同样高于外层错误 Hook 组
+    const hookSummaryOnly = [
+      {
+        id: '0449-make-font',
+        label: '%make-font',
+        kind: 'project',
+        entries: [{
+          cascadeId: pinnedHexId,
+          projectId: 'default',
+          conversation: { conversationId: pinnedHexId, summary: '置顶会话' }
+        }]
+      },
+      { id: 'b9e0-ag-suite', label: 'antigravity-suite', kind: 'project', entries: [] }
+    ];
+    sidebarEl.__reactFiber$test49.memoizedState = { memoizedState: hookSummaryOnly, next: null };
+    const summaryPrioritySnap = enh.getMobileSnapshot();
+    assert.equal(summaryPrioritySnap.currentProjectId, 'b9e0-ag-suite', '语言服务摘要 projectId 必须高于外层 Hook 分组猜测');
+
+    // (iv) 已有会话 URL ?project=0449-make-font 与语言服务权威归属 b9e0-ag-suite 冲突时，普通快照必须服从会话权威归属并保持 ID/名称/分组一致；新建对话才优先采用 URL 项目选择
+    const origPathname = envEnh.win.location.pathname;
+    const origSearch = envEnh.win.location.search;
+    envEnh.win.location.search = '?project=0449-make-font';
+    const urlConflictSnap = enh.getMobileSnapshot();
+    assert.equal(urlConflictSnap.isNewConversation, false);
+    assert.equal(urlConflictSnap.currentProjectId, 'b9e0-ag-suite', '已有会话普通快照必须优先采用会话权威项目归属，不被冲突 URL ?project= 覆盖');
+    assert.equal(urlConflictSnap.currentProjectName, 'antigravity-suite', '已有会话项目名称必须与权威项目 ID 一致');
+    assert.equal(
+      urlConflictSnap.projectGroups.find((g) => g.active)?.id,
+      'b9e0-ag-suite',
+      '已有会话快照 currentProjectId 必须与 projectGroups 激活分组一致'
+    );
+    envEnh.win.location.pathname = '/';
+    const newChatUrlSnap = enh.getMobileSnapshot();
+    assert.equal(newChatUrlSnap.isNewConversation, true);
+    assert.equal(newChatUrlSnap.currentProjectId, '0449-make-font', '新建空白对话页应继续采用 URL ?project= 项目选择');
+    envEnh.win.location.pathname = origPathname;
+    envEnh.win.location.search = origSearch;
+
+    // (v) 存在合成 header（header-default / 默认项目）且缺少权威归属时，Fiber 与 DOM 两条分支均必须过滤合成头，绝不恢复默认假分组
+    const orphanHexId = 'cccc1111-2222-3333-4444-555566667777';
+    const orphanRow = envEnh.doc.createElement('div');
+    orphanRow.setAttribute('data-testid', 'conversation-row-sidebar');
+    orphanRow.setAttribute('data-cascade-id', orphanHexId);
+    orphanRow.textContent = '无归属孤儿会话';
+    sidebarEl.appendChild(orphanRow);
+    const hookWithSyntheticDefault = [
+      {
+        id: 'default',
+        label: '默认项目',
+        kind: 'project',
+        entries: [{ cascadeId: orphanHexId, projectId: 'default', conversation: { conversationId: orphanHexId, summary: '无归属孤儿会话' } }]
+      },
+      {
+        id: 'b9e0-ag-suite',
+        label: 'antigravity-suite',
+        kind: 'project',
+        entries: [{ cascadeId: pinnedHexId, projectId: 'b9e0-ag-suite', conversation: { conversationId: pinnedHexId, summary: '置顶会话' } }]
+      }
+    ];
+    sidebarEl.__reactFiber$test49 = {
+      memoizedProps: {},
+      memoizedState: { memoizedState: hookWithSyntheticDefault, next: null },
+      return: {
+        memoizedProps: {
+          items: [
+            { type: 'header', id: 'header-default', label: '默认项目', count: 1, isCollapsed: false },
+            { type: 'row', id: orphanHexId, cascadeId: orphanHexId, groupId: 'default' },
+            { type: 'header', id: 'header-b9e0-ag-suite', label: 'antigravity-suite', count: 1, isCollapsed: false },
+            { type: 'row', id: pinnedHexId, cascadeId: pinnedHexId, groupId: 'b9e0-ag-suite' }
+          ]
+        },
+        memoizedState: null,
+        return: null
+      }
+    };
+    const fiberSyntheticHdrSnap = enh.getMobileSnapshot();
+    assert.equal(
+      fiberSyntheticHdrSnap.projectGroups.some((g) => g.id === 'default' || g.key === 'default' || g.name === '默认项目'),
+      false,
+      'Fiber 分支存在 header-default / 默认项目 且缺少权威归属时，不得恢复默认项目假分组'
+    );
+    assert.equal(
+      fiberSyntheticHdrSnap.projects.some((p) => p.id === 'default' || p.name === '默认项目'),
+      false,
+      'projects 列表不得混入 default / 默认项目'
+    );
+    const fiberUngrouped = fiberSyntheticHdrSnap.projectGroups.find((g) => g.key === 'ungrouped');
+    assert.ok(fiberUngrouped && fiberUngrouped.name === '未归属项目' && fiberUngrouped.conversations.some((c) => c.id === orphanHexId), '缺少权威归属的孤儿会话应落入诚实的未归属项目分组');
+
+    // 再剥离 Fiber，测试纯 DOM project-header (data-project-id="default", text="默认项目") 分支
+    delete sidebarEl.__reactFiber$test49;
+    const domDefaultHdr = envEnh.doc.createElement('button');
+    domDefaultHdr.setAttribute('data-testid', 'project-header');
+    domDefaultHdr.setAttribute('data-project-id', 'default');
+    domDefaultHdr.setAttribute('data-project-label', '默认项目');
+    domDefaultHdr.textContent = '默认项目';
+    sidebarEl.insertBefore(domDefaultHdr, orphanRow);
+    const domSyntheticHdrSnap = enh.getMobileSnapshot();
+    assert.equal(
+      domSyntheticHdrSnap.projectGroups.some((g) => g.id === 'default' || g.key === 'default' || g.name === '默认项目'),
+      false,
+      'DOM 分支存在默认项目 project-header 且缺少权威归属时，同样不得恢复默认假分组'
+    );
+    const domUngrouped = domSyntheticHdrSnap.projectGroups.find((g) => g.key === 'ungrouped');
+    assert.ok(domUngrouped && domUngrouped.name === '未归属项目' && domUngrouped.conversations.some((c) => c.id === orphanHexId), 'DOM 分支孤儿会话应落入未归属项目');
+
+    enh.dispose?.();
+    envEnh.sandbox.__AGContextMeter?.dispose?.();
+
+    // 4. enrichSnapshotWithCatalog：自愈历史中毒的 default/默认项目 缓存，完整下发多目录 workspacePaths，独立会话不伪造项目名
+    fs.writeFileSync(path.join(stateDir, 'remote-session-catalog.json'), JSON.stringify({
+      version: 2,
+      updatedAt: Date.now() - 5000,
+      subagentIds: [],
+      subagentRoots: {},
+      subagentStates: {},
+      conversations: [
+        { id: 'conv-pinned-ag', title: '置顶会话', projectId: 'default', projectName: '默认项目', pinned: true, archived: false, updatedAt: Date.now() - 5000, status: 'idle' }
+      ]
+    }));
+
+    const trajSummaries = {
+      'conv-pinned-ag': {
+        summary: '置顶会话',
+        status: 'CASCADE_RUN_STATUS_IDLE',
+        lastModifiedTime: new Date().toISOString(),
+        trajectoryMetadata: { projectId: 'b9e0-ag-suite', rootConversationId: 'conv-pinned-ag' },
+        annotations: { pinned: true }
+      },
+      'conv-insight': {
+        summary: 'Insight 多目录开发',
+        status: 'CASCADE_RUN_STATUS_IDLE',
+        lastModifiedTime: new Date().toISOString(),
+        trajectoryMetadata: { projectId: '2628-insightos', rootConversationId: 'conv-insight' }
+      },
+      'conv-standalone': {
+        summary: '纯独立问答',
+        status: 'CASCADE_RUN_STATUS_IDLE',
+        lastModifiedTime: new Date().toISOString(),
+        trajectoryMetadata: { projectId: 'outside-of-project', rootConversationId: 'conv-standalone' }
+      }
+    };
+
+    const enrichedAg = await remoteMod.enrichSnapshotWithCatalog({
+      ok: true,
+      sessionId: 'conv-pinned-ag',
+      activeConversationId: 'conv-pinned-ag',
+      currentProjectId: 'default',
+      currentProjectName: '默认项目',
+      currentProjectPath: insightRepoDir,
+      conversations: [
+        { id: 'conv-pinned-ag', title: '置顶会话', active: true, projectId: 'default', projectName: '默认项目', pinned: true }
+      ],
+      projects: [{ id: 'default', name: '默认项目' }]
+    }, {
+      stateDir,
+      configDir,
+      homeDir: fakeHome,
+      bypassCache: true,
+      localApiConnect: async () => ({
+        call: async (method) => (method === 'GetAllCascadeTrajectories' ? { trajectorySummaries: trajSummaries } : {})
+      })
+    });
+
+    assert.equal(enrichedAg.currentProjectId, 'b9e0-ag-suite', 'DOM 传入 default 假值时服务端必须以权威项目 ID 覆盖');
+    assert.equal(enrichedAg.currentProjectName, 'antigravity-suite', 'DOM 传入「默认项目」时服务端必须恢复真实项目名 antigravity-suite');
+    assert.deepEqual(
+      enrichedAg.currentWorkspacePaths,
+      [fs.realpathSync(agSuiteDir)],
+      '当前会话必须替换为自身真实工作区路径，绝不残留上一个项目的路径'
+    );
+    const insightProjEntry = enrichedAg.projects.find((p) => p.id === '2628-insightos');
+    assert.ok(insightProjEntry, 'projects 列表应包含多目录项目 InsightOS');
+    assert.equal(insightProjEntry.workspacePaths.length, 3, '多目录项目必须完整下发全部 3 个工作区路径');
+    assert.deepEqual(
+      insightProjEntry.workspacePaths,
+      [fs.realpathSync(insightRepoDir), fs.realpathSync(sharedArmyDir), fs.realpathSync(insightSiteDir)]
+    );
+
+    const enrichedStandalone = await remoteMod.enrichSnapshotWithCatalog({
+      ok: true,
+      sessionId: 'conv-standalone',
+      activeConversationId: 'conv-standalone',
+      currentProjectId: 'default',
+      currentProjectName: '默认项目',
+      currentProjectPath: insightRepoDir,
+      conversations: [{ id: 'conv-standalone', title: '纯独立问答', active: true }]
+    }, {
+      stateDir,
+      configDir,
+      homeDir: fakeHome,
+      bypassCache: true,
+      localApiConnect: async () => ({
+        call: async (method) => (method === 'GetAllCascadeTrajectories' ? { trajectorySummaries: trajSummaries } : {})
+      })
+    });
+    assert.equal(enrichedStandalone.currentProjectName, '', '未归属项目的独立会话不得伪造项目名');
+    assert.equal(enrichedStandalone.currentProjectPath, undefined, '未归属项目的独立会话不得残留其他项目的 currentProjectPath');
+    assert.deepEqual(enrichedStandalone.currentWorkspacePaths, [], '未归属项目的独立会话 currentWorkspacePaths 应为空数组');
+
+    // 5. /api/project-tree 强归属校验、防盲跳 realRoots[0] 与「↑ 上级」工作区根目录锁死
+    const mockCfg = {
+      port: 18799,
+      token: 'tok-49-project-tree-1234567890abcdef',
+      tunnelEnabled: false,
+      enabledChannels: { lan: true, tailscale: true, bonjour: true, tunnel: false }
+    };
+    const allowedRealRoots = remoteMod.resolveProductionMediaAllowedRoots({ configDir, homeDir: fakeHome });
+    const httpHandler = remoteMod.createRemoteHttpHandler(mockCfg, {
+      catalogOptions: { stateDir, configDir },
+      mediaOptions: { allowedRoots: allowedRealRoots, configDir, homeDir: fakeHome },
+      callLanguageServer: async (method) => {
+        if (method === 'GetAllCascadeTrajectories') return { trajectorySummaries: trajSummaries };
+        return null;
+      }
+    });
+    const callGetJson = async (urlPath) => {
+      const { Readable } = require('stream');
+      const req = Readable.from([]);
+      req.method = 'GET';
+      req.url = urlPath;
+      req.headers = { host: '127.0.0.1:18799', 'x-ag-remote-token': mockCfg.token };
+      req.socket = { remoteAddress: '127.0.0.1', localAddress: '127.0.0.1' };
+      let status = 200;
+      let raw = '';
+      await httpHandler(req, {
+        setHeader() {},
+        writeHead(code) { status = code; },
+        end(chunk) { if (chunk) raw += String(chunk); }
+      });
+      return { status, json: JSON.parse(raw) };
+    };
+
+    const blindEmpty = await callGetJson('/api/project-tree');
+    assert.equal(blindEmpty.status, 400, '未传目录与会话上下文时严禁盲跳 realRoots[0]');
+
+    const standaloneEmpty = await callGetJson('/api/project-tree?conversationId=conv-standalone&projectId=outside-of-project');
+    assert.equal(standaloneEmpty.status, 200);
+    assert.equal(standaloneEmpty.json.emptyProject, true, '无工作区独立会话应返回明确 emptyProject 空态而非跳到其他项目');
+    assert.deepEqual(standaloneEmpty.json.entries, []);
+
+    const standaloneCrossAttempt = await callGetJson('/api/project-tree?conversationId=conv-standalone&dir=' + encodeURIComponent(insightRepoDir));
+    assert.equal(standaloneCrossAttempt.status, 403, '独立会话携带其他项目目录请求必须 403 拦截');
+
+    const crossProjAttempt = await callGetJson('/api/project-tree?conversationId=conv-pinned-ag&projectId=b9e0-ag-suite&dir=' + encodeURIComponent(insightRepoDir));
+    assert.equal(crossProjAttempt.status, 403, 'antigravity-suite 会话请求 InsightOS 目录必须 403 拦截防串台');
+
+    // 即便父目录 ~/codebase 存在于 allowedRoots（全局问题项目），在 antigravity-suite 根目录时 parentDir 必须为空，严禁越界上翻到 ~/codebase
+    const agRootTree = await callGetJson('/api/project-tree?conversationId=conv-pinned-ag&projectId=b9e0-ag-suite&dir=' + encodeURIComponent(agSuiteDir));
+    assert.equal(agRootTree.status, 200);
+    assert.equal(agRootTree.json.parentDir, '', '所选工作区根目录处「↑ 上级」必须锁死为空，禁止越出到父目录 ~/codebase');
+    const agSubTree = await callGetJson('/api/project-tree?conversationId=conv-pinned-ag&projectId=b9e0-ag-suite&dir=' + encodeURIComponent(agSuiteSubDir));
+    assert.equal(agSubTree.status, 200);
+    assert.equal(agSubTree.json.parentDir, fs.realpathSync(agSuiteDir), '子目录内允许正常返回至当前工作区根目录');
+
+    // 5b. 全局白名单非空 + 项目元数据为空 + 归属无法解析时，携带 conversationId/projectId 必须保持受限作用域（显式 dir 严格 403，绝不绕回全局目录）
+    const emptyProjCfgDir = path.join(tmpRoot, 'empty-proj-cfg');
+    const emptyProjStateDir = path.join(tmpRoot, 'empty-proj-state');
+    fs.mkdirSync(path.join(emptyProjCfgDir, 'projects'), { recursive: true });
+    fs.mkdirSync(emptyProjStateDir, { recursive: true });
+    const unresolvableHandler = remoteMod.createRemoteHttpHandler(mockCfg, {
+      catalogOptions: { stateDir: emptyProjStateDir, configDir: emptyProjCfgDir },
+      mediaOptions: { allowedRoots: [agSuiteDir, insightRepoDir], configDir: emptyProjCfgDir, homeDir: fakeHome },
+      callLanguageServer: async () => ({ trajectorySummaries: {} })
+    });
+    const callUnresolvableJson = async (urlPath) => {
+      const { Readable } = require('stream');
+      const req = Readable.from([]);
+      req.method = 'GET';
+      req.url = urlPath;
+      req.headers = { host: '127.0.0.1:18799', 'x-ag-remote-token': mockCfg.token };
+      req.socket = { remoteAddress: '127.0.0.1', localAddress: '127.0.0.1' };
+      let status = 200;
+      let raw = '';
+      await unresolvableHandler(req, {
+        setHeader() {},
+        writeHead(code) { status = code; },
+        end(chunk) { if (chunk) raw += String(chunk); }
+      });
+      return { status, json: JSON.parse(raw) };
+    };
+    const unresolvedConvWithDir = await callUnresolvableJson('/api/project-tree?conversationId=conv-unknown-xyz&dir=' + encodeURIComponent(agSuiteDir));
+    assert.equal(unresolvedConvWithDir.status, 403, '项目元数据为空且会话归属无法解析时，显式传 dir 不得绕回全局白名单目录');
+    const unresolvedProjWithDir = await callUnresolvableJson('/api/project-tree?projectId=proj-unknown-xyz&dir=' + encodeURIComponent(insightRepoDir));
+    assert.equal(unresolvedProjWithDir.status, 403, '项目元数据为空且 projectId 无法解析时，显式传 dir 必须 403 拦截');
+    const unresolvedConvNoDir = await callUnresolvableJson('/api/project-tree?conversationId=conv-unknown-xyz');
+    assert.equal(unresolvedConvNoDir.status, 200);
+    assert.equal(unresolvedConvNoDir.json.emptyProject, true, '无法解析归属且无 dir 时应返回 emptyProject 空态而非跳到全局目录');
+
+    // 当项目元数据非空时，未知/无法解析归属的 conversationId 即便同时携带有效的其他项目 projectId、dir 与 workspaceRoot，也必须严格拒绝，不得回退采用未经会话关联验证的 projectId
+    const unknownConvSpoofedProjWithDir = await callGetJson(
+      '/api/project-tree?conversationId=conv-unknown-999&projectId=2628-insightos&dir=' + encodeURIComponent(insightRepoDir) + '&workspaceRoot=' + encodeURIComponent(insightRepoDir)
+    );
+    assert.equal(
+      unknownConvSpoofedProjWithDir.status,
+      403,
+      '未知 conversationId 搭配有效其他项目 projectId + dir + workspaceRoot 时必须 403 拒绝，不得回退信任未验证的 projectId'
+    );
+    const unknownConvSpoofedProjNoDir = await callGetJson(
+      '/api/project-tree?conversationId=conv-unknown-999&projectId=2628-insightos'
+    );
+    assert.equal(unknownConvSpoofedProjNoDir.status, 200);
+    assert.equal(
+      unknownConvSpoofedProjNoDir.json.emptyProject,
+      true,
+      '未知 conversationId 搭配有效其他项目 projectId 且无 dir 时应返回 emptyProject 空态，不得回退列出其他项目工作区'
+    );
+    assert.deepEqual(unknownConvSpoofedProjNoDir.json.workspaceRoots, []);
+
+    // 5c. 显式 workspaceRoot 边界校验、父子嵌套工作区及符号链接跨工作区越界隐藏回归
+    const nestedParentDir = path.join(fakeHome, 'nested-parent');
+    const nestedChildDir = path.join(nestedParentDir, 'child-ws');
+    fs.mkdirSync(nestedChildDir, { recursive: true });
+    fs.writeFileSync(path.join(nestedParentDir, 'parent-only.txt'), 'parent-secret');
+    fs.writeFileSync(path.join(nestedChildDir, 'child-ok.txt'), 'child-ok');
+    // 在子工作区内创建指向上级父工作区文件的符号链接；在 InsightOS 工作区 1 内创建指向同项目工作区 2 (_army) 的目录符号链接
+    fs.symlinkSync(path.join(nestedParentDir, 'parent-only.txt'), path.join(nestedChildDir, 'link-to-parent-file.txt'));
+    fs.symlinkSync(sharedArmyDir, path.join(insightRepoDir, 'symlink-to-army-ws'));
+    writeProjJson('proj-nested', 'NestedProject', [nestedParentDir, nestedChildDir]);
+    trajSummaries['conv-nested'] = {
+      summary: '父子工作区会话',
+      status: 'CASCADE_RUN_STATUS_IDLE',
+      lastModifiedTime: new Date().toISOString(),
+      trajectoryMetadata: { projectId: 'proj-nested', rootConversationId: 'conv-nested' }
+    };
+    const nestedAllowedRoots = remoteMod.resolveProductionMediaAllowedRoots({ configDir, homeDir: fakeHome });
+    const nestedHandler = remoteMod.createRemoteHttpHandler(mockCfg, {
+      catalogOptions: { stateDir, configDir },
+      mediaOptions: { allowedRoots: nestedAllowedRoots, configDir, homeDir: fakeHome },
+      callLanguageServer: async (method) => {
+        if (method === 'GetAllCascadeTrajectories') return { trajectorySummaries: trajSummaries };
+        if (method === 'GetTrajectoryFileDiffs') {
+          return { fileDiffs: [{ path: path.join(agSuiteDir, 'cli.js'), unifiedDiff: '@@ -1 +1 @@\n+// ag-diff' }] };
+        }
+        if (method === 'GetArtifactSnapshots') {
+          return { artifacts: [{ title: 'insight-art.md', content: '# Insight Artifact' }] };
+        }
+        return null;
+      }
+    });
+    const callNestedJson = async (urlPath) => {
+      const { Readable } = require('stream');
+      const req = Readable.from([]);
+      req.method = 'GET';
+      req.url = urlPath;
+      req.headers = { host: '127.0.0.1:18799', 'x-ag-remote-token': mockCfg.token };
+      req.socket = { remoteAddress: '127.0.0.1', localAddress: '127.0.0.1' };
+      let status = 200;
+      let raw = '';
+      await nestedHandler(req, {
+        setHeader() {},
+        writeHead(code) { status = code; },
+        end(chunk) { if (chunk) raw += String(chunk); }
+      });
+      return { status, json: JSON.parse(raw) };
+    };
+
+    // (i) 显式传入无效或不属于当前项目的 workspaceRoot 必须拒绝，严禁静默忽略
+    const badWsRelative = await callNestedJson('/api/project-tree?conversationId=conv-insight&workspaceRoot=relative/bad');
+    assert.equal(badWsRelative.status, 400, '显式传入非绝对路径 workspaceRoot 必须返回 400');
+    const badWsMissing = await callNestedJson('/api/project-tree?conversationId=conv-insight&workspaceRoot=' + encodeURIComponent(path.join(fakeHome, 'missing-ws')));
+    assert.equal(badWsMissing.status, 404, '显式传入不存在的 workspaceRoot 必须返回 404');
+    const badWsOtherProj = await callNestedJson('/api/project-tree?conversationId=conv-insight&workspaceRoot=' + encodeURIComponent(makeFontDir) + '&dir=' + encodeURIComponent(insightRepoDir));
+    assert.equal(badWsOtherProj.status, 403, '显式传入其他项目的 workspaceRoot 必须返回 403，不得静默改用 dir 所在根');
+
+    // (ii) 显式传入合法 workspaceRoot 时，请求其他工作区或父工作区的 dir 必须 403 拒绝，严禁静默切换 activeRoot
+    const crossSiblingWs = await callNestedJson(
+      '/api/project-tree?conversationId=conv-insight&workspaceRoot=' + encodeURIComponent(insightRepoDir) + '&dir=' + encodeURIComponent(insightSiteDir)
+    );
+    assert.equal(crossSiblingWs.status, 403, 'dir 超出当前指定 workspaceRoot（指向同项目另一工作区）必须 403 拦截');
+    const escapeChildWsToParent = await callNestedJson(
+      '/api/project-tree?conversationId=conv-nested&workspaceRoot=' + encodeURIComponent(nestedChildDir) + '&dir=' + encodeURIComponent(nestedParentDir)
+    );
+    assert.equal(escapeChildWsToParent.status, 403, '选定子工作区根时传父工作区 dir 必须 403 拦截，不得静默切到父工作区根');
+
+    // (iii) 选定子工作区根时 parentDir 为空且隐藏指向父工作区的符号链接；选定父工作区根时进入子目录可正常返回父工作区
+    const childScopedTree = await callNestedJson(
+      '/api/project-tree?conversationId=conv-nested&workspaceRoot=' + encodeURIComponent(nestedChildDir) + '&dir=' + encodeURIComponent(nestedChildDir)
+    );
+    assert.equal(childScopedTree.status, 200);
+    assert.equal(childScopedTree.json.parentDir, '', '选定子工作区根时根目录处 parentDir 必须锁死为空');
+    const childEntryNames = childScopedTree.json.entries.map((e) => e.name);
+    assert.ok(childEntryNames.includes('child-ok.txt'), '应正常列出子工作区内常规文件');
+    assert.equal(childEntryNames.includes('link-to-parent-file.txt'), false, '指向所选子工作区根外部（父目录）的符号链接必须被隐藏');
+
+    const parentScopedSubTree = await callNestedJson(
+      '/api/project-tree?conversationId=conv-nested&workspaceRoot=' + encodeURIComponent(nestedParentDir) + '&dir=' + encodeURIComponent(nestedChildDir)
+    );
+    assert.equal(parentScopedSubTree.status, 200);
+    assert.equal(parentScopedSubTree.json.parentDir, fs.realpathSync(nestedParentDir), '选定父工作区根时浏览其子目录可正常返回父工作区');
+
+    const insightRepoScopedTree = await callNestedJson(
+      '/api/project-tree?conversationId=conv-insight&workspaceRoot=' + encodeURIComponent(insightRepoDir) + '&dir=' + encodeURIComponent(insightRepoDir)
+    );
+    assert.equal(insightRepoScopedTree.status, 200);
+    assert.equal(
+      insightRepoScopedTree.json.entries.some((e) => e.name === 'symlink-to-army-ws'),
+      false,
+      '目录条目必须遵守当前所选工作区根边界，隐藏指向同项目其他工作区的符号链接'
+    );
+
+    // 6. 前端完整交互验证：多目录项目展示全部工作区 + 顶部切换栏、切单目录项目自动重置、切独立会话展示空态绝不串台
+    const enrichedInsight = await remoteMod.enrichSnapshotWithCatalog({
+      ok: true,
+      sessionId: 'conv-insight',
+      activeConversationId: 'conv-insight',
+      conversations: [
+        { id: 'conv-insight', title: 'Insight 多目录开发', active: true },
+        { id: 'conv-pinned-ag', title: '置顶会话', active: false },
+        { id: 'conv-standalone', title: '纯独立问答', active: false }
+      ]
+    }, {
+      stateDir,
+      configDir,
+      homeDir: fakeHome,
+      bypassCache: true,
+      localApiConnect: async () => ({
+        call: async (method) => (method === 'GetAllCascadeTrajectories' ? { trajectorySummaries: trajSummaries } : {})
+      })
+    });
+
+    const mobileHtml = remoteMod.buildMobileAppHtml();
+    const inlineScriptMatch = mobileHtml.match(/<script>([\s\S]*?)<\/script>/);
+    const bodyMatch = mobileHtml.match(/<body>([\s\S]*?)<script>/);
+    const envUi = createDomEnv();
+    envUi.doc.body.innerHTML = bodyMatch[1];
+    let currentUiSnap = enrichedInsight;
+    envUi.win.innerWidth = 1280;
+    envUi.win.innerHeight = 820;
+    envUi.win.AbortController = AbortController;
+    envUi.win.location = { pathname: '/', search: '?token=' + mockCfg.token, protocol: 'http:', reload() {} };
+    envUi.win.history = { replaceState() {} };
+    envUi.sandbox.location = envUi.win.location;
+    envUi.sandbox.history = envUi.win.history;
+    envUi.sandbox.AbortController = AbortController;
+    envUi.sandbox.URLSearchParams = URLSearchParams;
+    let interceptTreeGate = null;
+    let interceptFileGate = null;
+    let interceptChangesGate = null;
+    envUi.sandbox.fetch = async (url) => {
+      const u = new URL(String(url), 'http://127.0.0.1:18799');
+      const jsonHeaders = { get: (k) => (String(k).toLowerCase() === 'content-type' ? 'application/json' : '') };
+      if (u.pathname === '/api/snapshot') {
+        return { ok: true, status: 200, headers: jsonHeaders, json: async () => currentUiSnap };
+      }
+      if (u.pathname === '/api/project-tree') {
+        if (typeof interceptTreeGate === 'function') {
+          await interceptTreeGate(u);
+        }
+        const res = await callGetJson(u.pathname + u.search);
+        return { ok: res.status >= 200 && res.status < 300, status: res.status, headers: jsonHeaders, json: async () => res.json };
+      }
+      if (u.pathname === '/api/file-content') {
+        if (typeof interceptFileGate === 'function') {
+          await interceptFileGate(u);
+        }
+        const res = await callGetJson(u.pathname + u.search);
+        return { ok: res.status >= 200 && res.status < 300, status: res.status, headers: jsonHeaders, json: async () => res.json };
+      }
+      if (u.pathname === '/api/session-files') {
+        if (typeof interceptChangesGate === 'function') {
+          await interceptChangesGate(u);
+        }
+        const cidQ = u.searchParams.get('conversationId') || '';
+        const payload = cidQ === 'conv-pinned-ag'
+          ? { ok: true, diffs: [{ name: 'cli.js', path: path.join(agSuiteDir, 'cli.js'), diff: '@@ -1 +1 @@\n+// ag-suite-diff' }], artifacts: [] }
+          : (cidQ === 'conv-insight'
+            ? { ok: true, diffs: [], artifacts: [{ name: 'insight-art.md', content: '# Insight Summary' }] }
+            : { ok: true, diffs: [], artifacts: [] });
+        return { ok: true, status: 200, headers: jsonHeaders, json: async () => payload };
+      }
+      return { ok: true, status: 200, headers: jsonHeaders, json: async () => ({ ok: true }) };
+    };
+
+    vm.runInContext(inlineScriptMatch[1], envUi.sandbox);
+    await new Promise((r) => setTimeout(r, 40));
+
+    // (a) InsightOS 含 3 个工作区文件夹：点击「项目文件」默认展示全部 3 个工作区目录列表
+    envUi.doc.getElementById('btn-files-panel').click();
+    await new Promise((r) => setTimeout(r, 30));
+    const fvBody = envUi.doc.getElementById('fv-body');
+    const rootRows = fvBody.querySelectorAll('.fv-ws-root-row');
+    assert.equal(rootRows.length, 3, '3 目录项目打开项目文件应默认列出全部 3 个工作区文件夹');
+    // 点击第 3 个目录 (ws_works/InsightOS) 进入浏览，顶部应出现工作区切换胶囊栏且根目录无「↑ 上级」
+    rootRows[2].click();
+    await new Promise((r) => setTimeout(r, 40));
+    assert.ok((fvBody.textContent || '').includes('release-note.md'), '点击第 3 个工作区应加载该目录下的 release-note.md');
+    assert.equal(fvBody.querySelectorAll('.fv-ws-switch').length, 3, '进入目录后顶部应渲染 3 个工作区切换胶囊');
+    assert.equal(envUi.doc.getElementById('fv-tree-up'), null, '工作区根目录处不得渲染越界「↑ 上级」按钮');
+    // 通过顶部切换胶囊切到第 1 个工作区 (codebase/InsightOS)
+    fvBody.querySelectorAll('.fv-ws-switch')[0].click();
+    await new Promise((r) => setTimeout(r, 40));
+    assert.ok((fvBody.textContent || '').includes('insight-app.ts'), '点击顶部工作区胶囊应即时切换到第 1 个工作区');
+
+    // (b) 切换到单目录会话 antigravity-suite：关闭再点开「项目文件」，必须直接进入 antigravity-suite 目录，绝不残留 InsightOS 目录
+    envUi.doc.getElementById('fv-close-btn').click();
+    currentUiSnap = { ...enrichedAg, snapSeq: enrichedInsight.snapSeq + 10 };
+    envUi.win.dispatchEvent({ type: 'pageshow' });
+    await new Promise((r) => setTimeout(r, 40));
+    assert.equal(envUi.doc.getElementById('conv-project-badge').textContent, 'antigravity-suite');
+    envUi.doc.getElementById('btn-files-panel').click();
+    await new Promise((r) => setTimeout(r, 40));
+    assert.ok((fvBody.textContent || '').includes('cli.js'), '切到单目录项目后点开文件应直接展示 antigravity-suite 下的 cli.js');
+    assert.equal((fvBody.textContent || '').includes('insight-app.ts'), false, '严禁残留上一个项目 InsightOS 的目录内容');
+
+    // (c) 切换到无项目的独立会话 conv-standalone：顶栏项目徽章自动隐藏，点开「项目文件」展示空态绝不残留 antigravity-suite
+    envUi.doc.getElementById('fv-close-btn').click();
+    currentUiSnap = { ...enrichedStandalone, snapSeq: enrichedInsight.snapSeq + 20 };
+    envUi.win.dispatchEvent({ type: 'pageshow' });
+    await new Promise((r) => setTimeout(r, 40));
+    assert.equal(envUi.doc.getElementById('conv-project-badge').hidden, true, '独立会话顶栏项目徽章必须隐藏，不伪造默认项目');
+    envUi.doc.getElementById('btn-files-panel').click();
+    await new Promise((r) => setTimeout(r, 40));
+    assert.ok((fvBody.textContent || '').includes('当前对话未关联项目文件夹'), '无项目独立会话点开文件面板必须展示空态提示');
+    assert.equal((fvBody.textContent || '').includes('cli.js'), false, '独立会话严禁沿用上一个会话的目录');
+
+    // (d) 切工作区乱序响应回归：同一多目录项目内先点工作区 1（慢请求挂起），再点工作区 3（快请求先完成），随后放行工作区 1 的迟到响应，严禁覆盖工作区 3
+    envUi.doc.getElementById('fv-close-btn').click();
+    currentUiSnap = { ...enrichedInsight, snapSeq: enrichedInsight.snapSeq + 30 };
+    envUi.win.dispatchEvent({ type: 'pageshow' });
+    await new Promise((r) => setTimeout(r, 40));
+    envUi.doc.getElementById('btn-files-panel').click();
+    await new Promise((r) => setTimeout(r, 20));
+    // 先进入工作区 3 以渲染顶部切换栏
+    fvBody.querySelectorAll('.fv-ws-root-row')[2].click();
+    await new Promise((r) => setTimeout(r, 30));
+    let releaseSlowWs1 = null;
+    const slowWs1Promise = new Promise((r) => { releaseSlowWs1 = r; });
+    interceptTreeGate = async (u) => {
+      const dirQ = u.searchParams.get('dir') || '';
+      if (dirQ.includes('codebase/InsightOS')) {
+        await slowWs1Promise;
+      }
+    };
+    // 点击工作区 1（被挂起），紧接着点击工作区 3（立即返回）
+    fvBody.querySelectorAll('.fv-ws-switch')[0].click();
+    await new Promise((r) => setTimeout(r, 15));
+    fvBody.querySelectorAll('.fv-ws-switch')[2].click();
+    await new Promise((r) => setTimeout(r, 40));
+    assert.ok((fvBody.textContent || '').includes('release-note.md'), '快请求工作区 3 应先完成渲染');
+    // 放行工作区 1 的过期慢响应
+    releaseSlowWs1();
+    await new Promise((r) => setTimeout(r, 40));
+    assert.ok((fvBody.textContent || '').includes('release-note.md'), '工作区 1 的迟到响应严禁覆盖当前工作区 3 内容');
+    assert.equal((fvBody.textContent || '').includes('insight-app.ts'), false, '工作区 1 的迟到文件列表必须被丢弃');
+
+    // (e) 切会话乱序响应回归：会话 A (antigravity-suite) 文件面板请求挂起期间切到会话 B (conv-standalone 空态) 及会话 C (InsightOS)，放行 A 的迟到响应不得污染面板或 fvState
+    envUi.doc.getElementById('fv-close-btn').click();
+    currentUiSnap = { ...enrichedAg, snapSeq: enrichedInsight.snapSeq + 40 };
+    envUi.win.dispatchEvent({ type: 'pageshow' });
+    await new Promise((r) => setTimeout(r, 40));
+    let releaseSlowAg = null;
+    const slowAgPromise = new Promise((r) => { releaseSlowAg = r; });
+    interceptTreeGate = async (u) => {
+      if ((u.searchParams.get('conversationId') || '') === 'conv-pinned-ag') {
+        await slowAgPromise;
+      }
+    };
+    // 打开面板触发会话 A 的慢目录请求（保持面板打开不关闭！）
+    envUi.doc.getElementById('btn-files-panel').click();
+    await new Promise((r) => setTimeout(r, 15));
+    // 面板仍开着时直接切到独立会话 conv-standalone
+    currentUiSnap = { ...enrichedStandalone, snapSeq: enrichedInsight.snapSeq + 50 };
+    envUi.win.dispatchEvent({ type: 'pageshow' });
+    await new Promise((r) => setTimeout(r, 30));
+    assert.ok((fvBody.textContent || '').includes('当前对话未关联项目文件夹'), '切到独立会话后打开中的面板应即时刷新为空态');
+    // 此时会话 A 的迟到目录响应到达
+    releaseSlowAg();
+    interceptTreeGate = null;
+    await new Promise((r) => setTimeout(r, 40));
+    assert.ok((fvBody.textContent || '').includes('当前对话未关联项目文件夹'), '会话 A 的迟到响应严禁覆盖当前会话 B 的空态面板');
+    assert.equal((fvBody.textContent || '').includes('cli.js'), false, '会话 A 的 cli.js 严禁串台写入当前会话面板');
+    assert.equal(envUi.doc.getElementById('fv-title').textContent, '项目文件', '迟到响应不得把面板标题改回旧项目名');
+    // 再次切换标签页回「项目文件」验证 fvState.curDir 亦未被迟到响应污染
+    envUi.doc.getElementById('fv-tab-tree').click();
+    await new Promise((r) => setTimeout(r, 30));
+    assert.ok((fvBody.textContent || '').includes('当前对话未关联项目文件夹'), 'fvState.curDir 不得被过期响应污染');
+
+    // (f) 文件预览与变更面板在切会话时的清理/重载回归（覆盖「已展示内容切会话」与「请求挂起中切会话防永久卡加载」）
+    // (f-1) 已展示单文件预览 (cli.js) 时切会话 -> 必须立即退出文件预览并重载新会话目录视图，不残留旧文件内容
+    envUi.doc.getElementById('fv-close-btn').click();
+    currentUiSnap = { ...enrichedAg, snapSeq: enrichedInsight.snapSeq + 60 };
+    envUi.win.dispatchEvent({ type: 'pageshow' });
+    await new Promise((r) => setTimeout(r, 40));
+    envUi.doc.getElementById('btn-files-panel').click();
+    await new Promise((r) => setTimeout(r, 30));
+    const cliFileRow = fvBody.querySelectorAll('.fv-row').find((r) => (r.textContent || '').includes('cli.js'));
+    assert.ok(cliFileRow, '应找到 cli.js 文件行');
+    cliFileRow.click();
+    await new Promise((r) => setTimeout(r, 35));
+    assert.ok((fvBody.textContent || '').includes('// ag-suite'), '点击 cli.js 后应展示文件源码预览');
+    assert.equal(envUi.doc.getElementById('fv-back-btn').hidden, false, '文件预览态应显示返回按钮');
+    // 保持预览弹窗打开，切换到独立会话 conv-standalone
+    currentUiSnap = { ...enrichedStandalone, snapSeq: enrichedInsight.snapSeq + 70 };
+    envUi.win.dispatchEvent({ type: 'pageshow' });
+    await new Promise((r) => setTimeout(r, 40));
+    assert.equal(envUi.doc.getElementById('fv-back-btn').hidden, true, '切会话后应退出旧会话单文件预览态');
+    assert.equal((fvBody.textContent || '').includes('// ag-suite'), false, '切会话后不得残留旧会话文件预览正文');
+    assert.ok((fvBody.textContent || '').includes('当前对话未关联项目文件夹'), '切会话后应自动重载为新会话的目录状态');
+
+    // (f-2) 单文件预览请求挂起期间切会话 -> 不得永久停留在骨架屏，也不得被旧文件迟到响应覆盖
+    envUi.doc.getElementById('fv-close-btn').click();
+    currentUiSnap = { ...enrichedAg, snapSeq: enrichedInsight.snapSeq + 80 };
+    envUi.win.dispatchEvent({ type: 'pageshow' });
+    await new Promise((r) => setTimeout(r, 40));
+    envUi.doc.getElementById('btn-files-panel').click();
+    await new Promise((r) => setTimeout(r, 30));
+    let releaseSlowFile = null;
+    const slowFilePromise = new Promise((r) => { releaseSlowFile = r; });
+    interceptFileGate = async () => { await slowFilePromise; };
+    fvBody.querySelectorAll('.fv-row').find((r) => (r.textContent || '').includes('cli.js')).click();
+    await new Promise((r) => setTimeout(r, 15));
+    // 文件读取仍在挂起加载态时切到多目录会话 InsightOS
+    currentUiSnap = { ...enrichedInsight, snapSeq: enrichedInsight.snapSeq + 90 };
+    envUi.win.dispatchEvent({ type: 'pageshow' });
+    await new Promise((r) => setTimeout(r, 35));
+    assert.equal(fvBody.querySelectorAll('.fv-ws-root-row').length, 3, '文件请求挂起期间切到 InsightOS 应立即重载出 3 工作区总览，绝不永久卡在骨架屏');
+    releaseSlowFile();
+    interceptFileGate = null;
+    await new Promise((r) => setTimeout(r, 35));
+    assert.equal((fvBody.textContent || '').includes('// ag-suite'), false, '旧会话迟到的文件预览响应不得覆盖新会话视图');
+    assert.equal(fvBody.querySelectorAll('.fv-ws-root-row').length, 3);
+
+    // (f-3) 已展示「变更与产物」内容时切会话 -> 自动刷新为新会话变更列表，不保留旧会话 Diff
+    currentUiSnap = { ...enrichedAg, snapSeq: enrichedInsight.snapSeq + 100 };
+    envUi.win.dispatchEvent({ type: 'pageshow' });
+    await new Promise((r) => setTimeout(r, 35));
+    envUi.doc.getElementById('fv-tab-changes').click();
+    await new Promise((r) => setTimeout(r, 35));
+    assert.ok((fvBody.textContent || '').includes('cli.js'), '会话 A 变更页应展示修改的文件 cli.js');
+    // 切换到无改动的独立会话 conv-standalone
+    currentUiSnap = { ...enrichedStandalone, snapSeq: enrichedInsight.snapSeq + 110 };
+    envUi.win.dispatchEvent({ type: 'pageshow' });
+    await new Promise((r) => setTimeout(r, 40));
+    assert.ok((fvBody.textContent || '').includes('当前会话暂无代码改动或产物'), '切会话后已打开的变更页必须自动重载新会话变更');
+    assert.equal((fvBody.textContent || '').includes('cli.js'), false, '切会话后变更页不得保留旧会话修改文件');
+
+    // (f-4) 「变更与产物」请求挂起期间切会话 -> 立即发起新会话变更请求，不卡骨架屏且丢弃旧会话迟到响应
+    currentUiSnap = { ...enrichedAg, snapSeq: enrichedInsight.snapSeq + 120 };
+    envUi.win.dispatchEvent({ type: 'pageshow' });
+    await new Promise((r) => setTimeout(r, 35));
+    let releaseSlowChanges = null;
+    const slowChangesPromise = new Promise((r) => { releaseSlowChanges = r; });
+    interceptChangesGate = async (u) => {
+      if ((u.searchParams.get('conversationId') || '') === 'conv-pinned-ag') {
+        await slowChangesPromise;
+      }
+    };
+    envUi.doc.getElementById('fv-tab-changes').click();
+    await new Promise((r) => setTimeout(r, 15));
+    // 会话 A 变更接口挂起中切到会话 C (conv-insight)
+    currentUiSnap = { ...enrichedInsight, snapSeq: enrichedInsight.snapSeq + 130 };
+    envUi.win.dispatchEvent({ type: 'pageshow' });
+    await new Promise((r) => setTimeout(r, 40));
+    assert.ok((fvBody.textContent || '').includes('insight-art.md'), '变更请求挂起期间切会话应直接加载新会话产物 insight-art.md，绝不卡在加载态');
+    releaseSlowChanges();
+    interceptChangesGate = null;
+    await new Promise((r) => setTimeout(r, 35));
+    assert.ok((fvBody.textContent || '').includes('insight-art.md'), '旧会话迟到的变更响应不得覆盖新会话产物列表');
+    assert.equal((fvBody.textContent || '').includes('cli.js'), false, '旧会话 cli.js 变更记录必须被丢弃');
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+
+// =========================================================================
+// P0 [#52] Phase A: 锁定服务端项目顺序彻底防跳动、新项目默认置顶与排序持久化接口
+// =========================================================================
+test('锁定服务端项目顺序防跳动、新项目默认置顶、瞬态漏项保护与 POST /api/projects/order 持久化 (#52 Phase A)', async () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-proj-order-52-'));
+  try {
+    const fakeHome = path.join(tmpRoot, 'home');
+    const stateDir = path.join(tmpRoot, 'state');
+    const configDir = path.join(tmpRoot, 'config');
+    const projectsDir = path.join(configDir, 'projects');
+    const wsAlpha = path.join(fakeHome, 'codebase', 'alpha');
+    const wsBeta = path.join(fakeHome, 'codebase', 'beta');
+    const wsGamma = path.join(fakeHome, 'codebase', 'gamma');
+    const wsNewDesk = path.join(fakeHome, 'codebase', 'new-desk');
+    const wsNewRemote = path.join(fakeHome, 'codebase', 'new-remote');
+    for (const d of [stateDir, projectsDir, wsAlpha, wsBeta, wsGamma, wsNewDesk, wsNewRemote]) {
+      fs.mkdirSync(d, { recursive: true });
+    }
+
+    const writeProj = (id, name, dirPath, mtimeSecOffset = 0, extra = {}) => {
+      const fp = path.join(projectsDir, `${id}.json`);
+      fs.writeFileSync(fp, JSON.stringify({
+        id,
+        name,
+        projectResources: { resources: [{ folderUri: 'file://' + encodeURI(dirPath) }] },
+        ...extra
+      }, null, 2));
+      const ts = new Date(Date.UTC(2026, 10, 24, 0, 0, 0) + mtimeSecOffset * 1000);
+      fs.utimesSync(fp, ts, ts);
+    };
+    writeProj('proj-alpha', 'Alpha', wsAlpha, 300);
+    writeProj('proj-beta', 'BetaEmpty', wsBeta, 200);
+    writeProj('proj-gamma', 'Gamma', wsGamma, 100);
+
+    let remoteMod = require('../mobile-remote');
+    const baseMs = Date.UTC(2026, 10, 24, 0, 0, 0);
+    const summaries = {
+      'conv-alpha-1': {
+        summary: 'Alpha 任务',
+        status: 'CASCADE_RUN_STATUS_IDLE',
+        lastModifiedTime: new Date(baseMs + 300000).toISOString(),
+        trajectoryMetadata: { projectId: 'proj-alpha', rootConversationId: 'conv-alpha-1' }
+      },
+      'conv-gamma-1': {
+        summary: 'Gamma 后台任务',
+        status: 'CASCADE_RUN_STATUS_RUNNING',
+        lastModifiedTime: new Date(baseMs + 100000).toISOString(),
+        trajectoryMetadata: { projectId: 'proj-gamma', rootConversationId: 'conv-gamma-1' },
+        annotations: { lastUserViewTime: new Date(baseMs + 100000).toISOString() }
+      },
+      'conv-ungrouped-1': {
+        summary: '未归属杂项问答',
+        status: 'CASCADE_RUN_STATUS_IDLE',
+        lastModifiedTime: new Date(baseMs + 900000).toISOString(),
+        trajectoryMetadata: { rootConversationId: 'conv-ungrouped-1' }
+      }
+    };
+    let listedProjectIds = ['proj-alpha', 'proj-beta', 'proj-gamma'];
+    const enrichOpts = () => ({
+      stateDir,
+      configDir,
+      homeDir: fakeHome,
+      bypassCache: true,
+      localApiConnect: async () => ({
+        call: async (method) => {
+          if (method === 'GetAllCascadeTrajectories') return { trajectorySummaries: summaries };
+          if (method === 'ListProjects') return { projectIds: listedProjectIds };
+          return {};
+        }
+      })
+    });
+
+    // 1. 首次升级初始化：锁定当前顺序 ['proj-alpha', 'proj-beta', 'proj-gamma']，ungrouped 即使时间更新也固定垫底
+    const snapInit = await remoteMod.enrichSnapshotWithCatalog({
+      ok: true,
+      sessionId: 'conv-alpha-1',
+      conversations: [{ id: 'conv-alpha-1', title: 'Alpha 任务', active: true }]
+    }, enrichOpts());
+    assert.deepEqual(
+      snapInit.projects.map((p) => p.id),
+      ['proj-alpha', 'proj-beta', 'proj-gamma', 'ungrouped'],
+      '首次初始化应锁定项目顺序且 ungrouped 固定垫底'
+    );
+    assert.deepEqual(snapInit.projectOrder, ['proj-alpha', 'proj-beta', 'proj-gamma']);
+
+    // 2. 后台会话活跃完成：Gamma 的 Agent 2 小时后跑完并产生未读，仅在原地更新计数/状态，项目位置绝不跳动！
+    summaries['conv-gamma-1'].status = 'CASCADE_RUN_STATUS_IDLE';
+    summaries['conv-gamma-1'].lastModifiedTime = new Date(baseMs + 7200000).toISOString();
+    const snapAfterBg = await remoteMod.enrichSnapshotWithCatalog({
+      ok: true,
+      sessionId: 'conv-alpha-1',
+      conversations: [{ id: 'conv-alpha-1', title: 'Alpha 任务', active: true }]
+    }, enrichOpts());
+    assert.deepEqual(
+      snapAfterBg.projects.map((p) => p.id),
+      ['proj-alpha', 'proj-beta', 'proj-gamma', 'ungrouped'],
+      '后台项目 Gamma 完成更新时间戳后绝不可跳到列表顶部'
+    );
+    const gammaAfterBg = snapAfterBg.projects.find((p) => p.id === 'proj-gamma');
+    assert.equal(gammaAfterBg?.unreadCount, 1, 'Gamma 应在原地准确刷新未读计数');
+    assert.equal(gammaAfterBg?.runningCount, 0, 'Gamma 应在原地刷新运行状态');
+
+    // 3. 瞬态漏项保护：模拟某个仅来自 ListProjects 的空项目在单次轮询中因 RPC 超时漏返，恢复后不得被误判为新建项目跳顶
+    listedProjectIds = ['proj-alpha', 'proj-beta', 'proj-gamma', 'default-cli-project'];
+    const snapWithCli = await remoteMod.enrichSnapshotWithCatalog({
+      ok: true,
+      sessionId: 'conv-alpha-1',
+      conversations: [{ id: 'conv-alpha-1', title: 'Alpha 任务', active: true }]
+    }, enrichOpts());
+    assert.equal(snapWithCli.projects[0].id, 'default-cli-project', '首次出现的新项目应插入最顶部');
+    // 将 default-cli-project 调到末尾模拟用户既有顺序，然后模拟单轮 ListProjects 超时返回空列表
+    remoteMod.setCatalogProjectOrder(['proj-alpha', 'proj-beta', 'proj-gamma', 'default-cli-project'], { stateDir, configDir });
+    listedProjectIds = [];
+    await remoteMod.enrichSnapshotWithCatalog({
+      ok: true,
+      sessionId: 'conv-alpha-1',
+      conversations: [{ id: 'conv-alpha-1', title: 'Alpha 任务', active: true }]
+    }, enrichOpts());
+    listedProjectIds = ['proj-alpha', 'proj-beta', 'proj-gamma', 'default-cli-project'];
+    const snapAfterTransientRecover = await remoteMod.enrichSnapshotWithCatalog({
+      ok: true,
+      sessionId: 'conv-alpha-1',
+      conversations: [{ id: 'conv-alpha-1', title: 'Alpha 任务', active: true }]
+    }, enrichOpts());
+    assert.deepEqual(
+      snapAfterTransientRecover.projects.map((p) => p.id),
+      ['proj-alpha', 'proj-beta', 'proj-gamma', 'default-cli-project', 'ungrouped'],
+      '瞬态 RPC 漏项恢复后必须维持原位，不得误当新项目跳到顶部'
+    );
+
+    // 4. 桌面新建项目自动置顶 + 归档项目自动剔除且不影响其余相对顺序
+    writeProj('proj-new-desk', 'NewDesktopApp', wsNewDesk, 50); // 即使磁盘 mtime 较早，新发现项目也必须置顶
+    writeProj('proj-beta', 'BetaEmpty', wsBeta, 200, { archived: true });
+    listedProjectIds = ['proj-alpha', 'proj-gamma', 'default-cli-project', 'proj-new-desk'];
+    const snapNewAndArchived = await remoteMod.enrichSnapshotWithCatalog({
+      ok: true,
+      sessionId: 'conv-alpha-1',
+      conversations: [{ id: 'conv-alpha-1', title: 'Alpha 任务', active: true }]
+    }, enrichOpts());
+    assert.deepEqual(
+      snapNewAndArchived.projects.map((p) => p.id),
+      ['proj-new-desk', 'proj-alpha', 'proj-gamma', 'default-cli-project', 'ungrouped'],
+      '新发现项目必须置顶，已归档项目自动剔除且其余项目相对位置不变'
+    );
+
+    // 5. POST /api/projects/order 鉴权、CSRF、参数校验、部分顺序保底追加、markViewed 写盘兼容与跨重启持久化
+    const mockCfg = {
+      port: 18852,
+      token: 'tok-52-order-1234567890abcdef',
+      tunnelEnabled: false,
+      enabledChannels: { lan: true, tailscale: true, bonjour: true, tunnel: false }
+    };
+    const handler = remoteMod.createRemoteHttpHandler(mockCfg, {
+      catalogOptions: { stateDir, configDir, homeDir: fakeHome },
+      configDir,
+      homeDir: fakeHome,
+      allowedRoots: [fakeHome],
+      allowDiskFallback: true,
+      openInDesktop: false
+    });
+    const { Readable } = require('stream');
+    const callPost = async (urlPath, bodyObj, hdrOverrides = {}) => {
+      const rawBody = JSON.stringify(bodyObj);
+      const req = Readable.from([Buffer.from(rawBody, 'utf8')]);
+      req.method = 'POST';
+      req.url = urlPath;
+      req.headers = {
+        host: '127.0.0.1:18852',
+        'content-type': 'application/json',
+        'x-ag-remote-token': mockCfg.token,
+        ...hdrOverrides
+      };
+      req.socket = { remoteAddress: '127.0.0.1', localAddress: '127.0.0.1' };
+      let status = 200;
+      let rawOut = '';
+      await handler(req, {
+        setHeader() {},
+        getHeader() { return ''; },
+        writeHead(code) { status = code; },
+        end(chunk) { if (chunk) rawOut += String(chunk); }
+      });
+      return { status, json: rawOut ? JSON.parse(rawOut) : null };
+    };
+
+    const unauthRes = await callPost('/api/projects/order', { projectOrder: ['proj-gamma', 'proj-alpha'] }, { 'x-ag-remote-token': 'wrong-token' });
+    assert.equal(unauthRes.status, 401, '未鉴权写项目顺序必须返回 401');
+
+    const csrfRes = await callPost('/api/projects/order', { projectOrder: ['proj-gamma', 'proj-alpha'] }, {
+      'x-ag-remote-token': '',
+      cookie: `ag_remote_token=${mockCfg.token}`,
+      origin: 'https://evil.example.com'
+    });
+    assert.equal(csrfRes.status, 403, 'Cookie 鉴权跨源请求必须被 CSRF 拦截返回 403');
+
+    const badTypeRes = await callPost('/api/projects/order', { projectOrder: 'not-an-array' });
+    assert.equal(badTypeRes.status, 400, '非数组 projectOrder 必须返回 400');
+    const badElemRes = await callPost('/api/projects/order', { projectOrder: [123] });
+    assert.equal(badElemRes.status, 400, '包含非字符串元素的 projectOrder 必须返回 400');
+    const badEmptyRes = await callPost('/api/projects/order', { projectOrder: [] });
+    assert.equal(badEmptyRes.status, 400, '存在有效项目时传空数组必须返回 400');
+    const badSyntheticRes = await callPost('/api/projects/order', { projectOrder: ['default', 'ungrouped'] });
+    assert.equal(badSyntheticRes.status, 400, '仅包含合成/非项目桶 ID 时必须返回 400');
+
+    // 提交手动顺序 ['proj-gamma', 'proj-alpha']（故意省略 proj-new-desk 与 default-cli-project，验证未传项保底保留在尾部且自动过滤 ungrouped/重复项）
+    const prevRev = snapNewAndArchived.catalogRevision;
+    const okOrderRes = await callPost('/api/projects/order', {
+      projectOrder: ['proj-gamma', 'ungrouped', 'proj-alpha', 'proj-gamma']
+    });
+    assert.equal(okOrderRes.status, 200);
+    assert.equal(okOrderRes.json.ok, true);
+    assert.deepEqual(
+      okOrderRes.json.projectOrder,
+      ['proj-gamma', 'proj-alpha', 'proj-new-desk', 'default-cli-project'],
+      '手动排序应精确生效、去重过滤 ungrouped，并将未显式传入的既有项目按原相对顺序保底追加在末尾'
+    );
+    assert.notEqual(okOrderRes.json.catalogRevision, prevRev, '调整项目顺序后应刷新 catalogRevision 以便前端同步');
+
+    // 通过 POST /api/projects 远程新建项目，应立即置顶排到手动顺序最前面
+    const createProjRes = await callPost('/api/projects', {
+      folderPath: wsNewRemote,
+      name: 'RemoteTopProj',
+      openInDesktop: false
+    });
+    assert.equal(createProjRes.status, 200);
+    const createdPid = createProjRes.json.project.id;
+    listedProjectIds.push(createdPid);
+
+    // 模拟模块热重载/服务重启 + markViewed 写盘 + Alpha 会话再次活跃，验证手动顺序与新项目置顶跨重启永不漂移
+    const tempStoreBeforeRestart = remoteMod.createSessionCatalogStore();
+    await tempStoreBeforeRestart.enrichSnapshot({ ok: true, sessionId: 'conv-alpha-1', conversations: [] }, enrichOpts());
+    assert.equal(tempStoreBeforeRestart.markViewed('conv-gamma-1', Date.now() + 50000, { stateDir }), true, 'markViewed 应成功推进已读水位');
+    const diskAfterMarkViewed = JSON.parse(fs.readFileSync(path.join(stateDir, 'remote-session-catalog.json'), 'utf8'));
+    assert.deepEqual(
+      diskAfterMarkViewed.projectOrder,
+      [createdPid, 'proj-gamma', 'proj-alpha', 'proj-new-desk', 'default-cli-project'],
+      'markViewed 写盘绝不可覆盖清空持久化的 projectOrder'
+    );
+    delete require.cache[require.resolve('../mobile-remote')];
+    remoteMod = require('../mobile-remote');
+    summaries['conv-alpha-1'].lastModifiedTime = new Date(baseMs + 99999999).toISOString();
+    const snapAfterRestart = await remoteMod.enrichSnapshotWithCatalog({
+      ok: true,
+      sessionId: 'conv-alpha-1',
+      conversations: [{ id: 'conv-alpha-1', title: 'Alpha 任务', active: true }]
+    }, enrichOpts());
+    assert.deepEqual(
+      snapAfterRestart.projects.map((p) => p.id),
+      [createdPid, 'proj-gamma', 'proj-alpha', 'proj-new-desk', 'default-cli-project', 'ungrouped'],
+      '远程新建项目置顶 + 手动排定顺序必须跨重启持久生效，且不受后续 Alpha 活跃时间推进影响'
+    );
+
+    // 验证前端 renderConversationList 严格遵循 snap.projects 顺序且把未归属桶固定垫底
+    const mobileHtml = remoteMod.buildMobileAppHtml();
+    const inlineScript = mobileHtml.match(/<script>([\s\S]*?)<\/script>/)[1];
+    const bodyHtml = mobileHtml.match(/<body>([\s\S]*?)<script>/)[1];
+    const envDom = createDomEnv();
+    envDom.doc.body.innerHTML = bodyHtml;
+    envDom.win.innerWidth = 1280;
+    envDom.win.innerHeight = 820;
+    envDom.win.AbortController = AbortController;
+    envDom.win.location = { pathname: '/', search: '?token=' + mockCfg.token, protocol: 'http:', reload() {} };
+    envDom.win.history = { replaceState() {} };
+    envDom.sandbox.location = envDom.win.location;
+    envDom.sandbox.history = envDom.win.history;
+    envDom.sandbox.AbortController = AbortController;
+    envDom.sandbox.URLSearchParams = URLSearchParams;
+    envDom.sandbox.fetch = async (url) => {
+      const u = new URL(String(url), 'http://127.0.0.1:18852');
+      const jsonHeaders = { get: (k) => (String(k).toLowerCase() === 'content-type' ? 'application/json' : '') };
+      if (u.pathname === '/api/snapshot') {
+        return { ok: true, status: 200, headers: jsonHeaders, json: async () => snapAfterRestart };
+      }
+      return { ok: true, status: 200, headers: jsonHeaders, json: async () => ({ ok: true }) };
+    };
+    vm.runInContext(inlineScript, envDom.sandbox);
+    await new Promise((r) => setTimeout(r, 35));
+    const renderedTitles = envDom.doc.getElementById('conv-list')
+      .querySelectorAll('.proj-group .proj-name')
+      .map((el) => (el.textContent || '').trim());
+    assert.deepEqual(
+      renderedTitles,
+      ['RemoteTopProj', 'Gamma', 'Alpha', 'NewDesktopApp', 'CLI Project', '未归属项目'],
+      '前端侧边栏项目组 DOM 顺序必须与服务端锁定顺序完全一致且未归属项目固定垫底'
+    );
+
+    // 6. 超过 500 个有效项目（505 项）回归：连续快照无截断振荡、部分排序提交不丢失保底项、跨重启顺序 100% 稳定
+    const stateDir505 = path.join(tmpRoot, 'state-505');
+    const configDir505 = path.join(tmpRoot, 'config-505');
+    fs.mkdirSync(stateDir505, { recursive: true });
+    fs.mkdirSync(path.join(configDir505, 'projects'), { recursive: true });
+    const ids505 = [];
+    const summaries505 = {};
+    for (let i = 1; i <= 505; i++) {
+      const pid = `proj-scale-${String(i).padStart(3, '0')}`;
+      ids505.push(pid);
+      summaries505[`conv-scale-${i}`] = {
+        summary: `Scale Task ${i}`,
+        status: 'CASCADE_RUN_STATUS_IDLE',
+        lastModifiedTime: new Date(baseMs + (1000 - i) * 1000).toISOString(),
+        trajectoryMetadata: { projectId: pid, rootConversationId: `conv-scale-${i}` }
+      };
+    }
+    const enrich505Opts = () => ({
+      stateDir: stateDir505,
+      configDir: configDir505,
+      homeDir: fakeHome,
+      bypassCache: true,
+      localApiConnect: async () => ({
+        call: async (method) => {
+          if (method === 'GetAllCascadeTrajectories') return { trajectorySummaries: summaries505 };
+          if (method === 'ListProjects') return { projectIds: ids505 };
+          return {};
+        }
+      })
+    });
+    const snap505_1 = await remoteMod.enrichSnapshotWithCatalog({ ok: true, sessionId: 'conv-scale-1', conversations: [] }, enrich505Opts());
+    assert.equal(snap505_1.projects.length, 505, '505 个有效项目应完整返回，不得被 500 上限截断');
+    assert.equal(snap505_1.projectOrder.length, 505, '持久化权威 projectOrder 应保留全部 505 项');
+    const expectedInitial505 = ids505.slice();
+    assert.deepEqual(snap505_1.projects.map((p) => p.id), expectedInitial505);
+
+    // 连续两次快照并更新尾部第 501~505 项的时间戳，绝不因截断被误判为新项目跳顶振荡
+    summaries505['conv-scale-505'].lastModifiedTime = new Date(baseMs + 90000000).toISOString();
+    summaries505['conv-scale-501'].lastModifiedTime = new Date(baseMs + 95000000).toISOString();
+    const snap505_2 = await remoteMod.enrichSnapshotWithCatalog({ ok: true, sessionId: 'conv-scale-1', conversations: [] }, enrich505Opts());
+    const snap505_3 = await remoteMod.enrichSnapshotWithCatalog({ ok: true, sessionId: 'conv-scale-1', conversations: [] }, enrich505Opts());
+    assert.deepEqual(snap505_2.projects.map((p) => p.id), expectedInitial505, '第 2 次连续快照不得发生尾部截断跳顶');
+    assert.deepEqual(snap505_3.projects.map((p) => p.id), expectedInitial505, '第 3 次连续快照同样保持 505 项顺序完全稳定');
+
+    // 对 505 个项目提交部分排序 ['proj-scale-505', 'proj-scale-501']，其余 503 个既有项目必须完整保底追加，不得截断丢失
+    const handler505 = remoteMod.createRemoteHttpHandler(mockCfg, {
+      catalogOptions: { stateDir: stateDir505, configDir: configDir505, homeDir: fakeHome },
+      configDir: configDir505,
+      homeDir: fakeHome,
+      allowedRoots: [fakeHome]
+    });
+    const postPartial505Req = Readable.from([Buffer.from(JSON.stringify({ projectOrder: ['proj-scale-505', 'proj-scale-501'] }), 'utf8')]);
+    postPartial505Req.method = 'POST';
+    postPartial505Req.url = '/api/projects/order';
+    postPartial505Req.headers = { host: '127.0.0.1:18852', 'content-type': 'application/json', 'x-ag-remote-token': mockCfg.token };
+    postPartial505Req.socket = { remoteAddress: '127.0.0.1', localAddress: '127.0.0.1' };
+    let partial505Status = 200;
+    let partial505Raw = '';
+    await handler505(postPartial505Req, {
+      setHeader() {},
+      getHeader() { return ''; },
+      writeHead(code) { partial505Status = code; },
+      end(chunk) { if (chunk) partial505Raw += String(chunk); }
+    });
+    const partial505Json = JSON.parse(partial505Raw);
+    assert.equal(partial505Status, 200);
+    assert.equal(partial505Json.projectOrder.length, 505, '部分排序合并后仍须完整保留全部 505 个项目');
+    const expectedReordered505 = [
+      'proj-scale-505',
+      'proj-scale-501',
+      ...expectedInitial505.filter((id) => id !== 'proj-scale-505' && id !== 'proj-scale-501')
+    ];
+    assert.deepEqual(partial505Json.projectOrder, expectedReordered505);
+
+    // 重启模块后再次连续拉取快照，验证 505 项顺序跨重启完全稳定
+    delete require.cache[require.resolve('../mobile-remote')];
+    remoteMod = require('../mobile-remote');
+    const snap505Restart1 = await remoteMod.enrichSnapshotWithCatalog({ ok: true, sessionId: 'conv-scale-1', conversations: [] }, enrich505Opts());
+    const snap505Restart2 = await remoteMod.enrichSnapshotWithCatalog({ ok: true, sessionId: 'conv-scale-1', conversations: [] }, enrich505Opts());
+    assert.deepEqual(snap505Restart1.projects.map((p) => p.id), expectedReordered505, '505 项手动顺序跨重启后必须完整保留');
+    assert.deepEqual(snap505Restart2.projects.map((p) => p.id), expectedReordered505, '505 项重启后连续快照不得发生任何跳动');
+
+    // 7. 旧版存储无 projectOrder 冷启动远程新建回归：旧项目仅存在于持久化会话（store.map）与 RPC 返回中（磁盘无旧项目 json）
+    for (const rpcAvailableDuringCreate of [true, false]) {
+      const tag = rpcAvailableDuringCreate ? 'rpc-online' : 'rpc-deferred';
+      const stateDirCold = path.join(tmpRoot, `state-cold-${tag}`);
+      const configDirCold = path.join(tmpRoot, `config-cold-${tag}`);
+      const wsColdNew = path.join(fakeHome, 'codebase', `cold-new-${tag}`);
+      fs.mkdirSync(stateDirCold, { recursive: true });
+      fs.mkdirSync(path.join(configDirCold, 'projects'), { recursive: true });
+      fs.mkdirSync(wsColdNew, { recursive: true });
+      // 模拟旧版 v2 存储：没有 projectOrder 与 projectOrderInitialized，且旧项目 proj-legacy-conv 仅存在于持久化会话中
+      fs.writeFileSync(path.join(stateDirCold, 'remote-session-catalog.json'), JSON.stringify({
+        version: 2,
+        updatedAt: baseMs + 500000,
+        subagentIds: [],
+        subagentRoots: {},
+        subagentStates: {},
+        conversations: [
+          {
+            id: 'conv-legacy-persisted',
+            title: '旧版持久化会话',
+            projectId: 'proj-legacy-conv',
+            projectName: 'LegacyPersistedProj',
+            archived: false,
+            pinned: false,
+            updatedAt: baseMs + 500000,
+            status: 'idle'
+          }
+        ]
+      }));
+      const coldRpcMock = async () => ({
+        call: async (method, reqBody) => {
+          if (method === 'CreateProject') return { project: reqBody.project };
+          if (method === 'GetAllCascadeTrajectories') {
+            return {
+              trajectorySummaries: {
+                'conv-legacy-rpc': {
+                  summary: 'RPC 侧旧项目会话',
+                  status: 'CASCADE_RUN_STATUS_IDLE',
+                  lastModifiedTime: new Date(baseMs + 800000).toISOString(),
+                  trajectoryMetadata: { projectId: 'proj-legacy-rpc-traj', rootConversationId: 'conv-legacy-rpc' }
+                }
+              }
+            };
+          }
+          if (method === 'ListProjects') {
+            return { projectIds: ['proj-legacy-rpc-traj', 'proj-legacy-rpc-empty'] };
+          }
+          return {};
+        }
+      });
+      const coldHandler = remoteMod.createRemoteHttpHandler(mockCfg, {
+        catalogOptions: { stateDir: stateDirCold, configDir: configDirCold, homeDir: fakeHome },
+        configDir: configDirCold,
+        homeDir: fakeHome,
+        allowedRoots: [fakeHome],
+        allowDiskFallback: true,
+        openInDesktop: false,
+        ...(rpcAvailableDuringCreate ? { localApiConnect: coldRpcMock } : {})
+      });
+      const createColdReq = Readable.from([Buffer.from(JSON.stringify({
+        folderPath: wsColdNew,
+        name: `ColdNewTop_${tag}`,
+        openInDesktop: false
+      }), 'utf8')]);
+      createColdReq.method = 'POST';
+      createColdReq.url = '/api/projects';
+      createColdReq.headers = { host: '127.0.0.1:18852', 'content-type': 'application/json', 'x-ag-remote-token': mockCfg.token };
+      createColdReq.socket = { remoteAddress: '127.0.0.1', localAddress: '127.0.0.1' };
+      let coldStatus = 200;
+      let coldRaw = '';
+      await coldHandler(createColdReq, {
+        setHeader() {},
+        getHeader() { return ''; },
+        writeHead(code) { coldStatus = code; },
+        end(chunk) { if (chunk) coldRaw += String(chunk); }
+      });
+      assert.equal(coldStatus, 200);
+      const coldCreatedPid = JSON.parse(coldRaw).project.id;
+
+      if (!rpcAvailableDuringCreate) {
+        // 先跑一次 RPC 仍未就绪的过渡快照，验证不会提前吃掉冷启动置顶保护
+        const offlineSnap = await remoteMod.enrichSnapshotWithCatalog({ ok: true, sessionId: 'conv-legacy-persisted', conversations: [] }, {
+          stateDir: stateDirCold,
+          configDir: configDirCold,
+          homeDir: fakeHome,
+          bypassCache: true,
+          localApiConnect: async () => null
+        });
+        assert.equal(offlineSnap.projects[0].id, coldCreatedPid, '[rpc-deferred] RPC 离线过渡快照中新建项目应排第 1');
+      }
+
+      // 随后首次与第二次完整快照拉取（此时持久化会话旧项目 + RPC 旧项目全部汇总出现），验证远程新建项目始终稳居第 1 位
+      const coldEnrichOpts = {
+        stateDir: stateDirCold,
+        configDir: configDirCold,
+        homeDir: fakeHome,
+        bypassCache: true,
+        localApiConnect: async () => ({
+          call: async (method) => {
+            if (method === 'GetAllCascadeTrajectories') {
+              return {
+                trajectorySummaries: {
+                  'conv-legacy-rpc': {
+                    summary: 'RPC 侧旧项目会话',
+                    status: 'CASCADE_RUN_STATUS_IDLE',
+                    lastModifiedTime: new Date(baseMs + 800000).toISOString(),
+                    trajectoryMetadata: { projectId: 'proj-legacy-rpc-traj', rootConversationId: 'conv-legacy-rpc' }
+                  }
+                }
+              };
+            }
+            if (method === 'ListProjects') {
+              return { projectIds: [coldCreatedPid, 'proj-legacy-rpc-traj', 'proj-legacy-rpc-empty'] };
+            }
+            return {};
+          }
+        })
+      };
+      const coldSnap1 = await remoteMod.enrichSnapshotWithCatalog({ ok: true, sessionId: 'conv-legacy-persisted', conversations: [] }, coldEnrichOpts);
+      const coldSnap2 = await remoteMod.enrichSnapshotWithCatalog({ ok: true, sessionId: 'conv-legacy-persisted', conversations: [] }, coldEnrichOpts);
+      assert.equal(coldSnap1.projects[0].id, coldCreatedPid, `[${tag}] 冷启动远程新建后首次快照必须保持新建项目在最顶部，不被旧持久化会话或 RPC 旧项目反超`);
+      assert.equal(coldSnap2.projects[0].id, coldCreatedPid, `[${tag}] 冷启动远程新建后连续快照仍须保持新建项目在最顶部`);
+      assert.ok(coldSnap1.projects.some((p) => p.id === 'proj-legacy-conv'), `[${tag}] 旧持久化会话项目应正常保留在新建项目之后`);
+      assert.ok(coldSnap1.projects.some((p) => p.id === 'proj-legacy-rpc-traj'), `[${tag}] RPC 轨迹旧项目应正常保留在新建项目之后`);
+      assert.ok(coldSnap1.projects.some((p) => p.id === 'proj-legacy-rpc-empty'), `[${tag}] RPC 空旧项目应正常保留在新建项目之后`);
+    }
+
+    // 8. 冷启动等待完整 RPC 期间的增量对账全矩阵回归：
+    //    先远程新建 A → 后台旧项目时间推进不重排 → 桌面新建 B 置顶为 [B, A, ...] → 两类 RPC 交替缺失/恢复 + 期间重启不丢失已知顺序、迟到 RPC 旧项目不反超 → 完整恢复与再次重启仍保持 [B, A, ...]
+    const stateDirInc = path.join(tmpRoot, 'state-cold-incremental');
+    const configDirInc = path.join(tmpRoot, 'config-cold-incremental');
+    const wsRemoteA = path.join(fakeHome, 'codebase', 'remote-proj-a');
+    const wsDeskB = path.join(fakeHome, 'codebase', 'desk-proj-b');
+    for (const d of [stateDirInc, path.join(configDirInc, 'projects'), wsRemoteA, wsDeskB]) {
+      fs.mkdirSync(d, { recursive: true });
+    }
+    fs.writeFileSync(path.join(stateDirInc, 'remote-session-catalog.json'), JSON.stringify({
+      version: 2,
+      updatedAt: baseMs + 500000,
+      subagentIds: [],
+      subagentRoots: {},
+      subagentStates: {},
+      conversations: [
+        {
+          id: 'conv-inc-old-1',
+          title: '旧会话 1（初始更近）',
+          projectId: 'proj-old-1',
+          projectName: 'OldProj1',
+          archived: false,
+          pinned: false,
+          updatedAt: baseMs + 500000,
+          status: 'idle'
+        },
+        {
+          id: 'conv-inc-old-2',
+          title: '旧会话 2（初始更早）',
+          projectId: 'proj-old-2',
+          projectName: 'OldProj2',
+          archived: false,
+          pinned: false,
+          updatedAt: baseMs + 200000,
+          status: 'idle'
+        }
+      ]
+    }));
+
+    // 8a. RPC 离线状态下先远程新建项目 A
+    const handlerInc = remoteMod.createRemoteHttpHandler(mockCfg, {
+      catalogOptions: { stateDir: stateDirInc, configDir: configDirInc, homeDir: fakeHome },
+      configDir: configDirInc,
+      homeDir: fakeHome,
+      allowedRoots: [fakeHome],
+      allowDiskFallback: true,
+      openInDesktop: false,
+      localApiConnect: async () => null
+    });
+    const reqCreateA = Readable.from([Buffer.from(JSON.stringify({
+      folderPath: wsRemoteA,
+      name: 'RemoteProjA',
+      openInDesktop: false
+    }), 'utf8')]);
+    reqCreateA.method = 'POST';
+    reqCreateA.url = '/api/projects';
+    reqCreateA.headers = { host: '127.0.0.1:18852', 'content-type': 'application/json', 'x-ag-remote-token': mockCfg.token };
+    reqCreateA.socket = { remoteAddress: '127.0.0.1', localAddress: '127.0.0.1' };
+    let statusCreateA = 200;
+    let rawCreateA = '';
+    await handlerInc(reqCreateA, {
+      setHeader() {},
+      getHeader() { return ''; },
+      writeHead(code) { statusCreateA = code; },
+      end(chunk) { if (chunk) rawCreateA += String(chunk); }
+    });
+    assert.equal(statusCreateA, 200);
+    const pidA = JSON.parse(rawCreateA).project.id;
+
+    // 8b. 等待完整 RPC 期间，旧项目 proj-old-2 在桌面端活跃推进时间，过渡快照不得按 lastActiveAt 重排已知顺序
+    const snapIncOffline1 = await remoteMod.enrichSnapshotWithCatalog({
+      ok: true,
+      sessionId: 'conv-inc-old-2',
+      busy: true,
+      conversations: [{ id: 'conv-inc-old-2', title: '旧会话 2（活跃更新）', active: true, domBusy: true, projectId: 'proj-old-2' }]
+    }, {
+      stateDir: stateDirInc,
+      configDir: configDirInc,
+      homeDir: fakeHome,
+      bypassCache: true,
+      localApiConnect: async () => null
+    });
+    assert.deepEqual(
+      snapIncOffline1.projects.map((p) => p.id),
+      [pidA, 'proj-old-1', 'proj-old-2'],
+      '等待完整 RPC 期间后台旧项目活跃推进时间戳不得重排已知顺序'
+    );
+
+    // 8c. 仍处于等待完整 RPC 期间，桌面端新建项目 B（即使磁盘 mtime 偏小），过渡快照必须将 B 置顶在 A 之前 -> [B, A, ...]
+    const pidB = 'proj-desk-b';
+    const projBFile = path.join(configDirInc, 'projects', `${pidB}.json`);
+    fs.writeFileSync(projBFile, JSON.stringify({
+      id: pidB,
+      name: 'DesktopProjB',
+      projectResources: { resources: [{ folderUri: 'file://' + encodeURI(wsDeskB) }] }
+    }, null, 2));
+    const earlyTs = new Date(baseMs + 1000);
+    fs.utimesSync(projBFile, earlyTs, earlyTs);
+
+    const snapIncAfterDeskB = await remoteMod.enrichSnapshotWithCatalog({
+      ok: true,
+      sessionId: 'conv-inc-old-2',
+      conversations: [{ id: 'conv-inc-old-2', title: '旧会话 2', active: true, projectId: 'proj-old-2' }]
+    }, {
+      stateDir: stateDirInc,
+      configDir: configDirInc,
+      homeDir: fakeHome,
+      bypassCache: true,
+      localApiConnect: async () => null
+    });
+    assert.deepEqual(
+      snapIncAfterDeskB.projects.map((p) => p.id),
+      [pidB, pidA, 'proj-old-1', 'proj-old-2'],
+      '等待完整 RPC 期间后续桌面新建项目 B 必须置顶排在 A 之前'
+    );
+
+    // 8d-1. 两类 RPC 交替缺失与恢复（第一拍：ListProjects 先恢复返回旧空项目 proj-rpc-list-old，而 GetAllCascadeTrajectories 超时失败）
+    const snapIncPartialListOnly = await remoteMod.enrichSnapshotWithCatalog({
+      ok: true,
+      sessionId: 'conv-inc-old-1',
+      conversations: []
+    }, {
+      stateDir: stateDirInc,
+      configDir: configDirInc,
+      homeDir: fakeHome,
+      bypassCache: true,
+      localApiConnect: async () => ({
+        call: async (method) => {
+          if (method === 'GetAllCascadeTrajectories') throw new Error('Trajectories RPC timeout');
+          if (method === 'ListProjects') return { projectIds: [pidA, pidB, 'proj-rpc-list-old'] };
+          return {};
+        }
+      })
+    });
+    assert.deepEqual(
+      snapIncPartialListOnly.projects.map((p) => p.id),
+      [pidB, pidA, 'proj-old-1', 'proj-old-2', 'proj-rpc-list-old'],
+      'ListProjects 首次恢复带回的旧空项目必须追加在末尾，不得反超 B、A 或重排已知顺序'
+    );
+
+    // 8d-2. 过渡期发生服务重启 + 第二拍两类 RPC 反转（ListProjects 超时失败，而 GetAllCascadeTrajectories 首次恢复且返回极新时间戳的旧项目 proj-rpc-traj-old 并推进 proj-old-2 时间）
+    delete require.cache[require.resolve('../mobile-remote')];
+    remoteMod = require('../mobile-remote');
+    const incTrajSummaries = {
+      'conv-inc-old-1': {
+        summary: '旧会话 1',
+        status: 'CASCADE_RUN_STATUS_IDLE',
+        lastModifiedTime: new Date(baseMs + 500000).toISOString(),
+        trajectoryMetadata: { projectId: 'proj-old-1', rootConversationId: 'conv-inc-old-1' }
+      },
+      'conv-inc-old-2': {
+        summary: '旧会话 2',
+        status: 'CASCADE_RUN_STATUS_IDLE',
+        lastModifiedTime: new Date(baseMs + 88000000).toISOString(),
+        trajectoryMetadata: { projectId: 'proj-old-2', rootConversationId: 'conv-inc-old-2' }
+      },
+      'conv-rpc-traj-old': {
+        summary: '迟到返回的 RPC 旧项目会话',
+        status: 'CASCADE_RUN_STATUS_IDLE',
+        lastModifiedTime: new Date(baseMs + 99000000).toISOString(),
+        trajectoryMetadata: { projectId: 'proj-rpc-traj-old', rootConversationId: 'conv-rpc-traj-old' }
+      }
+    };
+    const snapIncFlippedRpc = await remoteMod.enrichSnapshotWithCatalog({
+      ok: true,
+      sessionId: 'conv-inc-old-1',
+      conversations: []
+    }, {
+      stateDir: stateDirInc,
+      configDir: configDirInc,
+      homeDir: fakeHome,
+      bypassCache: true,
+      localApiConnect: async () => ({
+        call: async (method) => {
+          if (method === 'GetAllCascadeTrajectories') return { trajectorySummaries: incTrajSummaries };
+          if (method === 'ListProjects') throw new Error('ListProjects RPC timeout');
+          return {};
+        }
+      })
+    });
+    const expectedFullIncOrder = [pidB, pidA, 'proj-old-1', 'proj-old-2', 'proj-rpc-list-old', 'proj-rpc-traj-old'];
+    assert.deepEqual(
+      snapIncFlippedRpc.projects.map((p) => p.id),
+      expectedFullIncOrder,
+      '期间重启且两类 RPC 交替缺失时：已知空项目 proj-rpc-list-old 不得丢失，proj-old-2 不得重排，迟到的 proj-rpc-traj-old 不得反超 B、A'
+    );
+
+    // 8d-3. 两类 RPC 完整恢复 + 再次重启 + 后台时间戳继续推进，验证最终顺序始终锁定为 [B, A, ...]
+    const snapIncFullRecovered = await remoteMod.enrichSnapshotWithCatalog({
+      ok: true,
+      sessionId: 'conv-inc-old-1',
+      conversations: []
+    }, {
+      stateDir: stateDirInc,
+      configDir: configDirInc,
+      homeDir: fakeHome,
+      bypassCache: true,
+      localApiConnect: async () => ({
+        call: async (method) => {
+          if (method === 'GetAllCascadeTrajectories') return { trajectorySummaries: incTrajSummaries };
+          if (method === 'ListProjects') return { projectIds: [pidA, pidB, 'proj-rpc-list-old', 'proj-rpc-traj-old'] };
+          return {};
+        }
+      })
+    });
+    assert.deepEqual(snapIncFullRecovered.projects.map((p) => p.id), expectedFullIncOrder, '完整 RPC 恢复后顺序必须保持 [B, A, ...] 完全不变');
+
+    delete require.cache[require.resolve('../mobile-remote')];
+    remoteMod = require('../mobile-remote');
+    incTrajSummaries['conv-rpc-traj-old'].lastModifiedTime = new Date(baseMs + 199000000).toISOString();
+    const snapIncAfterFinalRestart = await remoteMod.enrichSnapshotWithCatalog({
+      ok: true,
+      sessionId: 'conv-inc-old-1',
+      conversations: []
+    }, {
+      stateDir: stateDirInc,
+      configDir: configDirInc,
+      homeDir: fakeHome,
+      bypassCache: true,
+      localApiConnect: async () => ({
+        call: async (method) => {
+          if (method === 'GetAllCascadeTrajectories') return { trajectorySummaries: incTrajSummaries };
+          if (method === 'ListProjects') return { projectIds: [pidA, pidB, 'proj-rpc-list-old', 'proj-rpc-traj-old'] };
+          return {};
+        }
+      })
+    });
+    assert.deepEqual(
+      snapIncAfterFinalRestart.projects.map((p) => p.id),
+      expectedFullIncOrder,
+      '完整恢复后再经服务重启与后台时间推进，仍必须保持 [B, A, ...] 权威顺序'
+    );
+
+    // 9. 受控延迟 RPC 并发交错回归：
+    //    (9a) 先创建 A、后创建 B 且 A 最后返回（分别覆盖回填 RPC 延迟与 CreateProject RPC 延迟），仍保持 [B, A, ...]；
+    //    (9b) 等待期间发生快照初始化与桌面建项后，迟到回填绝不覆盖结果，重启后仍一致；
+    //    (9c) 等待期间发生手动排序后，迟到回填绝不覆盖结果，重启后仍一致。
+    const seedLegacyCatalog = (dir) => {
+      fs.writeFileSync(path.join(dir, 'remote-session-catalog.json'), JSON.stringify({
+        version: 2,
+        updatedAt: baseMs + 500000,
+        subagentIds: [],
+        subagentRoots: {},
+        subagentStates: {},
+        conversations: [
+          {
+            id: 'conv-race-old-1',
+            title: '并发基线会话 1',
+            projectId: 'proj-race-old-1',
+            projectName: 'RaceOld1',
+            archived: false,
+            pinned: false,
+            updatedAt: baseMs + 500000,
+            status: 'idle'
+          },
+          {
+            id: 'conv-race-old-2',
+            title: '并发基线会话 2',
+            projectId: 'proj-race-old-2',
+            projectName: 'RaceOld2',
+            archived: false,
+            pinned: false,
+            updatedAt: baseMs + 200000,
+            status: 'idle'
+          }
+        ]
+      }));
+    };
+
+    const callHandlerJson = async (h, urlPath, bodyObj) => {
+      const r = Readable.from([Buffer.from(JSON.stringify(bodyObj), 'utf8')]);
+      r.method = 'POST';
+      r.url = urlPath;
+      r.headers = { host: '127.0.0.1:18852', 'content-type': 'application/json', 'x-ag-remote-token': mockCfg.token };
+      r.socket = { remoteAddress: '127.0.0.1', localAddress: '127.0.0.1' };
+      let code = 200;
+      let out = '';
+      await h(r, {
+        setHeader() {},
+        getHeader() { return ''; },
+        writeHead(c) { code = c; },
+        end(chunk) { if (chunk) out += String(chunk); }
+      });
+      return { status: code, json: out ? JSON.parse(out) : null };
+    };
+
+    // 9a-1: 冷启动先创建 A（回填 fetchTrajectories 延迟挂起），再创建 B（立即完成），最后放行 A（且 A 的回填响应已包含 B），仍须保持 [B, A, ...]
+    {
+      const st9a1 = path.join(tmpRoot, 'state-9a1');
+      const cfg9a1 = path.join(tmpRoot, 'config-9a1');
+      const ws9a1A = path.join(fakeHome, 'codebase', 'race-9a1-a');
+      const ws9a1B = path.join(fakeHome, 'codebase', 'race-9a1-b');
+      for (const d of [st9a1, path.join(cfg9a1, 'projects'), ws9a1A, ws9a1B]) fs.mkdirSync(d, { recursive: true });
+      seedLegacyCatalog(st9a1);
+
+      const createdIds9a1 = [];
+      let fetchBatchCount = 0;
+      let releaseSlowBackfillA = null;
+      const slowBackfillAPromise = new Promise((r) => { releaseSlowBackfillA = r; });
+      let notifyBackfillAEntered = null;
+      const backfillAEnteredPromise = new Promise((r) => { notifyBackfillAEntered = r; });
+
+      const rpc9a1 = async () => ({
+        call: async (method, reqBody) => {
+          if (method === 'CreateProject') {
+            createdIds9a1.push(reqBody.project.id);
+            return { project: reqBody.project };
+          }
+          if (method === 'GetAllCascadeTrajectories') {
+            fetchBatchCount += 1;
+            const myBatch = fetchBatchCount;
+            if (myBatch === 1) {
+              notifyBackfillAEntered();
+              await slowBackfillAPromise;
+            }
+            return { trajectorySummaries: {} };
+          }
+          if (method === 'ListProjects') {
+            return { projectIds: [...createdIds9a1, 'proj-rpc-old-9a1'] };
+          }
+          return {};
+        }
+      });
+
+      const h9a1 = remoteMod.createRemoteHttpHandler(mockCfg, {
+        catalogOptions: { stateDir: st9a1, configDir: cfg9a1, homeDir: fakeHome },
+        configDir: cfg9a1,
+        homeDir: fakeHome,
+        allowedRoots: [fakeHome],
+        allowDiskFallback: true,
+        openInDesktop: false,
+        localApiConnect: rpc9a1
+      });
+
+      const promiseA = callHandlerJson(h9a1, '/api/projects', { folderPath: ws9a1A, name: 'Race9a1_A', openInDesktop: false });
+      await backfillAEnteredPromise;
+      const resB = await callHandlerJson(h9a1, '/api/projects', { folderPath: ws9a1B, name: 'Race9a1_B', openInDesktop: false });
+      assert.equal(resB.status, 200);
+      const idB = resB.json.project.id;
+      releaseSlowBackfillA();
+      const resA = await promiseA;
+      assert.equal(resA.status, 200);
+      const idA = resA.json.project.id;
+
+      delete require.cache[require.resolve('../mobile-remote')];
+      remoteMod = require('../mobile-remote');
+      const snap9a1 = await remoteMod.enrichSnapshotWithCatalog({ ok: true, sessionId: 'conv-race-old-1', conversations: [] }, {
+        stateDir: st9a1,
+        configDir: cfg9a1,
+        homeDir: fakeHome,
+        bypassCache: true,
+        localApiConnect: async () => ({
+          call: async (method) => {
+            if (method === 'GetAllCascadeTrajectories') return { trajectorySummaries: {} };
+            if (method === 'ListProjects') return { projectIds: [idA, idB, 'proj-rpc-old-9a1'] };
+            return {};
+          }
+        })
+      });
+      assert.deepEqual(
+        snap9a1.projects.map((p) => p.id),
+        [idB, idA, 'proj-race-old-1', 'proj-race-old-2', 'proj-rpc-old-9a1'],
+        '[9a-1] 先创建 A 后创建 B 且 A 回填最后返回（含 B）时，重启后仍必须保持 [B, A, ...]'
+      );
+    }
+
+    // 9a-2: 先发起创建 A（CreateProject RPC 延迟挂起），再发起创建 B（先完成建项与置顶），最后放行 A 完成建项，仍须按发起先后保持 [B, A, ...]
+    {
+      const st9a2 = path.join(tmpRoot, 'state-9a2');
+      const cfg9a2 = path.join(tmpRoot, 'config-9a2');
+      const ws9a2A = path.join(fakeHome, 'codebase', 'race-9a2-a');
+      const ws9a2B = path.join(fakeHome, 'codebase', 'race-9a2-b');
+      for (const d of [st9a2, path.join(cfg9a2, 'projects'), ws9a2A, ws9a2B]) fs.mkdirSync(d, { recursive: true });
+      seedLegacyCatalog(st9a2);
+
+      let releaseCreateA = null;
+      const slowCreateAPromise = new Promise((r) => { releaseCreateA = r; });
+      let notifyCreateAEntered = null;
+      const createAEnteredPromise = new Promise((r) => { notifyCreateAEntered = r; });
+      const createdIds9a2 = [];
+
+      const rpc9a2 = async () => ({
+        call: async (method, reqBody) => {
+          if (method === 'CreateProject') {
+            if (reqBody.project.name === 'Race9a2_A') {
+              notifyCreateAEntered();
+              await slowCreateAPromise;
+            }
+            createdIds9a2.push(reqBody.project.id);
+            return { project: reqBody.project };
+          }
+          if (method === 'GetAllCascadeTrajectories') return { trajectorySummaries: {} };
+          if (method === 'ListProjects') return { projectIds: [...createdIds9a2, 'proj-rpc-old-9a2'] };
+          return {};
+        }
+      });
+
+      const h9a2 = remoteMod.createRemoteHttpHandler(mockCfg, {
+        catalogOptions: { stateDir: st9a2, configDir: cfg9a2, homeDir: fakeHome },
+        configDir: cfg9a2,
+        homeDir: fakeHome,
+        allowedRoots: [fakeHome],
+        allowDiskFallback: true,
+        openInDesktop: false,
+        localApiConnect: rpc9a2
+      });
+
+      const pCreateA = callHandlerJson(h9a2, '/api/projects', { folderPath: ws9a2A, name: 'Race9a2_A', openInDesktop: false });
+      await createAEnteredPromise;
+      const resCreateB = await callHandlerJson(h9a2, '/api/projects', { folderPath: ws9a2B, name: 'Race9a2_B', openInDesktop: false });
+      assert.equal(resCreateB.status, 200);
+      const idB2 = resCreateB.json.project.id;
+      releaseCreateA();
+      const resCreateA = await pCreateA;
+      assert.equal(resCreateA.status, 200);
+      const idA2 = resCreateA.json.project.id;
+
+      delete require.cache[require.resolve('../mobile-remote')];
+      remoteMod = require('../mobile-remote');
+      const snap9a2 = await remoteMod.enrichSnapshotWithCatalog({ ok: true, sessionId: 'conv-race-old-1', conversations: [] }, {
+        stateDir: st9a2,
+        configDir: cfg9a2,
+        homeDir: fakeHome,
+        bypassCache: true,
+        localApiConnect: async () => ({
+          call: async (method) => {
+            if (method === 'GetAllCascadeTrajectories') return { trajectorySummaries: {} };
+            if (method === 'ListProjects') return { projectIds: [idA2, idB2, 'proj-rpc-old-9a2'] };
+            return {};
+          }
+        })
+      });
+      assert.deepEqual(
+        snap9a2.projects.map((p) => p.id),
+        [idB2, idA2, 'proj-race-old-1', 'proj-race-old-2', 'proj-rpc-old-9a2'],
+        '[9a-2] CreateProject RPC 交错延迟导致 A 最后完成时，重启后仍必须保持 [B, A, ...]'
+      );
+    }
+
+    // 9b: 冷启动 A 回填挂起期间，发生快照完整初始化（含桌面新建 D 与 RPC 旧项目），A 迟到回填返回失败/残缺响应也不得覆盖已锁定顺序或回退初始化标记
+    {
+      const st9b = path.join(tmpRoot, 'state-9b');
+      const cfg9b = path.join(tmpRoot, 'config-9b');
+      const ws9bA = path.join(fakeHome, 'codebase', 'race-9b-a');
+      const ws9bD = path.join(fakeHome, 'codebase', 'race-9b-d');
+      for (const d of [st9b, path.join(cfg9b, 'projects'), ws9bA, ws9bD]) fs.mkdirSync(d, { recursive: true });
+      seedLegacyCatalog(st9b);
+
+      let releaseSlowA9b = null;
+      const slowA9bPromise = new Promise((r) => { releaseSlowA9b = r; });
+      let notifyA9bEntered = null;
+      const a9bEnteredPromise = new Promise((r) => { notifyA9bEntered = r; });
+      let createdId9bA = '';
+
+      const h9b = remoteMod.createRemoteHttpHandler(mockCfg, {
+        catalogOptions: { stateDir: st9b, configDir: cfg9b, homeDir: fakeHome },
+        configDir: cfg9b,
+        homeDir: fakeHome,
+        allowedRoots: [fakeHome],
+        allowDiskFallback: true,
+        openInDesktop: false,
+        localApiConnect: async () => ({
+          call: async (method, reqBody) => {
+            if (method === 'CreateProject') {
+              createdId9bA = reqBody.project.id;
+              return { project: reqBody.project };
+            }
+            if (method === 'GetAllCascadeTrajectories') {
+              notifyA9bEntered();
+              await slowA9bPromise;
+              // 故意让迟到回填返回残缺列表，检验不会覆盖等待期间快照已锁定的结果或把标记清回 false
+              return { trajectorySummaries: {} };
+            }
+            if (method === 'ListProjects') throw new Error('Late backfill ListProjects timeout');
+            return {};
+          }
+        })
+      });
+
+      const p9bA = callHandlerJson(h9b, '/api/projects', { folderPath: ws9bA, name: 'Race9b_A', openInDesktop: false });
+      await a9bEnteredPromise;
+
+      // 等待期间桌面新建项目 D，且快照完整拉取成功完成 RPC 初始化
+      fs.writeFileSync(path.join(cfg9b, 'projects', 'proj-9b-desk-d.json'), JSON.stringify({
+        id: 'proj-9b-desk-d',
+        name: 'Desk9bD',
+        projectResources: { resources: [{ folderUri: 'file://' + encodeURI(ws9bD) }] }
+      }, null, 2));
+      const snapMid9b = await remoteMod.enrichSnapshotWithCatalog({ ok: true, sessionId: 'conv-race-old-1', conversations: [] }, {
+        stateDir: st9b,
+        configDir: cfg9b,
+        homeDir: fakeHome,
+        bypassCache: true,
+        localApiConnect: async () => ({
+          call: async (method) => {
+            if (method === 'GetAllCascadeTrajectories') return { trajectorySummaries: {} };
+            if (method === 'ListProjects') return { projectIds: [createdId9bA, 'proj-9b-desk-d', 'proj-rpc-snap-9b'] };
+            return {};
+          }
+        })
+      });
+      const expected9b = ['proj-9b-desk-d', createdId9bA, 'proj-race-old-1', 'proj-race-old-2', 'proj-rpc-snap-9b'];
+      assert.deepEqual(snapMid9b.projects.map((p) => p.id), expected9b);
+
+      // 放行 A 的迟到回填
+      releaseSlowA9b();
+      const res9bA = await p9bA;
+      assert.equal(res9bA.status, 200);
+
+      const saved9b = JSON.parse(fs.readFileSync(path.join(st9b, 'remote-session-catalog.json'), 'utf8'));
+      assert.equal(saved9b.rpcListSeeded, true, '[9b] 迟到失败回填严禁把快照已完成的 rpcListSeeded 重置为 false');
+      assert.deepEqual(saved9b.projectOrder, expected9b, '[9b] 迟到回填不得覆盖等待期间快照已锁定的顺序');
+
+      delete require.cache[require.resolve('../mobile-remote')];
+      remoteMod = require('../mobile-remote');
+      const snapAfterRestart9b = await remoteMod.enrichSnapshotWithCatalog({ ok: true, sessionId: 'conv-race-old-1', conversations: [] }, {
+        stateDir: st9b,
+        configDir: cfg9b,
+        homeDir: fakeHome,
+        bypassCache: true,
+        localApiConnect: async () => ({
+          call: async (method) => {
+            if (method === 'GetAllCascadeTrajectories') return { trajectorySummaries: {} };
+            if (method === 'ListProjects') return { projectIds: [createdId9bA, 'proj-9b-desk-d', 'proj-rpc-snap-9b'] };
+            return {};
+          }
+        })
+      });
+      assert.deepEqual(snapAfterRestart9b.projects.map((p) => p.id), expected9b, '[9b] 重启后仍与等待期间快照初始化结果完全一致');
+    }
+
+    // 9c: 冷启动 A 回填挂起期间，用户通过 POST /api/projects/order 提交手动排序，随后 A 迟到回填返回，手动排序绝不被覆盖且重启后仍一致
+    {
+      const st9c = path.join(tmpRoot, 'state-9c');
+      const cfg9c = path.join(tmpRoot, 'config-9c');
+      const ws9cA = path.join(fakeHome, 'codebase', 'race-9c-a');
+      for (const d of [st9c, path.join(cfg9c, 'projects'), ws9cA]) fs.mkdirSync(d, { recursive: true });
+      seedLegacyCatalog(st9c);
+
+      let releaseSlowA9c = null;
+      const slowA9cPromise = new Promise((r) => { releaseSlowA9c = r; });
+      let notifyA9cEntered = null;
+      const a9cEnteredPromise = new Promise((r) => { notifyA9cEntered = r; });
+      let createdId9cA = '';
+
+      const h9c = remoteMod.createRemoteHttpHandler(mockCfg, {
+        catalogOptions: { stateDir: st9c, configDir: cfg9c, homeDir: fakeHome },
+        configDir: cfg9c,
+        homeDir: fakeHome,
+        allowedRoots: [fakeHome],
+        allowDiskFallback: true,
+        openInDesktop: false,
+        localApiConnect: async () => ({
+          call: async (method, reqBody) => {
+            if (method === 'CreateProject') {
+              createdId9cA = reqBody.project.id;
+              return { project: reqBody.project };
+            }
+            if (method === 'GetAllCascadeTrajectories') {
+              notifyA9cEntered();
+              await slowA9cPromise;
+              return { trajectorySummaries: {} };
+            }
+            if (method === 'ListProjects') {
+              return { projectIds: [createdId9cA, 'proj-rpc-late-9c'] };
+            }
+            return {};
+          }
+        })
+      });
+
+      const p9cA = callHandlerJson(h9c, '/api/projects', { folderPath: ws9cA, name: 'Race9c_A', openInDesktop: false });
+      await a9cEnteredPromise;
+
+      // 在 A 的冷启动回填尚未返回时，用户手动把顺序调为 ['proj-race-old-2', createdId9cA, 'proj-race-old-1']
+      const manualRes9c = await callHandlerJson(h9c, '/api/projects/order', {
+        projectOrder: ['proj-race-old-2', createdId9cA, 'proj-race-old-1']
+      });
+      assert.equal(manualRes9c.status, 200);
+      assert.deepEqual(manualRes9c.json.projectOrder, ['proj-race-old-2', createdId9cA, 'proj-race-old-1']);
+
+      // 放行 A 的迟到回填（带回未入库的旧空项目 proj-rpc-late-9c）：必须保留手动排序在前，仅将旧 RPC 项目追加末尾
+      releaseSlowA9c();
+      const res9cA = await p9cA;
+      assert.equal(res9cA.status, 200);
+
+      const expected9c = ['proj-race-old-2', createdId9cA, 'proj-race-old-1', 'proj-rpc-late-9c'];
+      const saved9c = JSON.parse(fs.readFileSync(path.join(st9c, 'remote-session-catalog.json'), 'utf8'));
+      assert.deepEqual(saved9c.projectOrder, expected9c, '[9c] 迟到回填严禁覆盖等待期间已提交的手动排序');
+
+      delete require.cache[require.resolve('../mobile-remote')];
+      remoteMod = require('../mobile-remote');
+      const snapAfterRestart9c = await remoteMod.enrichSnapshotWithCatalog({ ok: true, sessionId: 'conv-race-old-1', conversations: [] }, {
+        stateDir: st9c,
+        configDir: cfg9c,
+        homeDir: fakeHome,
+        bypassCache: true,
+        localApiConnect: async () => ({
+          call: async (method) => {
+            if (method === 'GetAllCascadeTrajectories') return { trajectorySummaries: {} };
+            if (method === 'ListProjects') return { projectIds: [createdId9cA, 'proj-rpc-late-9c'] };
+            return {};
+          }
+        })
+      });
+      assert.deepEqual(snapAfterRestart9c.projects.map((p) => p.id), expected9c, '[9c] 重启后手动排序结果仍保持一致不漂移');
+    }
+  } finally {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});
+
+// =========================================================================
+// #50 Phase A: 上下文与状态指标单一权威数据源 (SSOT)、512K 压缩线分母统一与 /compact 缓存即时废弃
+// =========================================================================
+test('#50 Phase A: 全端上下文指标 SSOT 归一、512K 压缩线与 1M 物理上限解耦、/compact 即时废弃旧快照与流式 tok/s 一致性', async () => {
+  const https = require('node:https');
+  const { execFileSync } = require('node:child_process');
+
+  // 1. 胶囊分母归一：1M 物理窗口模型未观测到运行时预算时主分母统一为 512,000，physicalMaxTokens 仅在悬浮详情底部浅灰辅助行展示
+  {
+    const envCap = createDomEnv();
+    envCap.sandbox.location.href = 'https://127.0.0.1:12345/';
+    envCap.win.location = envCap.sandbox.location;
+    const footerEl = envCap.doc.createElement('div');
+    footerEl.className = 'agy-composer-footer';
+    const permBtn = envCap.doc.createElement('button');
+    permBtn.setAttribute('data-testid', 'permissions-selector-trigger');
+    footerEl.appendChild(permBtn);
+    envCap.doc.body.appendChild(footerEl);
+
+    vm.runInContext(CAPSULE_SRC, envCap.sandbox);
+    const capsApi = envCap.win.__AGY_CTX_CAPSULE_API__;
+    capsApi.clearCaches();
+    // 能力表为空且 M427 已观测运行时预算为 512,000 时：数据层物理窗口仍为 1,048,576，主分母为 512,000，且不引入未确认的 UI 布局行
+    capsApi.ingestGeneratorMetadata([{
+      chatModel: { model: 'MODEL_PLACEHOLDER_M427', modelDisplayName: 'Gemini 4 Carbon (High)', chatStartMetadata: { contextWindowMetadata: { maxContextTokens: 512000 } } }
+    }], 'cid-empty-cap');
+    assert.equal(capsApi.getPhysicalMaxTokensForModel('MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)'), 1048576);
+    assert.equal(capsApi.resolveCompressionBudgetForModel('MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)'), 512000);
+    const emptyCapUsage = capsApi.analyzeSteps([{ metadata: { modelUsage: { model: 'MODEL_PLACEHOLDER_M427', inputTokens: '10000', cacheReadTokens: '20000', outputTokens: '374' } } }], 'MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)', 1);
+    assert.equal(emptyCapUsage.physicalMaxTokens, 1048576); assert.equal(emptyCapUsage.contextLimit, 512000);
+    capsApi.renderFooterCapsule(footerEl, emptyCapUsage);
+    footerEl.querySelector('[data-agy-context-capsule="1"]').dispatchEvent({ type: 'mouseenter' });
+    assert.equal(envCap.doc.getElementById('__agy_ctx_capsule_tooltip__')?.querySelector('[data-physical-window-note="1"]'), null);
+
+    capsApi.clearCaches();
+    capsApi.ingestAvailableModels({
+      models: {
+        MODEL_PLACEHOLDER_M427: { model: 'MODEL_PLACEHOLDER_M427', displayName: 'Gemini 4 Carbon (High)', maxTokens: 1048576 },
+        MODEL_PLACEHOLDER_M402: { model: 'MODEL_PLACEHOLDER_M402', displayName: 'Claude Opus 5.5 (High)', maxTokens: 1000000 },
+        MODEL_OPENAI_GPT_OSS_120B_MEDIUM: { model: 'MODEL_OPENAI_GPT_OSS_120B_MEDIUM', displayName: 'GPT-OSS 120B (Medium)', maxTokens: 131072 }
+      }
+    });
+
+    // getContextLimitForModel 保持物理能力查询语义不变（兼容需求 5b），resolveCompressionBudgetForModel 统一按实际压缩线计算
+    assert.equal(capsApi.getContextLimitForModel('MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)'), 1048576);
+    assert.equal(capsApi.resolveCompressionBudgetForModel('MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)'), 512000);
+    assert.equal(capsApi.resolveCompressionBudgetForModel('MODEL_PLACEHOLDER_M402', 'Claude Opus 5.5 (High)'), 512000);
+    assert.equal(capsApi.resolveCompressionBudgetForModel('MODEL_OPENAI_GPT_OSS_120B_MEDIUM', 'GPT-OSS 120B (Medium)'), 131072);
+
+    // 用户自定义固定阈值优先于默认 512K
+    envCap.win.__AGContextMeterSettings = { customPlan: { contextScopeMode: 'unified', contextUnifiedPreference: { mode: 'fixed', limitTokens: 768000 } } };
+    assert.equal(capsApi.resolveCompressionBudgetForModel('MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)'), 768000);
+    delete envCap.win.__AGContextMeterSettings;
+
+    // 胶囊与悬浮提示：主显示为 30.4k/512k (5.9%)，底部辅助展示物理上限 1M
+    const stepUsage = capsApi.analyzeSteps([{ metadata: { modelUsage: { model: 'MODEL_PLACEHOLDER_M427', inputTokens: '4374', cacheReadTokens: '25000', outputTokens: '1000' }, timeToFirstToken: '4.0s', streamingDuration: '5.0s' } }], 'MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)', 1);
+    assert.equal(stepUsage.contextUsed, 30374); assert.equal(stepUsage.contextLimit, 512000); assert.equal(stepUsage.physicalMaxTokens, 1048576);
+    assert.equal(Number(stepUsage.usagePercent.toFixed(1)), 5.9); assert.equal(stepUsage.tokPerSec, 200);
+
+    capsApi.renderFooterCapsule(footerEl, stepUsage);
+    const capBtn = footerEl.querySelector('[data-agy-context-capsule="1"]');
+    assert.equal(capBtn.querySelector('.agy-ctx-label')?.textContent, '30.4k/512k');
+    assert.equal(capBtn.querySelector('.agy-ctx-occ-val')?.textContent, '5.9%');
+    capBtn.dispatchEvent({ type: 'mouseenter' });
+    const tipEl = envCap.doc.getElementById('__agy_ctx_capsule_tooltip__');
+    assert.ok(tipEl);
+    assert.equal(tipEl.querySelector('[data-physical-window-note="1"]'), null);
+
+    // CHECKPOINT 压缩步骤（无 modelUsage）后立即废弃压缩前 258,963 旧值并回落至压缩后真值
+    const postCompactSteps = capsApi.analyzeSteps([
+      { metadata: { modelUsage: { model: 'MODEL_PLACEHOLDER_M427', inputTokens: '258000', cacheReadTokens: '0', outputTokens: '963' }, chatStartMetadata: { contextWindowMetadata: { maxContextTokens: 512000 } } } },
+      { type: 'CORTEX_STEP_TYPE_CHECKPOINT', checkpoint: { sessionSummary: '压缩后摘要：已完成项目排序与归属修复。' } }
+    ], 'MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)', 2);
+    assert.equal(postCompactSteps.compressionDetected, true); assert.equal(postCompactSteps.compressionBefore, 258963);
+    assert.ok(postCompactSteps.contextUsed < 20000); assert.equal(postCompactSteps.cacheDropDetected, false);
+    envCap.win.__AGY_CTX_CAPSULE_DISPOSE__();
+  }
+
+  // 2. 跨全端（胶囊 / collector / meter / 普通视图 / isolated 独立视图）SSOT、双源冲突根治、CHECKPOINT 实报/估算与 >=1M/自定义预算验证
+  {
+    const tmpR1 = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-50-ssot-'));
+    const prevStateDir = process.env.AG_METER_STATE_DIR, prevHome = process.env.HOME;
+    process.env.AG_METER_STATE_DIR = tmpR1;
+    let tlsServer = null;
+    const env = createDomEnv();
+    try {
+      const certDir = path.join(tmpR1, 'tls'); fs.mkdirSync(certDir, { recursive: true });
+      const keyPath = path.join(certDir, 'key.pem'), certPath = path.join(certDir, 'cert.pem');
+      execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', keyPath, '-out', certPath, '-days', '1', '-subj', '/CN=127.0.0.1'], { stdio: 'ignore' });
+
+      const CONV_ACTIVE = 'aaaaaaaa-5050-4000-8000-111111111111', CONV_PARITY = 'bbbbbbbb-5050-4000-8000-222222222222';
+      const CONV_ISO_COMPACT = '50505050-1111-4222-8333-444444444444', CONV_CP_MU = '50505050-aaaa-4111-8111-111111111111';
+      const CONV_CP_EST = '50505050-bbbb-4222-8222-222222222222', CONV_1M_RT = '50505050-cccc-4333-8333-333333333333';
+      const CONV_CUSTOM_CO = '50505050-dddd-4444-8444-444444444444', CONV_NO_IDX_TS = '50505050-eeee-4555-8555-555555555555';
+      const CONV_SPEED_ZOMBIE = '50505050-ffff-4666-8666-666666666666', CONV_POST_GM = '50505050-9999-4777-8777-777777777777';
+      const CONV_LAG_GM = '50505050-8888-4888-8888-888888888888', CONV_SCAN_STEP4 = '50505050-7777-4999-8999-999999999999';
+      const CONV_GM_CREATE = '50505050-6666-4aaa-8aaa-aaaaaaaaaaaa', CONV_GM_TOT = '50505050-5555-4bbb-8bbb-bbbbbbbbbbbb';
+      const CONV_POST_UNTIMED_MU = '50505050-4444-4ccc-8ccc-cccccccccccc', CONV_POST_UNTIMED_EST = '50505050-3333-4ddd-8ddd-dddddddddddd';
+      const CONV_POST_DUP_SIG = '50505050-2222-4eee-8eee-eeeeeeeeeeee', CONV_POST_IDX_EST = '50505050-1212-4fff-8fff-ffffffffffff';
+      let zombiePhase = 'pre', postGmArrived = false, scanStep4Arrived = false, scan4GmStep = 1;
+
+      const makeSteps = (withCheckpointUsage) => [
+        { metadata: { modelUsage: { model: 'MODEL_PLACEHOLDER_M427', inputTokens: '258000', cacheReadTokens: '0', outputTokens: '963' }, timeToFirstToken: '4.5s', streamingDuration: '5.2s', chatStartMetadata: { contextWindowMetadata: { maxContextTokens: 512000 } } }, plannerResponse: { response: 'pre-compact heavy output' } },
+        { type: 'CORTEX_STEP_TYPE_CHECKPOINT', checkpoint: { sessionSummary: '这段很长的摘要在携带 modelUsage 时绝不能覆盖精确压缩后用量，仅在缺失 modelUsage 时参与估算。'.repeat(6), ...(withCheckpointUsage ? { modelUsage: { model: 'MODEL_PLACEHOLDER_M427', cachedTokens: '18000', promptTokens: '6200', completionTokens: '300' } } : {}) } },
+        { userInput: { userResponse: '继续推进下一步', items: [{ text: '继续推进下一步' }, { text: '附加上下文片段 item-2' }] } },
+        { metadata: { toolCall: { argumentsJson: '{"target":"/workspace/config.json","line":42}' } }, toolCalls: [{ arguments: { retries: 3, strict: true } }] }
+      ];
+
+      const makeGmRow = (stepIdx, usage, maxContextTokens, ttft = '4.5s', stream = '5.2s') => ({
+        stepIndices: [stepIdx], chatModel: { model: 'MODEL_PLACEHOLDER_M427', modelDisplayName: 'Gemini 4 Carbon (High)', timeToFirstToken: ttft, streamingDuration: stream, usage, chatStartMetadata: { contextWindowMetadata: { maxContextTokens } } }
+      });
+
+      const wrapTraj = (steps, numGen = 1) => ({ numTotalSteps: steps.length, numTotalGeneratorMetadata: numGen, trajectory: { status: 'CASCADE_RUN_STATUS_IDLE', steps } });
+      const getTrajPayload = (cid) => {
+        if (cid === CONV_SCAN_STEP4) {
+          const steps = [{ userInput: { userResponse: 's0' } }, { metadata: { modelUsage: { model: 'MODEL_PLACEHOLDER_M427', inputTokens: '258000', cacheReadTokens: '0', outputTokens: '963' } }, plannerResponse: { response: 's1' } }, { type: 'CORTEX_STEP_TYPE_CHECKPOINT', checkpoint: { sessionSummary: 'cp2' } }, { metadata: { modelUsage: { model: 'MODEL_PLACEHOLDER_M427', inputTokens: '8000', cacheReadTokens: '20000', outputTokens: '500' }, streamingDuration: '2.0s' }, plannerResponse: { response: 's3' } }, ...(scanStep4Arrived ? [{ metadata: { modelUsage: { model: 'MODEL_PLACEHOLDER_M427', inputTokens: '15000', cacheReadTokens: '25600', outputTokens: '600' }, streamingDuration: '3.0s' }, plannerResponse: { response: 's4' } }] : [])];
+          return wrapTraj(steps, scan4GmStep !== 1 ? 2 : 1);
+        }
+        if (cid === CONV_POST_UNTIMED_MU || cid === CONV_POST_UNTIMED_EST || cid === CONV_POST_DUP_SIG || cid === CONV_POST_IDX_EST) {
+          const turn2 = cid === CONV_POST_UNTIMED_MU ? { metadata: { modelUsage: { model: 'MODEL_PLACEHOLDER_M427', inputTokens: '12000', cacheReadTokens: '20000', outputTokens: '180' } }, plannerResponse: { response: 'untimed mu turn2' } } : (cid === CONV_POST_DUP_SIG ? { metadata: { modelUsage: { model: 'MODEL_PLACEHOLDER_M427', inputTokens: '8000', cacheReadTokens: '18000', outputTokens: '240' } }, plannerResponse: { response: 'untimed duplicate-sig turn2' } } : { plannerResponse: { response: 'untimed estimated planner turn2 without timestamps' } });
+          return wrapTraj([{ metadata: { modelUsage: { model: 'MODEL_PLACEHOLDER_M427', inputTokens: '258000', cacheReadTokens: '0', outputTokens: '963' } }, plannerResponse: { response: 'pre' } }, { type: 'CORTEX_STEP_TYPE_CHECKPOINT', checkpoint: { sessionSummary: 'cp' } }, { metadata: { modelUsage: { model: 'MODEL_PLACEHOLDER_M427', inputTokens: '8000', cacheReadTokens: '18000', outputTokens: '240' }, streamingDuration: '2.0s' }, plannerResponse: { response: 'timed turn1' } }, turn2]);
+        }
+        if (cid === CONV_POST_GM) return wrapTraj([{ userInput: { userResponse: 'step0' } }, { metadata: { modelUsage: { model: 'MODEL_PLACEHOLDER_M427', inputTokens: '258000', cacheReadTokens: '0', outputTokens: '963' } }, plannerResponse: { response: 'pre-compact' } }, { type: 'CORTEX_STEP_TYPE_CHECKPOINT', checkpoint: { sessionSummary: '压缩摘要' } }, { userInput: { userResponse: '压缩后继续提问' } }, { plannerResponse: { response: '压缩后回复本身无内联 modelUsage，稍后新 GeneratorMetadata 到达' } }]);
+        if (cid === CONV_LAG_GM) return wrapTraj([{ userInput: { userResponse: 'turn1 q' } }, { metadata: { modelUsage: { model: 'MODEL_PLACEHOLDER_M427', inputTokens: '25000', cacheReadTokens: 0, outputTokens: '1850' }, timeToFirstToken: '4.5s', streamingDuration: '10.0s' }, plannerResponse: { response: 'turn1 a' } }, { userInput: { userResponse: 'turn2 q' } }, { metadata: { modelUsage: { model: 'MODEL_PLACEHOLDER_M427', inputTokens: '155000', cacheReadTokens: '10000', outputTokens: '160' }, streamingDuration: '2.0s' }, plannerResponse: { response: 'turn2 fast stream without ttft while gm lags' } }]);
+        if (cid === CONV_NO_IDX_TS) return wrapTraj([{ metadata: { modelUsage: { model: 'MODEL_PLACEHOLDER_M427', inputTokens: '258000', cacheReadTokens: '0', outputTokens: '963' } }, plannerResponse: { response: 'pre-compact reply' } }, { type: 'CORTEX_STEP_TYPE_CHECKPOINT', checkpoint: { sessionSummary: '压缩后摘要：无时间戳与步骤索引场景' } }, { userInput: { userResponse: '压缩后继续提问' } }, { plannerResponse: { response: '压缩后已有回复步骤但新 GeneratorMetadata 尚未返回' } }]);
+        if (cid === CONV_SPEED_ZOMBIE) return wrapTraj([{ userInput: { userResponse: 'initial heavy prompt' } }, { metadata: { modelUsage: { model: 'MODEL_PLACEHOLDER_M427', inputTokens: '258000', cacheReadTokens: '0', outputTokens: '1850' } }, plannerResponse: { response: 'pre-compact fast reply' } }, ...(zombiePhase === 'post' ? [{ type: 'CORTEX_STEP_TYPE_CHECKPOINT', checkpoint: { sessionSummary: '压缩摘要：验证旧 185 tok/s 绝不复活' } }, { userInput: { userResponse: '压缩后追加消息使 stepCount 增长到 4' } }] : [])]);
+        if (cid === CONV_ISO_COMPACT) return wrapTraj([{ userInput: { userResponse: 'run task' } }, { plannerResponse: { response: 'done before compact' } }, { type: 'CORTEX_STEP_TYPE_CHECKPOINT', checkpoint: { sessionSummary: 'Compacted session summary after /compact.' } }]);
+        if (cid === CONV_CP_MU || cid === CONV_CP_EST) return wrapTraj(makeSteps(cid === CONV_CP_MU));
+        return { numTotalSteps: cid === CONV_PARITY ? 4 : 2, numTotalGeneratorMetadata: 1, trajectory: { status: 'CASCADE_RUN_STATUS_IDLE', steps: [{ userInput: { userResponse: 'parity check' } }, { plannerResponse: { response: 'parity answer' } }] } };
+      };
+
+      const getGenPayload = (cid) => {
+        if (cid === CONV_SCAN_STEP4) return { generatorMetadata: scan4GmStep === '3-unindexed' ? [makeGmRow(1, { inputTokens: 258000, cacheReadTokens: 0, outputTokens: 963 }, 512000), { chatModel: { model: 'MODEL_PLACEHOLDER_M427', modelDisplayName: 'Gemini 4 Carbon (High)', timeToFirstToken: '0.5s', streamingDuration: '2.0s', usage: { inputTokens: 8000, cacheReadTokens: 20000, outputTokens: 500 }, chatStartMetadata: { contextWindowMetadata: { maxContextTokens: 512000 } } } }] : [scan4GmStep === 3 ? makeGmRow(3, { inputTokens: 8000, cacheReadTokens: 20000, outputTokens: 500 }, 512000, '0.5s', '2.0s') : makeGmRow(1, { inputTokens: 258000, cacheReadTokens: 0, outputTokens: 963 }, 512000)] };
+        if (cid === CONV_POST_IDX_EST) return { generatorMetadata: [makeGmRow(2, { inputTokens: 8000, cacheReadTokens: 18000, outputTokens: 240 }, 512000, '0s', '2.0s')] };
+        if (cid === CONV_POST_UNTIMED_MU || cid === CONV_POST_UNTIMED_EST || cid === CONV_POST_DUP_SIG) return { generatorMetadata: [{ chatModel: { model: 'MODEL_PLACEHOLDER_M427', modelDisplayName: 'Gemini 4 Carbon (High)', streamingDuration: '2.0s', usage: { inputTokens: 8000, cacheReadTokens: 18000, outputTokens: 240 }, chatStartMetadata: { contextWindowMetadata: { maxContextTokens: 512000 } } } }] };
+        if (cid === CONV_GM_CREATE) return { generatorMetadata: [makeGmRow(1, { inputTokens: 15000, cacheReadTokens: 25000, cacheCreationTokens: 5000, outputTokens: 500 }, 512000, '1.0s', '5.0s')] };
+        if (cid === CONV_GM_TOT) return { generatorMetadata: [makeGmRow(1, { totalTokens: 64000 }, 512000, '1.0s', '2.0s')] };
+        if (cid === CONV_POST_GM) return { generatorMetadata: [postGmArrived ? makeGmRow(4, { inputTokens: 14000, cacheReadTokens: 20000, outputTokens: 600 }, 512000, '1.0s', '5.0s') : makeGmRow(1, { inputTokens: 258000, cacheReadTokens: 0, outputTokens: 963 }, 512000)] };
+        if (cid === CONV_LAG_GM) return { generatorMetadata: [makeGmRow(1, { inputTokens: 25000, cacheReadTokens: 0, outputTokens: 1850 }, 512000, '4.5s', '10.0s')] };
+        if (cid === CONV_NO_IDX_TS) return { generatorMetadata: [{ chatModel: { model: 'MODEL_PLACEHOLDER_M427', modelDisplayName: 'Gemini 4 Carbon (High)', timeToFirstToken: '4.5s', streamingDuration: '10.0s', usage: { inputTokens: 258000, cacheReadTokens: 0, outputTokens: 1850 }, chatStartMetadata: { contextWindowMetadata: { maxContextTokens: 512000 } } } }] };
+        if (cid === CONV_SPEED_ZOMBIE) return { generatorMetadata: [makeGmRow(1, { inputTokens: 258000, cacheReadTokens: 0, outputTokens: 1850 }, 512000, '4.5s', '10.0s')] };
+        if (cid === CONV_ISO_COMPACT) return { generatorMetadata: [makeGmRow(1, { inputTokens: 258000, cacheReadTokens: 0, outputTokens: 963 }, 512000)] };
+        if (cid === CONV_CP_MU || cid === CONV_CP_EST) return { generatorMetadata: [makeGmRow(0, { inputTokens: 258000, cacheReadTokens: 0, outputTokens: 963 }, 512000)] };
+        if (cid === CONV_PARITY) return { generatorMetadata: [makeGmRow(3, { inputTokens: 12000, cacheReadTokens: 138000, outputTokens: 1850 }, 512000, '4.5s', '10.0s')] };
+        if (cid === CONV_1M_RT) return { generatorMetadata: [makeGmRow(1, { inputTokens: 50000, cacheReadTokens: 212144, outputTokens: 300 }, 1310720, '1.0s', '2.0s')] };
+        return { generatorMetadata: [makeGmRow(1, { inputTokens: 38400, cacheReadTokens: 115200, outputTokens: 200 }, 512000, '1.0s', '2.0s')] };
+      };
+
+      tlsServer = https.createServer({ key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) }, (req, res) => {
+        if (req.method === 'GET') {
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.end('<script>window.__APP_CONFIG__ = {"csrfToken":"csrf-50"};</script>');
+          return;
+        }
+        let raw = '';
+        req.on('data', (c) => { raw += c; });
+        req.on('end', () => {
+          const body = raw ? JSON.parse(raw) : {};
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          if (req.url.endsWith('/GetCascadeTrajectory')) res.end(JSON.stringify(getTrajPayload(body.cascadeId)));
+          else if (req.url.endsWith('/GetCascadeTrajectorySteps')) res.end(JSON.stringify({ steps: getTrajPayload(body.cascadeId).trajectory.steps.slice(body.stepOffset || 0) }));
+          else if (req.url.endsWith('/GetCascadeTrajectoryGeneratorMetadata')) res.end(JSON.stringify(getGenPayload(body.cascadeId)));
+          else res.end('{}');
+        });
+      });
+      await new Promise((r) => tlsServer.listen(0, '127.0.0.1', r));
+      const origin = `https://127.0.0.1:${tlsServer.address().port}`;
+
+      env.sandbox.location.pathname = `/c/${CONV_ACTIVE}`;
+      env.sandbox.location.href = `${origin}/c/${CONV_ACTIVE}`;
+      env.win.location = env.sandbox.location;
+      env.win.__APP_CONFIG__ = { csrfToken: 'csrf-50' };
+      env.sandbox.__APP_CONFIG__ = env.win.__APP_CONFIG__;
+      env.sandbox.fetch = async (url, init) => {
+        const u = String(url);
+        const body = init?.body ? JSON.parse(init.body) : {};
+        if (u.includes('GetCascadeTrajectoryGeneratorMetadata')) return { ok: true, json: async () => getGenPayload(body.cascadeId) };
+        if (u.includes('GetCascadeTrajectorySteps')) return { ok: true, json: async () => ({ steps: getTrajPayload(body.cascadeId).trajectory.steps.slice(body.stepOffset || 0) }) };
+        if (u.includes('GetCascadeTrajectory') && !u.includes('Steps')) return { ok: true, json: async () => getTrajPayload(body.cascadeId) };
+        return { ok: true, json: async () => ({}) };
+      };
+      env.win.fetch = env.sandbox.fetch;
+      const collectorMod = require('../meter-collector');
+      env.win.contextMeterAPI = { scan: async (id, force) => ({ ok: true, data: await collectorMod.collect(origin, id, { force }) }) };
+      env.sandbox.contextMeterAPI = env.win.contextMeterAPI;
+
+      vm.runInContext(CAPSULE_SRC, env.sandbox);
+      vm.runInContext(RENDERER_SRC, env.sandbox);
+      vm.runInContext(ENHANCER_SRC, env.sandbox);
+      const sd = env.getShadow();
+      const capsApi = env.win.__AGY_CTX_CAPSULE_API__;
+      const meterApi = env.sandbox.__AGContextMeter;
+      const enh = env.sandbox.__AGEnhancer;
+
+      // 2a: collector 在存在尾部 CHECKPOINT 时立即废弃压缩前 259K GeneratorMetadata
+      const collected = await collectorMod.collect(origin, CONV_ISO_COMPACT, { force: true });
+      assert.equal(collected.latest.compressionDetected, true); assert.equal(collected.latest.compressionBefore, 258963);
+      assert.ok(collected.latest.actual < 20000); assert.equal(collected.latest.budget, 512000);
+      assert.equal(collected.latest.physicalMaxTokens, 1048576); assert.equal(collected.latest.cacheDropDetected, false); assert.equal(collected.latest.speed, null);
+
+      // 2b: 复现“旧 Shadow DOM 残留 259K (50.6%) + 旧胶囊 30,374 / 1M (2.9%)”冲突场景，验证彻底消除双源缝合
+      sd.getElementById('key-used').textContent = '259K (50.6%)'; sd.getElementById('key-limit').textContent = '512K'; sd.getElementById('key-remaining').textContent = '253K (49.4%)';
+      const capEl = env.doc.createElement('button'); capEl.setAttribute('data-agy-context-capsule', '1');
+      capEl.__ctxUsageData = {
+        hasPreciseSnapshot: true, contextUsed: 30374, contextLimit: 1048576, usagePercent: 2.9, compressionDetected: true,
+        compressionBefore: 258963, compressionAfter: 24277, cacheReadTokens: 25000, inputTokens: 4374, outputTokens: 1000,
+        cacheHitRate: 85.1, tokPerSec: 185, lastDurationSec: 14.5, modelId: 'MODEL_PLACEHOLDER_M427', modelDisplayName: 'Gemini 4 Carbon (High)', stepCount: 12
+      };
+      env.doc.body.appendChild(capEl);
+
+      const setRoute = (cid) => { env.sandbox.location.pathname = `/c/${cid}`; env.sandbox.location.href = `${origin}/c/${cid}`; };
+      const cpConflict = enh.getMobileSnapshot().contextPanel;
+      assert.equal(cpConflict.usedTokens, 30374); assert.equal(cpConflict.limitTokens, 512000); assert.equal(cpConflict.physicalMaxTokens, 1048576);
+      assert.equal(cpConflict.usagePercent, 5.9); assert.equal(cpConflict.usedText, '30.4k (5.9%)'); assert.equal(cpConflict.limitText, '512k');
+      assert.ok(!JSON.stringify(cpConflict).includes('50.6%') && !JSON.stringify(cpConflict).includes('259K'));
+      const mobileHtml = require('../mobile-remote').buildMobileAppHtml({ token: 'tok-50', mode: 'lan' });
+      assert.ok(!mobileHtml.includes('ctx-physical-note'));
+
+      // 2c: 普通视图 (isolated: false) 与 仅本页独立视图 (isolated: true) 对同一会话指标与纯流式 tok/s (185) 100% 对齐
+      setRoute(CONV_PARITY);
+      capEl.__ctxUsageData = {
+        conversationId: CONV_PARITY, hasPreciseSnapshot: true, contextUsed: 151850, contextLimit: 512000, runtimeBudget: 512000,
+        hasExplicitRuntimeBudget: true, physicalMaxTokens: 1048576, usagePercent: (151850 / 512000) * 100, cacheReadTokens: 138000,
+        inputTokens: 12000, outputTokens: 1850, cacheHitRate: 92, tokPerSec: 185, lastDurationSec: 14.5, ttftSec: 4.5,
+        modelId: 'MODEL_PLACEHOLDER_M427', modelDisplayName: 'Gemini 4 Carbon (High)', stepCount: 4
+      };
+      const normalSnap = enh.getMobileSnapshot();
+      setRoute(CONV_ACTIVE);
+      const isoParitySnap = await enh.getMobileSnapshotAsync({ conversationId: CONV_PARITY });
+      assert.equal(isoParitySnap.isolated, true); assert.equal(isoParitySnap.contextPanel.usedTokens, normalSnap.contextPanel.usedTokens);
+      assert.equal(isoParitySnap.contextPanel.limitTokens, normalSnap.contextPanel.limitTokens); assert.equal(isoParitySnap.contextPanel.physicalMaxTokens, normalSnap.contextPanel.physicalMaxTokens);
+      assert.equal(isoParitySnap.contextPanel.usagePercent, normalSnap.contextPanel.usagePercent); assert.equal(isoParitySnap.contextPanel.tokPerSec, 185);
+      assert.equal(isoParitySnap.contextPanel.tokPerSec, normalSnap.contextPanel.tokPerSec); assert.equal(isoParitySnap.contextBadge, normalSnap.contextBadge);
+      assert.equal(isoParitySnap.pulseText, normalSnap.pulseText); assert.equal(isoParitySnap.contextPanel.usedText, normalSnap.contextPanel.usedText);
+      assert.equal(isoParitySnap.contextPanel.remainingText, normalSnap.contextPanel.remainingText);
+
+      const isoCompactSnap = await enh.getMobileSnapshotAsync({ conversationId: CONV_ISO_COMPACT });
+      assert.equal(isoCompactSnap.contextPanel.compressionDetected, true); assert.ok(isoCompactSnap.contextPanel.usedTokens < 20000);
+      assert.equal(isoCompactSnap.contextPanel.limitTokens, 512000); assert.equal(isoCompactSnap.contextPanel.cacheDropDetected, false);
+
+      // 2d: CHECKPOINT 携带有效 modelUsage + 尾随 userInput.items + 工具参数：三端优先采信 modelUsage 且尾随增量与速度归零 100% 一致
+      const capCpMu = capsApi.analyzeSteps(makeSteps(true), 'MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)', 4);
+      const colCpMu = await collectorMod.collect(origin, CONV_CP_MU, { force: true });
+      const isoCpMu = await enh.getMobileSnapshotAsync({ conversationId: CONV_CP_MU });
+      assert.ok(capCpMu.contextUsed > 24500 && capCpMu.contextUsed < 26000);
+      assert.equal(capCpMu.contextUsed, colCpMu.latest.actual); assert.equal(capCpMu.contextUsed, isoCpMu.contextPanel.usedTokens);
+      assert.equal(capCpMu.tokPerSec, 0); assert.equal(capCpMu.lastDurationSec, 0); assert.equal(capCpMu.ttftSec, 0);
+      assert.equal(colCpMu.latest.speed, null); assert.equal(isoCpMu.contextPanel.tokPerSec, null);
+      assert.equal(isoCpMu.contextPanel.lastDurationSec, null); assert.equal(isoCpMu.contextPanel.speedText, '—');
+
+      setRoute(CONV_CP_MU); capEl.__ctxUsageData = capCpMu; meterApi.invalidateAfterCompact(CONV_CP_MU, capCpMu);
+      assert.equal(meterApi.snapshot().latest.speed, null);
+      const normalCpMu = enh.getMobileSnapshot();
+      assert.equal(normalCpMu.contextPanel.usedTokens, isoCpMu.contextPanel.usedTokens);
+      assert.equal(normalCpMu.contextPanel.tokPerSec, null); assert.equal(normalCpMu.contextPanel.lastDurationSec, null); assert.equal(normalCpMu.contextPanel.speedText, '—');
+
+      // 2e: CHECKPOINT 无 modelUsage 时，三端对摘要 + userInput.items + 工具参数估算逐 token 完全一致且速度清空
+      const capCpEst = capsApi.analyzeSteps(makeSteps(false), 'MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)', 4);
+      const colCpEst = await collectorMod.collect(origin, CONV_CP_EST, { force: true });
+      const isoCpEst = await enh.getMobileSnapshotAsync({ conversationId: CONV_CP_EST });
+      assert.equal(capCpEst.contextUsed, colCpEst.latest.actual); assert.equal(capCpEst.contextUsed, isoCpEst.contextPanel.usedTokens);
+      assert.equal(capCpEst.tokPerSec, 0); assert.equal(colCpEst.latest.speed, null); assert.equal(isoCpEst.contextPanel.tokPerSec, null);
+
+      // 2f: 明确实测预算 >= 1M (1,310,720) 跨全端完整保留为主分母，而各端物理窗口上限均保持纯净 1,048,576 不混算 Math.max
+      const cap1mRt = capsApi.analyzeSteps([{ metadata: { modelUsage: { model: 'MODEL_PLACEHOLDER_M427', inputTokens: '50000', cacheReadTokens: '212144', outputTokens: '300' }, streamingDuration: '2.0s', chatStartMetadata: { contextWindowMetadata: { maxContextTokens: 1310720 } } } }], 'MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)', 2);
+      const col1mRt = await collectorMod.collect(origin, CONV_1M_RT, { force: true });
+      setRoute(CONV_1M_RT); capEl.__ctxUsageData = cap1mRt;
+      const normal1mSnap = enh.getMobileSnapshot();
+      capEl.__ctxUsageData = null; await meterApi.refresh();
+      const meter1mSnap = enh.getMobileSnapshot();
+      capEl.__ctxUsageData = cap1mRt;
+      setRoute(CONV_ACTIVE);
+      const iso1mSnap = await enh.getMobileSnapshotAsync({ conversationId: CONV_1M_RT });
+      assert.equal(cap1mRt.contextLimit, 1310720); assert.equal(col1mRt.latest.budget, 1310720);
+      assert.equal(normal1mSnap.contextPanel.limitTokens, 1310720); assert.equal(meter1mSnap.contextPanel.limitTokens, 1310720); assert.equal(iso1mSnap.contextPanel.limitTokens, 1310720);
+      assert.equal(cap1mRt.physicalMaxTokens, 1048576); assert.equal(col1mRt.latest.physicalMaxTokens, 1048576);
+      assert.equal(normal1mSnap.contextPanel.physicalMaxTokens, 1048576); assert.equal(meter1mSnap.contextPanel.physicalMaxTokens, 1048576); assert.equal(iso1mSnap.contextPanel.physicalMaxTokens, 1048576);
+      assert.equal(iso1mSnap.contextPanel.usagePercent, normal1mSnap.contextPanel.usagePercent);
+
+      // 2g: 自定义固定阈值 (unified=768,000 及 per_model=640,000) 与实测预算 (512,000 / 1,310,720) 共存时，全端非压缩分支一律优先采用自定义阈值
+      const fakeHome = path.join(tmpR1, 'home');
+      fs.mkdirSync(fakeHome, { recursive: true }); process.env.HOME = fakeHome;
+      const setCustomPlan = (customPlan) => {
+        collectorMod.saveCustomPlanSettings({ version: '1.1.0', ...customPlan });
+        env.win.__AGContextMeterSettings = { customPlan }; env.sandbox.__AGContextMeterSettings = env.win.__AGContextMeterSettings;
+      };
+      setCustomPlan({ contextScopeMode: 'unified', contextUnifiedPreference: { mode: 'fixed', limitTokens: 768000 } });
+      const colCustomNonCompact = await collectorMod.collect(origin, CONV_CUSTOM_CO, { force: true });
+      const capCustomCo = capsApi.analyzeSteps([{ metadata: { modelUsage: { model: 'MODEL_PLACEHOLDER_M427', inputTokens: '38400', cacheReadTokens: '115200', outputTokens: '200' }, streamingDuration: '2.0s', chatStartMetadata: { contextWindowMetadata: { maxContextTokens: 512000 } } } }], 'MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)', 2);
+      setRoute(CONV_CUSTOM_CO); capEl.__ctxUsageData = capCustomCo;
+      const normalCustomSnap = enh.getMobileSnapshot();
+      setRoute(CONV_ACTIVE);
+      const isoCustomSnap = await enh.getMobileSnapshotAsync({ conversationId: CONV_CUSTOM_CO });
+      assert.equal(colCustomNonCompact.latest.runtimeBudget, 512000); assert.equal(colCustomNonCompact.latest.budget, 768000);
+      assert.equal(capCustomCo.contextLimit, 768000); assert.equal(normalCustomSnap.contextPanel.limitTokens, 768000); assert.equal(isoCustomSnap.contextPanel.limitTokens, 768000);
+
+      setCustomPlan({ contextScopeMode: 'per_model', contextPreferences: { model_placeholder_m427: { modelId: 'model_placeholder_m427', label: 'Gemini 4 Carbon (High)', mode: 'fixed', limitTokens: 640000 } } });
+      const colPerModel1m = await collectorMod.collect(origin, CONV_1M_RT, { force: true });
+      const isoPerModel1m = await enh.getMobileSnapshotAsync({ conversationId: CONV_1M_RT });
+      assert.equal(colPerModel1m.latest.runtimeBudget, 1310720); assert.equal(colPerModel1m.latest.budget, 640000); assert.equal(isoPerModel1m.contextPanel.limitTokens, 640000);
+
+      setCustomPlan({ contextScopeMode: 'unified', contextUnifiedPreference: { mode: 'dynamic' } });
+      delete env.win.__AGContextMeterSettings; delete env.sandbox.__AGContextMeterSettings;
+
+      // 2h: 缺少 stepIndices 与时间戳、CHECKPOINT 后已有 plannerResponse 回复步骤但新 GeneratorMetadata 尚未返回时，全端严禁复活旧 259K 或旧 185 tok/s
+      const colNoIdx = await collectorMod.collect(origin, CONV_NO_IDX_TS, { force: true });
+      const capNoIdx = await capsApi.refreshConversationUsage(CONV_NO_IDX_TS, { stepCount: 4, status: 'CASCADE_RUN_STATUS_IDLE', lastModifiedTime: 't-no-idx' }, 'MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)', {}, null);
+      const isoNoIdx = await enh.getMobileSnapshotAsync({ conversationId: CONV_NO_IDX_TS });
+      setRoute(CONV_NO_IDX_TS); capEl.__ctxUsageData = capNoIdx; meterApi.invalidateAfterCompact(CONV_NO_IDX_TS, capNoIdx);
+      const normalNoIdx = enh.getMobileSnapshot();
+      assert.equal(colNoIdx.latest.compressionDetected, true); assert.ok(colNoIdx.latest.actual < 20000);
+      assert.equal(colNoIdx.latest.actual, capNoIdx.contextUsed); assert.equal(colNoIdx.latest.actual, normalNoIdx.contextPanel.usedTokens); assert.equal(colNoIdx.latest.actual, isoNoIdx.contextPanel.usedTokens);
+      assert.equal(colNoIdx.latest.speed, null); assert.equal(capNoIdx.tokPerSec, 0); assert.equal(normalNoIdx.contextPanel.tokPerSec, null); assert.equal(isoNoIdx.contextPanel.tokPerSec, null);
+
+      // 2i: 经过真实 sessionRuntimeBudgetMap 缓存 (185 tok/s, maxStepIndex=1) -> 压缩并追加步骤 (stepCount=4) -> collector 清空 speed -> meter.refresh -> 胶囊刷新全链路验证旧 185 tok/s 绝不复活
+      zombiePhase = 'pre'; setRoute(CONV_SPEED_ZOMBIE);
+      const preZombieCap = await capsApi.refreshConversationUsage(CONV_SPEED_ZOMBIE, { stepCount: 2, status: 'CASCADE_RUN_STATUS_IDLE', lastModifiedTime: 't1' }, 'MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)', {}, null);
+      assert.equal(preZombieCap.tokPerSec, 185);
+      zombiePhase = 'post';
+      const colZombie = await collectorMod.collect(origin, CONV_SPEED_ZOMBIE, { force: true });
+      assert.equal(colZombie.latest.speed, null); assert.equal(colZombie.latest.stepCount, 4);
+      meterApi.invalidateAfterCompact(CONV_SPEED_ZOMBIE, { contextUsed: colZombie.latest.actual, contextLimit: 512000, lastCheckpointStepIdx: 2, stepCount: 4 });
+      await meterApi.refresh();
+      assert.equal(meterApi.snapshot().latest.speed, null); assert.equal(meterApi.snapshot().latest.stepCount, 4);
+      const postZombieCap = await capsApi.refreshConversationUsage(CONV_SPEED_ZOMBIE, { stepCount: 4, status: 'CASCADE_RUN_STATUS_IDLE', lastModifiedTime: 't2' }, 'MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)', {}, null);
+      capEl.__ctxUsageData = postZombieCap;
+      assert.equal(postZombieCap.tokPerSec, 0);
+      const normalZombie = enh.getMobileSnapshot();
+      setRoute(CONV_ACTIVE);
+      const isoZombie = await enh.getMobileSnapshotAsync({ conversationId: CONV_SPEED_ZOMBIE });
+      assert.equal(normalZombie.contextPanel.tokPerSec, null); assert.equal(normalZombie.contextPanel.speedText, '—');
+      assert.equal(isoZombie.contextPanel.tokPerSec, null); assert.equal(isoZombie.contextPanel.usedTokens, normalZombie.contextPanel.usedTokens);
+
+      // 2j: 压缩后回复无内联 modelUsage，随后新 GeneratorMetadata 到达（stepIndices=[4]>cp=2，count 仍为 1 且 34,600 超 >5K）：验证 postCompactFloor、仲裁与胶囊刷新全端采用新实报
+      postGmArrived = false; setRoute(CONV_POST_GM);
+      const preGmCol = await collectorMod.collect(origin, CONV_POST_GM, { force: true });
+      const preGmCap = await capsApi.refreshConversationUsage(CONV_POST_GM, { stepCount: 5, status: 'CASCADE_RUN_STATUS_IDLE', lastModifiedTime: 't-gm0' }, 'MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)', {}, null);
+      capEl.__ctxUsageData = preGmCap; meterApi.invalidateAfterCompact(CONV_POST_GM, preGmCap); await meterApi.refresh();
+      assert.ok(preGmCol.latest.actual < 20000 && preGmCap.contextUsed < 20000);
+      postGmArrived = true;
+      const postGmCol = await collectorMod.collect(origin, CONV_POST_GM, { force: true });
+      assert.equal(postGmCol.latest.actual, 34600);
+      await meterApi.refresh();
+      assert.equal(meterApi.snapshot().latest.actual, 34600);
+      assert.equal(enh.getMobileSnapshot().contextPanel.usedTokens, 34600); assert.equal(enh.getMobileSnapshot().contextPanel.tokPerSec, 120);
+      const postGmCap = await capsApi.refreshConversationUsage(CONV_POST_GM, { stepCount: 5, status: 'CASCADE_RUN_STATUS_IDLE', lastModifiedTime: 't-gm0' }, 'MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)', {}, null);
+      capEl.__ctxUsageData = postGmCap; setRoute(CONV_ACTIVE);
+      const postGmIso = await enh.getMobileSnapshotAsync({ conversationId: CONV_POST_GM });
+      assert.equal(postGmCap.contextUsed, 34600); assert.equal(postGmCap.tokPerSec, 120);
+      assert.equal(postGmIso.contextPanel.usedTokens, 34600); assert.equal(postGmIso.contextPanel.tokPerSec, 120);
+
+      // 2k: 最新步骤已有流式速度 (80 tok/s, 2s, 无 TTFT, 160 out) 而 GeneratorMetadata 仍滞后在上一轮 (185 tok/s, 14.5s, 4.5s TTFT, 1850 out)
+      capEl.remove();
+      const realFooter = env.doc.createElement('div');
+      realFooter.className = 'agy-composer-footer'; realFooter.__reactFiber$test = { memoizedProps: { cascadeId: CONV_LAG_GM, modelId: 'MODEL_PLACEHOLDER_M427' } };
+      const realPerm = env.doc.createElement('button'); realPerm.setAttribute('data-testid', 'permissions-selector-trigger');
+      realFooter.appendChild(realPerm); env.doc.body.appendChild(realFooter);
+
+      setRoute(CONV_LAG_GM);
+      capsApi.setTrajectorySummary(CONV_LAG_GM, { stepCount: 4, status: 'CASCADE_RUN_STATUS_IDLE', lastModifiedTime: 't-lag' });
+      await capsApi.refreshConversationUsage(CONV_LAG_GM, { stepCount: 4, status: 'CASCADE_RUN_STATUS_IDLE', lastModifiedTime: 't-lag' }, 'MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)', {}, realFooter);
+      capsApi.renderAllFooters();
+      const renderedCap = realFooter.querySelector('[data-agy-context-capsule="1"]');
+      assert.ok(renderedCap); assert.equal(renderedCap.__ctxUsageData.contextUsed, 165160);
+      assert.equal(renderedCap.__ctxUsageData.tokPerSec, 80); assert.equal(renderedCap.__ctxUsageData.lastDurationSec, 2);
+      assert.equal(renderedCap.__ctxUsageData.ttftSec, 0); assert.equal(renderedCap.__ctxUsageData.outputTokens, 160);
+      assert.ok((renderedCap.querySelector('.agy-ctx-speed-val')?.textContent || '').includes('80'));
+
+      const savedApi = env.win.contextMeterAPI;
+      env.win.contextMeterAPI = {}; env.sandbox.contextMeterAPI = {};
+      await meterApi.refresh();
+      assert.equal(meterApi.snapshot().latest.speed.streamingTps, 185);
+      const lagMeterNormal = enh.getMobileSnapshot();
+      assert.equal(lagMeterNormal.contextPanel.tokPerSec, 80); assert.equal(lagMeterNormal.contextPanel.lastDurationSec, 2);
+      assert.equal(lagMeterNormal.contextPanel.ttftSec, null); assert.equal(lagMeterNormal.contextPanel.outputTokens, 160);
+      const origCapData = renderedCap.__ctxUsageData;
+      renderedCap.__ctxUsageData = { ...origCapData, tokPerSec: 0, lastDurationSec: 0, ttftSec: 0, outputTokens: 160, exactUsageStepIndex: 3, stepCount: 4 };
+      const noCrossTurnAuth = enh.resolveAuthoritativeContextMetrics(CONV_LAG_GM, { pulseEl: renderedCap });
+      assert.equal(noCrossTurnAuth.tokPerSec, null); assert.equal(noCrossTurnAuth.lastDurationSec, null);
+      assert.equal(noCrossTurnAuth.ttftSec, null); assert.equal(noCrossTurnAuth.outputTokens, 160);
+      renderedCap.__ctxUsageData = { ...origCapData, contextUsed: 26850, tokPerSec: 185, lastDurationSec: 10, ttftSec: 99, outputTokens: 1850, exactUsageStepIndex: 1, stepCount: 2 };
+      const atomicPrimary = enh.resolveAuthoritativeContextMetrics(CONV_LAG_GM, { pulseEl: renderedCap });
+      assert.equal(atomicPrimary.tokPerSec, 185); assert.equal(atomicPrimary.lastDurationSec, 14.5); assert.equal(atomicPrimary.ttftSec, 4.5);
+      renderedCap.__ctxUsageData = origCapData;
+      env.win.contextMeterAPI = savedApi; env.sandbox.contextMeterAPI = savedApi;
+
+      const lagCol = await collectorMod.collect(origin, CONV_LAG_GM, { force: true });
+      await meterApi.refresh();
+      const lagNormal = enh.getMobileSnapshot();
+      setRoute(CONV_ACTIVE);
+      const lagIso = await enh.getMobileSnapshotAsync({ conversationId: CONV_LAG_GM });
+      assert.equal(lagCol.latest.actual, 165160); assert.equal(lagCol.latest.speed.streamingTps, 80);
+      assert.equal(lagNormal.contextPanel.usedTokens, 165160); assert.equal(lagNormal.contextPanel.tokPerSec, 80);
+      assert.equal(lagIso.contextPanel.usedTokens, 165160); assert.equal(lagIso.contextPanel.tokPerSec, 80);
+      assert.equal(lagIso.contextPanel.lastDurationSec, 2); assert.equal(lagIso.contextPanel.ttftSec, null); assert.equal(lagIso.contextPanel.outputTokens, 160);
+
+      // 2l: CHECKPOINT=2、当前实报步骤=3 (28,500)、新扫描实报步骤=4 (41,200) -> 随后元数据仅追到步骤 3 时 requestPoll 绝不回退到步骤 3
+      scanStep4Arrived = false; scan4GmStep = 1; setRoute(CONV_SCAN_STEP4);
+      await meterApi.refresh();
+      assert.equal(meterApi.snapshot().latest.exactUsageStepIndex, 3); assert.equal(meterApi.snapshot().latest.actual, 28500);
+      scanStep4Arrived = true;
+      await meterApi.refresh();
+      assert.equal(meterApi.snapshot().latest.exactUsageStepIndex, 4); assert.equal(meterApi.snapshot().latest.actual, 41200);
+      assert.equal(meterApi.snapshot().latest.speed.streamingTps, 200);
+      scan4GmStep = 3;
+      const savedScanApi = env.win.contextMeterAPI;
+      env.win.contextMeterAPI = {}; env.sandbox.contextMeterAPI = {};
+      await meterApi.refresh();
+      assert.equal(meterApi.snapshot().latest.exactUsageStepIndex, 4); assert.equal(meterApi.snapshot().latest.actual, 41200);
+      assert.equal(meterApi.snapshot().latest.speed.streamingTps, 200);
+      env.win.contextMeterAPI = savedScanApi; env.sandbox.contextMeterAPI = savedScanApi;
+      scan4GmStep = '3-unindexed';
+      await meterApi.refresh();
+      env.win.contextMeterAPI = {}; env.sandbox.contextMeterAPI = {};
+      await meterApi.refresh();
+      assert.equal(meterApi.snapshot().latest.exactUsageStepIndex, 4); assert.equal(meterApi.snapshot().latest.actual, 41200);
+      assert.equal(meterApi.snapshot().latest.speed.streamingTps, 200);
+      env.win.contextMeterAPI = savedScanApi; env.sandbox.contextMeterAPI = savedScanApi;
+
+      // 2m: 仅 GeneratorMetadata 提供用量（含 cacheCreationTokens=5,000 及仅 totalTokens=64,000 回退）时，全端已用、百分比与剩余容量 100% 一致
+      for (const [gmCid, expUsed, expPct] of [[CONV_GM_CREATE, 45500, 8.9], [CONV_GM_TOT, 64000, 12.5]]) {
+        setRoute(gmCid);
+        const colGm = await collectorMod.collect(origin, gmCid, { force: true });
+        await meterApi.refresh();
+        const capGm = await capsApi.refreshConversationUsage(gmCid, { stepCount: 2, status: 'CASCADE_RUN_STATUS_IDLE', lastModifiedTime: 't-gm-only' }, 'MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)', {}, null);
+        renderedCap.__ctxUsageData = { ...capGm, conversationId: gmCid };
+        const normGm = enh.getMobileSnapshot();
+        renderedCap.__ctxUsageData = null;
+        const meterOnlyGm = enh.getMobileSnapshot();
+        setRoute(CONV_ACTIVE);
+        const isoGm = await enh.getMobileSnapshotAsync({ conversationId: gmCid });
+        assert.equal(colGm.latest.actual, expUsed); assert.equal(meterApi.snapshot().latest.actual, expUsed);
+        assert.equal(capGm.contextUsed, expUsed); assert.equal(normGm.contextPanel.usedTokens, expUsed);
+        assert.equal(meterOnlyGm.contextPanel.usedTokens, expUsed); assert.equal(isoGm.contextPanel.usedTokens, expUsed);
+        assert.equal(normGm.contextPanel.usagePercent, expPct); assert.equal(meterOnlyGm.contextPanel.usagePercent, expPct); assert.equal(isoGm.contextPanel.usagePercent, expPct);
+        assert.equal(isoGm.contextPanel.remainingText, normGm.contextPanel.remainingText); assert.equal(isoGm.contextPanel.remainingText, meterOnlyGm.contextPanel.remainingText);
+      }
+
+      // 2n: CHECKPOINT 后先有计时回复 A (120 tok/s)、再有无计时回复 B（覆盖不同签名、相同签名、无索引估算及带 stepIndices:[2] 有索引估算四类）：验证纯轮询与全端旧速度及归属字段清空、用量一致
+      for (const untimedCid of [CONV_POST_UNTIMED_MU, CONV_POST_DUP_SIG, CONV_POST_UNTIMED_EST, CONV_POST_IDX_EST]) {
+        setRoute(untimedCid);
+        realFooter.__reactFiber$test = { memoizedProps: { cascadeId: untimedCid, modelId: 'MODEL_PLACEHOLDER_M427' } };
+        const colUnt = await collectorMod.collect(origin, untimedCid, { force: true });
+        await meterApi.refresh();
+        const savedUntApi = env.win.contextMeterAPI;
+        env.win.contextMeterAPI = {}; env.sandbox.contextMeterAPI = {};
+        await meterApi.refresh();
+        env.win.contextMeterAPI = savedUntApi; env.sandbox.contextMeterAPI = savedUntApi;
+        const pollLat = meterApi.snapshot().latest;
+        assert.equal(pollLat.speed, null); assert.equal(pollLat.speedStepIndex, -1);
+        assert.equal(pollLat.speedCreatedAtMs, 0); assert.equal(pollLat.speedUsageSignature, '');
+        assert.equal(pollLat.actual, colUnt.latest.actual);
+        capsApi.setTrajectorySummary(untimedCid, { stepCount: 4, status: 'CASCADE_RUN_STATUS_IDLE', lastModifiedTime: 't-untimed-b' });
+        const capUnt = await capsApi.refreshConversationUsage(untimedCid, { stepCount: 4, status: 'CASCADE_RUN_STATUS_IDLE', lastModifiedTime: 't-untimed-b' }, 'MODEL_PLACEHOLDER_M427', 'Gemini 4 Carbon (High)', {}, realFooter);
+        capsApi.renderAllFooters();
+        const normUnt = enh.getMobileSnapshot();
+        setRoute(CONV_ACTIVE);
+        const isoUnt = await enh.getMobileSnapshotAsync({ conversationId: untimedCid });
+        assert.equal(capUnt.tokPerSec, 0); assert.equal(renderedCap.__ctxUsageData.tokPerSec, 0);
+        assert.equal(colUnt.latest.speed, null); assert.equal(colUnt.latest.speedStepIndex, -1);
+        assert.equal(colUnt.latest.speedCreatedAtMs, 0); assert.equal(colUnt.latest.speedUsageSignature, '');
+        assert.equal(normUnt.contextPanel.tokPerSec, null); assert.equal(isoUnt.contextPanel.tokPerSec, null);
+        assert.equal(colUnt.latest.actual, capUnt.contextUsed); assert.equal(colUnt.latest.actual, normUnt.contextPanel.usedTokens);
+        assert.equal(colUnt.latest.actual, isoUnt.contextPanel.usedTokens);
+      }
+    } finally {
+      try { env.sandbox.__AGEnhancer?.dispose?.(); } catch {}
+      try { env.sandbox.__AGContextMeter?.dispose?.(); } catch {}
+      try { env.win.__AGY_CTX_CAPSULE_DISPOSE__?.(); } catch {}
+      env.cleanup?.();
+      if (tlsServer) await new Promise((r) => tlsServer.close(r));
+      if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
+      if (prevStateDir === undefined) delete process.env.AG_METER_STATE_DIR; else process.env.AG_METER_STATE_DIR = prevStateDir;
+      fs.rmSync(tmpR1, { recursive: true, force: true });
+    }
+  }
+});
+
+// =========================================================================
+// 需求 40: 聊天区本地文件/文件夹链接右键菜单一键复制路径与 Finder 显示
+// =========================================================================
+test('需求 40: 聊天区本地文件/文件夹超链接右键菜单、路径解码、主题跟随、自动关闭与 live-host 接口', async () => {
+  const { startEmbeddedLiveBridge, resolveSafeLocalPath } = require('../live-host');
+
+  // 1. live-host 路径校验与 /stat-local-path、/reveal-local-path 真实服务闭环验证
+  assert.equal(resolveSafeLocalPath('https://example.com/a.js'), null, '应拒绝 http/https 协议');
+  assert.equal(resolveSafeLocalPath('relative/path.js'), null, '应拒绝相对路径');
+  assert.equal(resolveSafeLocalPath('/tmp/bad\x00path'), null, '应拒绝控制字符');
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-fctx-'));
+  const subDir = path.join(tmpDir, '中文 目录');
+  fs.mkdirSync(subDir, { recursive: true });
+  const sampleFile = path.join(subDir, '测试 file.js');
+  fs.writeFileSync(sampleFile, 'console.log(1);\n', 'utf8');
+
+  const testOrigin = 'https://127.0.0.1:65432';
+  const bridge = await startEmbeddedLiveBridge({
+    origin: testOrigin,
+    origins: [testOrigin],
+    skipMobileRemote: true,
+    disableDockBadge: true,
+    writeStamp: false
+  });
+
+  try {
+    const postLive = async (route, body) => {
+      const resp = await fetch(`http://127.0.0.1:${bridge.port}${route}`, {
+        method: 'POST',
+        headers: {
+          'Origin': testOrigin,
+          'Content-Type': 'application/json',
+          'X-AG-Context-Token': bridge.token
+        },
+        body: JSON.stringify(body)
+      });
+      return resp.json();
+    };
+
+    const statDir = await postLive('/stat-local-path', { path: subDir });
+    assert.equal(statDir.ok, true);
+    assert.equal(statDir.exists, true);
+    assert.equal(statDir.isDirectory, true);
+
+    const statFile = await postLive('/stat-local-path', { path: `file://${encodeURI(sampleFile)}#L12-L34` });
+    assert.equal(statFile.ok, true);
+    assert.equal(statFile.exists, true);
+    assert.equal(statFile.isFile, true);
+
+    const revealOk = await postLive('/reveal-local-path', { path: sampleFile, dryRun: true });
+    assert.equal(revealOk.ok, true);
+    assert.equal(revealOk.dryRun, true);
+    assert.equal(revealOk.path, path.resolve(sampleFile));
+
+    const revealMissing = await postLive('/reveal-local-path', { path: path.join(tmpDir, 'missing.txt'), dryRun: true });
+    assert.equal(revealMissing.ok, false);
+    assert.equal(revealMissing.notFound, true);
+
+    // 2. 前端右键菜单解析、主题镜像、防溢出定位、复制与自动关闭验证
+    const env = createDomEnv();
+    env.sandbox.location.href = `${testOrigin}/c/11111111-1111-1111-1111-111111111111`;
+    env.win.location = env.sandbox.location;
+    const copiedTexts = [];
+    env.win.navigator.clipboard = {
+      writeText: async (text) => { copiedTexts.push(String(text)); }
+    };
+    env.sandbox.navigator = env.win.navigator;
+    env.win.__AGContextMeterLive = { port: bridge.port, token: bridge.token };
+    env.sandbox.fetch = async (url, init) => {
+      if (String(url).startsWith(`http://127.0.0.1:${bridge.port}`)) {
+        const body = init?.body ? JSON.parse(init.body) : {};
+        const route = new URL(url).pathname;
+        const data = await postLive(route, body);
+        return { ok: true, json: async () => data };
+      }
+      return { ok: false, json: async () => ({}) };
+    };
+
+    const freshRendererSrc = fs.readFileSync(path.join(ROOT, 'meter-renderer.js'), 'utf8');
+    const freshEnhancerSrc = fs.readFileSync(path.join(ROOT, 'ag-enhancer-overlay.js'), 'utf8');
+    vm.runInContext(freshRendererSrc, env.sandbox);
+    const meterApi = env.sandbox.__AGContextMeter;
+    vm.runInContext(freshEnhancerSrc, env.sandbox);
+    const enhancer = env.sandbox.__AGEnhancer;
+
+    try {
+      // 验证主题变量镜像（含 --ag-bg-card / --ag-border-card / --ag-effective-accent）
+      meterApi.setHeatPreset('blue');
+      assert.equal(env.doc.documentElement.style.getPropertyValue('--ag-effective-accent'), '#60a5fa');
+      assert.ok(env.doc.documentElement.style.getPropertyValue('--ag-bg-card'));
+      assert.ok(env.doc.documentElement.style.getPropertyValue('--ag-border-card'));
+
+      // 构造聊天区与非聊天区 DOM
+      const viewport = env.doc.createElement('div');
+      viewport.setAttribute('data-testid', 'autoscroll-viewport');
+      const agentResp = env.doc.createElement('div');
+      agentResp.setAttribute('data-testid', 'agent-response');
+      const mdRoot = env.doc.createElement('div');
+      mdRoot.setAttribute('data-markdown-root', 'true');
+
+      const fileAnchor = env.doc.createElement('a');
+      fileAnchor.setAttribute('href', 'file:///Users/me/My%20Docs/%E4%B8%AD%E6%96%87%20100%25done/demo%231.js#L123-L145');
+      const fileCode = env.doc.createElement('code');
+      fileCode.textContent = 'demo#1.js';
+      fileAnchor.appendChild(fileCode);
+
+      const dirPill = env.doc.createElement('button');
+      dirPill.setAttribute('type', 'button');
+      dirPill.setAttribute('data-uri', 'file:///Users/me/Github/extension-manager-mv3/');
+      dirPill.textContent = 'extension-manager-mv3';
+
+      const noSlashRealDirPill = env.doc.createElement('button');
+      noSlashRealDirPill.setAttribute('type', 'button');
+      noSlashRealDirPill.setAttribute('data-uri', `file://${encodeURI(subDir)}`);
+      noSlashRealDirPill.textContent = '中文 目录';
+
+      const webAnchor = env.doc.createElement('a');
+      webAnchor.setAttribute('href', 'https://example.com/a.js#L10');
+      webAnchor.textContent = 'https link';
+
+      const quotePill = env.doc.createElement('span');
+      quotePill.setAttribute('data-testid', 'quote-scope-pill');
+      quotePill.setAttribute('data-uri', 'file:///quote');
+      quotePill.textContent = '选中文本';
+
+      mdRoot.appendChild(fileAnchor);
+      mdRoot.appendChild(dirPill);
+      mdRoot.appendChild(noSlashRealDirPill);
+      mdRoot.appendChild(webAnchor);
+      mdRoot.appendChild(quotePill);
+      agentResp.appendChild(mdRoot);
+      viewport.appendChild(agentResp);
+      env.doc.body.appendChild(viewport);
+
+      // 侧栏与输入区排除校验
+      const composer = env.doc.createElement('div');
+      composer.className = 'surface-composer';
+      const composerPill = env.doc.createElement('button');
+      composerPill.setAttribute('data-uri', 'file:///tmp/in-composer.js');
+      composer.appendChild(composerPill);
+      env.doc.body.appendChild(composer);
+
+      const parsedWithLine = enhancer.extractChatLocalFileTarget(fileCode);
+      assert.equal(parsedWithLine.path, '/Users/me/My Docs/中文 100%done/demo#1.js');
+      assert.equal(parsedWithLine.folderPath, '/Users/me/My Docs/中文 100%done');
+      assert.equal(parsedWithLine.pathWithLine, '/Users/me/My Docs/中文 100%done/demo#1.js:123-145');
+      assert.equal(enhancer.extractChatLocalFileTarget(webAnchor), null, '普通 https 链接不应拦截');
+      assert.equal(enhancer.extractChatLocalFileTarget(quotePill), null, 'file:///quote 引用胶囊不应拦截');
+      assert.equal(enhancer.extractChatLocalFileTarget(composerPill), null, '输入区内的文件胶囊不应拦截');
+
+      // 触发右键菜单（靠近右下角边界以测试防溢出）
+      let prevented = false;
+      env.doc.dispatchEvent({
+        type: 'contextmenu',
+        target: fileCode,
+        clientX: 1272,
+        clientY: 794,
+        preventDefault() { prevented = true; },
+        stopPropagation() {},
+        stopImmediatePropagation() {}
+      });
+      assert.equal(prevented, true, '命中聊天区 file:// 链接应拦截默认右键菜单');
+
+      const menu = env.doc.getElementById('ag-file-link-context-menu');
+      assert.ok(menu && !menu.hidden, '应显示自定义右键菜单');
+      const menuLeft = parseInt(menu.style.left, 10);
+      const menuTop = parseInt(menu.style.top, 10);
+      assert.ok(menuLeft >= 10 && menuLeft < 1200, `菜单水平位置 (${menuLeft}) 应自动防溢出`);
+      assert.ok(menuTop >= 10 && menuTop < 750, `菜单垂直位置 (${menuTop}) 应自动防溢出`);
+
+      const itemLabels = menu.querySelectorAll('.ag-fctx-item').map((b) => b.getAttribute('data-fctx-action'));
+      assert.deepEqual(itemLabels, ['copy-path', 'copy-folder', 'copy-line-path', 'reveal-finder']);
+
+      // 切换英文界面时菜单文案同步切换
+      env.win.dispatchEvent({ type: 'ag-suite-prefs-changed', detail: { locale: 'en', hansCode: 'en', capsuleLang: 'en' } });
+      assert.equal(menu.querySelector('[data-fctx-action="copy-path"] .ag-fctx-item-label')?.textContent, 'Copy Path');
+      assert.equal(menu.querySelector('[data-fctx-action="copy-folder"] .ag-fctx-item-label')?.textContent, 'Copy Folder Path');
+      assert.equal(menu.querySelector('[data-fctx-action="copy-line-path"] .ag-fctx-item-label')?.textContent, 'Copy Path with Line');
+      assert.equal(menu.querySelector('[data-fctx-action="reveal-finder"] .ag-fctx-item-label')?.textContent, 'Reveal in Finder');
+
+      // 切回中文并验证 3 项复制 + Toast（含无快捷栏回退 Toast）
+      env.win.dispatchEvent({ type: 'ag-suite-prefs-changed', detail: { locale: 'zh-CN', hansCode: 'zh', capsuleLang: 'zh' } });
+      assert.equal(menu.querySelector('[data-fctx-action="copy-path"] .ag-fctx-item-label')?.textContent, '复制路径');
+
+      menu.querySelector('[data-fctx-action="copy-line-path"]').click();
+      await new Promise((r) => setTimeout(r, 20));
+      assert.equal(copiedTexts.at(-1), '/Users/me/My Docs/中文 100%done/demo#1.js:123-145');
+      assert.equal(menu.hidden, true, '点击菜单项后应自动关闭');
+      const quickToast = env.doc.querySelector('#ag-quick-capsule-bar .ag-qcap-toast');
+      assert.ok(
+        quickToast && quickToast.getAttribute('data-visible') === 'true' && (quickToast.textContent || '').includes('已复制含行号路径'),
+        '快捷栏存在时应在快捷栏 Toast 槽位提示已复制含行号路径'
+      );
+
+      // 隐藏快捷栏后，应降级弹出独立浮动 Toast #ag-file-ctx-toast
+      env.win.dispatchEvent({ type: 'ag-suite-prefs-changed', detail: { featureFlags: { showQuickBar: false } } });
+      env.doc.dispatchEvent({
+        type: 'contextmenu',
+        target: fileAnchor,
+        clientX: 160,
+        clientY: 160,
+        preventDefault() {},
+        stopPropagation() {},
+        stopImmediatePropagation() {}
+      });
+      menu.querySelector('[data-fctx-action="copy-path"]').click();
+      await new Promise((r) => setTimeout(r, 20));
+      assert.equal(copiedTexts.at(-1), '/Users/me/My Docs/中文 100%done/demo#1.js');
+      const fallbackToast = env.doc.getElementById('ag-file-ctx-toast');
+      assert.ok(fallbackToast && !fallbackToast.hidden && /已(?:复|複)制?製?路徑?|已複製路徑/.test(fallbackToast.textContent || ''), '无快捷栏时应弹出独立浮动 Toast 提示');
+
+      // 无行号目录胶囊：不应显示「复制含行号路径」，且复制所在文件夹直接复制目录本身
+      env.doc.dispatchEvent({
+        type: 'contextmenu',
+        target: dirPill,
+        clientX: 200,
+        clientY: 200,
+        preventDefault() {},
+        stopPropagation() {},
+        stopImmediatePropagation() {}
+      });
+      assert.equal(menu.querySelector('[data-fctx-action="copy-line-path"]'), null, '无行号时不应显示复制含行号路径');
+      menu.querySelector('[data-fctx-action="copy-folder"]').click();
+      await new Promise((r) => setTimeout(r, 20));
+      assert.equal(copiedTexts.at(-1), '/Users/me/Github/extension-manager-mv3');
+
+      // 无结尾斜杠的真实存在目录，通过 /stat-local-path 自动识别为目录并直接复制自身
+      env.doc.dispatchEvent({
+        type: 'contextmenu',
+        target: noSlashRealDirPill,
+        clientX: 220,
+        clientY: 220,
+        preventDefault() {},
+        stopPropagation() {},
+        stopImmediatePropagation() {}
+      });
+      await new Promise((r) => setTimeout(r, 30));
+      menu.querySelector('[data-fctx-action="copy-folder"]').click();
+      await new Promise((r) => setTimeout(r, 20));
+      assert.equal(copiedTexts.at(-1), path.resolve(subDir));
+
+      // 验证滚动与 Esc、点击空白处均能自动关闭
+      env.doc.dispatchEvent({ type: 'contextmenu', target: fileAnchor, clientX: 100, clientY: 100, preventDefault() {}, stopPropagation() {} });
+      assert.equal(menu.hidden, false);
+      env.doc.dispatchEvent({ type: 'scroll', target: viewport });
+      assert.equal(menu.hidden, true, '滚动时应自动关闭右键菜单');
+
+      env.doc.dispatchEvent({ type: 'contextmenu', target: fileAnchor, clientX: 100, clientY: 100, preventDefault() {}, stopPropagation() {} });
+      assert.equal(menu.hidden, false);
+      env.doc.dispatchEvent({ type: 'keydown', key: 'Escape', preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() {} });
+      assert.equal(menu.hidden, true, '按 Esc 时应自动关闭右键菜单');
+
+      env.doc.dispatchEvent({ type: 'contextmenu', target: fileAnchor, clientX: 100, clientY: 100, preventDefault() {}, stopPropagation() {} });
+      assert.equal(menu.hidden, false);
+      env.doc.dispatchEvent({ type: 'mousedown', target: env.doc.body });
+      assert.equal(menu.hidden, true, '点击空白处时应自动关闭右键菜单');
+
+      // 验证「在 Finder 中显示」dryRun 调用链路
+      const dryReveal = await enhancer.revealLocalPathInFinder(sampleFile, { dryRun: true });
+      assert.equal(dryReveal.ok, true);
+      assert.equal(dryReveal.path, path.resolve(sampleFile));
+    } finally {
+      enhancer?.dispose?.();
+      meterApi?.dispose?.();
+    }
+  } finally {
+    await bridge.stop();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+
+test('已配置 tailscaleCustomHost 或独立版未运行时跳过 tailscale CLI 且绝不调用 GUI 入口', async () => {
+  const prevStateDir = process.env.AG_METER_STATE_DIR;
+  const prevSkipProbes = process.env.AG_REMOTE_SKIP_PROBES;
+  const tmpState = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-ts-skip-'));
+  process.env.AG_METER_STATE_DIR = tmpState;
+  delete process.env.AG_REMOTE_SKIP_PROBES;
+  delete require.cache[require.resolve('../mobile-remote.js')];
+  const mr = require('../mobile-remote.js');
+
+  try {
+    // 1. detectHostIdentityMeta 与 ensureTailscaleServeHttps 传入 tailscaleCustomHost / skipTailscaleCli 时 0 次调用 execFileSync
+    let syncExecCount = 0;
+    const countingExecSync = () => {
+      syncExecCount += 1;
+      return '{}';
+    };
+    const skippedByCustom = mr.detectHostIdentityMeta({
+      tailscaleCustomHost: 'my-mac.tailnet-demo.ts.net',
+      execFileSync: countingExecSync
+    });
+    assert.equal(skippedByCustom.tailscaleDnsName, '');
+    assert.equal(skippedByCustom.tailscaleRunning, false);
+
+    const skippedByFlag = mr.detectHostIdentityMeta({
+      skipTailscaleCli: true,
+      execFileSync: countingExecSync
+    });
+    assert.equal(skippedByFlag.tailscaleDnsName, '');
+    assert.equal(skippedByFlag.tailscaleRunning, false);
+
+    const serveSkipRes = mr.ensureTailscaleServeHttps(18765, {
+      tailscaleCustomHost: 'my-mac.tailnet-demo.ts.net',
+      execFileSync: countingExecSync
+    });
+    assert.deepEqual(serveSkipRes, { enabled: false, url: '', hint: '', createdByUs: false });
+    assert.equal(syncExecCount, 0, '配置了 tailscaleCustomHost 或 skipTailscaleCli 时 execFileSync 调用次数必须为 0');
+
+    // 2. probeClientPrivateReachability 在 config.tailscaleCustomHost 已配置时 0 次调用 execAsync
+    mr.clearPairedDevicesForTests();
+    let asyncExecCount = 0;
+    const hints = await mr.probeClientPrivateReachability(
+      {
+        url: '/api/probe-hints?force=1',
+        headers: { 'user-agent': 'Mozilla/5.0 (iPhone)', 'x-ag-device-id': 'dev-ts-skip-1' }
+      },
+      {
+        tailscaleCustomHost: 'my-mac.tailnet-demo.ts.net',
+        enabledChannels: { lan: true, tailscale: true, bonjour: true, tunnel: false }
+      },
+      {
+        force: true,
+        skipProbes: false,
+        execAsync: async () => {
+          asyncExecCount += 1;
+          return { ok: true, stdout: '{}', stderr: '' };
+        }
+      }
+    );
+    assert.equal(asyncExecCount, 0, '配置了 tailscaleCustomHost 时 probeClientPrivateReachability 不得调用 tailscale CLI');
+    assert.equal(hints.tailscale, undefined);
+
+    // 3. resolveTailscaleCliCandidates 在 darwin 下绝不包含 GUI 入口且尊重运行态
+    assert.deepEqual(
+      mr.resolveTailscaleCliCandidates({ platform: 'darwin', hasCustomExec: false, isMacRunning: () => false }),
+      [],
+      'macOS 未运行独立版 Tailscale 时必须返回空候选列表'
+    );
+    const macRunningTwo = mr.resolveTailscaleCliCandidates({
+      platform: 'darwin',
+      hasCustomExec: false,
+      isMacRunning: () => true,
+      existsSync: (p) => p === '/opt/homebrew/bin/tailscale' || p === '/usr/local/bin/tailscale'
+    });
+    assert.deepEqual(macRunningTwo, ['/opt/homebrew/bin/tailscale', '/usr/local/bin/tailscale']);
+    assert.equal(
+      macRunningTwo.some((p) => p.includes('/Applications/Tailscale.app/Contents/MacOS/Tailscale')),
+      false,
+      '严禁包含会唤醒菜单栏 GUI 图标的大写 Tailscale 主程序路径'
+    );
+    assert.deepEqual(
+      mr.resolveTailscaleCliCandidates({
+        platform: 'darwin',
+        hasCustomExec: false,
+        isMacRunning: () => true,
+        existsSync: () => false
+      }),
+      ['tailscale'],
+      '运行中但固定路径均不存在时回退为 tailscale'
+    );
+
+    // 4. 保存 tailscaleCustomHost 后 shouldSkipTailscaleCliProbe、collectFusedEndpointDescriptor 与 CORS 放行均正常工作，且清配置后恢复探测
+    const saved = mr.saveRemoteTunnelConfig({
+      enabledChannels: { lan: true, tailscale: true, bonjour: false, tunnel: false },
+      tailscaleCustomHost: 'my-mac.tailnet-demo.ts.net'
+    });
+    assert.equal(mr.shouldSkipTailscaleCliProbe(), true, '磁盘已配置 tailscaleCustomHost 时应默认跳过独立版 CLI 探测');
+
+    let descExecCount = 0;
+    const desc = mr.collectFusedEndpointDescriptor(
+      18765,
+      null,
+      saved.enabledChannels,
+      {
+        readOnly: true,
+        tailscaleCustomHost: saved.tailscaleCustomHost,
+        execFileSync: () => {
+          descExecCount += 1;
+          return '{}';
+        },
+        addresses: {
+          tailscale: [],
+          lan: [{ iface: 'en0', address: '192.168.50.10', kind: 'lan' }],
+          physicalLan: [{ iface: 'en0', address: '192.168.50.10', kind: 'lan' }]
+        }
+      }
+    );
+    assert.equal(descExecCount, 0, 'collectFusedEndpointDescriptor 在已配置 tailscaleCustomHost 时不得调用 tailscale CLI');
+    assert.ok(desc.endpoints.some((e) => e.kind === 'tailscale' && e.url === 'http://my-mac.tailnet-demo.ts.net:18765'));
+
+    const corsHandler = mr.createRemoteHttpHandler({
+      enabled: true,
+      port: 18765,
+      token: saved.token,
+      tailscaleCustomHost: 'my-mac.tailnet-demo.ts.net',
+      enabledChannels: { lan: true, tailscale: true, bonjour: false, tunnel: false }
+    }, {
+      fetchSnapshot: async () => ({ ok: true, sessionId: 's1', conversations: [] })
+    });
+    const corsHdrs = {};
+    await corsHandler(
+      {
+        method: 'OPTIONS',
+        url: '/api/ping',
+        headers: { host: '127.0.0.1:18765', origin: 'http://my-mac.tailnet-demo.ts.net:18765' },
+        socket: { remoteAddress: '127.0.0.1' }
+      },
+      {
+        setHeader(k, v) { corsHdrs[String(k).toLowerCase()] = v; },
+        getHeader(k) { return corsHdrs[String(k).toLowerCase()]; },
+        writeHead(_c, h = {}) { for (const [k, v] of Object.entries(h)) corsHdrs[String(k).toLowerCase()] = v; },
+        end() {}
+      }
+    );
+    assert.equal(corsHdrs['access-control-allow-origin'], 'http://my-mac.tailnet-demo.ts.net:18765');
+
+    // 清除 tailscaleCustomHost 后，saveRemoteTunnelConfig 应主动失效缓存并恢复探测策略
+    mr.saveRemoteTunnelConfig({ tailscaleCustomHost: '' });
+    assert.equal(mr.shouldSkipTailscaleCliProbe(), false, '清除 tailscaleCustomHost 后应恢复为允许探测');
+    let afterClearCount = 0;
+    const afterClearMeta = mr.detectHostIdentityMeta({
+      execFileSync: () => {
+        afterClearCount += 1;
+        return JSON.stringify({
+          BackendState: 'Running',
+          Self: { DNSName: 'restored-mac.tailnet-demo.ts.net.', HostName: 'restored-mac', Online: true },
+          CertDomains: ['restored-mac.tailnet-demo.ts.net']
+        });
+      }
+    });
+    assert.equal(afterClearCount, 1);
+    assert.equal(afterClearMeta.tailscaleDnsName, 'restored-mac.tailnet-demo.ts.net');
+  } finally {
+    if (prevStateDir === undefined) delete process.env.AG_METER_STATE_DIR;
+    else process.env.AG_METER_STATE_DIR = prevStateDir;
+    if (prevSkipProbes === undefined) delete process.env.AG_REMOTE_SKIP_PROBES;
+    else process.env.AG_REMOTE_SKIP_PROBES = prevSkipProbes;
+    delete require.cache[require.resolve('../mobile-remote.js')];
+    fs.rmSync(tmpState, { recursive: true, force: true });
+  }
+});
+
+// =========================================================================
+// 长消息 / 长 Markdown / 长代码块折叠 + 移动端折叠联动与左侧对话点阵导览条
+// =========================================================================
+test('长消息、长 Markdown 与长代码块折叠：设置同步、桌面端三类折叠、手机端联动与点阵导览条验证', async () => {
+  // 1. 设置面板 #set-long-fold 位于分页 3，双向同步且派发 ag-suite-prefs-changed
+  const env = createDomEnv();
+  vm.runInContext(RENDERER_SRC, env.sandbox);
+  const sd = env.getShadow();
+  const chkLongFold = sd.getElementById('set-long-fold');
+  assert.ok(chkLongFold, '设置面板必须包含 #set-long-fold 开关');
+  assert.equal(chkLongFold.checked, true, '#set-long-fold 默认应开启');
+  const chatPane = sd.getElementById('settings-pane-chat');
+  assert.ok(chatPane?.contains(chkLongFold), '#set-long-fold 必须位于分页 3（对话与效率）内');
+
+  vm.runInContext(ENHANCER_SRC, env.sandbox);
+  const enhancer = env.sandbox.__AGEnhancer;
+  assert.equal(enhancer.getLongFold(), true, 'enhancer 默认应开启长内容折叠');
+
+  // 2. 构建桌面端对话视口：旧轮（长 markdown + 长代码块）+ 最新一轮（长 markdown + 短代码块 + 审批按钮）+ 已展开的长用户消息 + 原生未展开用户消息
+  const vp = env.doc.createElement('div');
+  vp.setAttribute('data-testid', 'autoscroll-viewport');
+  vp.getBoundingClientRect = () => ({ top: 0, left: 0, width: 900, height: 700, right: 900, bottom: 700 });
+  env.doc.body.appendChild(vp);
+
+  const oldTurn = env.doc.createElement('div');
+  oldTurn.setAttribute('data-testid', 'agent-response');
+  const oldMd = env.doc.createElement('div');
+  oldMd.setAttribute('data-markdown-root', 'true');
+  oldMd.scrollHeight = 760;
+  oldMd.textContent = Array.from({ length: 20 }, (_, i) => `旧轮长结论段落 ${i + 1}: 保留核心证据与验证结果。`).join('\n');
+  const oldPre = env.doc.createElement('pre');
+  oldPre.scrollHeight = 420;
+  oldPre.textContent = Array.from({ length: 24 }, (_, i) => `const line${i + 1} = ${i + 1};`).join('\n');
+  oldMd.appendChild(oldPre);
+  oldTurn.appendChild(oldMd);
+  vp.appendChild(oldTurn);
+
+  const uExpanded = env.doc.createElement('div');
+  uExpanded.setAttribute('data-testid', 'user-message');
+  const uExpandedContent = env.doc.createElement('div');
+  uExpandedContent.setAttribute('data-testid', 'user-message-content');
+  uExpandedContent.className = 'relative p-0.5 cursor-pointer';
+  uExpandedContent.scrollHeight = 320;
+  uExpandedContent.textContent = Array.from({ length: 12 }, (_, i) => `用户已展开的长文本需求第 ${i + 1} 行内容`).join('\n');
+  uExpanded.appendChild(uExpandedContent);
+  vp.appendChild(uExpanded);
+
+  const uNativeCollapsed = env.doc.createElement('div');
+  uNativeCollapsed.setAttribute('data-testid', 'user-message');
+  const uNativeContent = env.doc.createElement('div');
+  uNativeContent.setAttribute('data-testid', 'user-message-content');
+  uNativeContent.className = 'relative p-0.5 max-h-[9em] overflow-hidden';
+  uNativeContent.scrollHeight = 360;
+  uNativeContent.textContent = Array.from({ length: 12 }, (_, i) => `原生 9em 已收起的长文本第 ${i + 1} 行`).join('\n');
+  uNativeCollapsed.appendChild(uNativeContent);
+  vp.appendChild(uNativeCollapsed);
+
+  const latestTurn = env.doc.createElement('div');
+  latestTurn.setAttribute('data-testid', 'agent-response');
+  const latestMd = env.doc.createElement('div');
+  latestMd.setAttribute('data-markdown-root', 'true');
+  latestMd.scrollHeight = 620;
+  latestMd.textContent = Array.from({ length: 18 }, (_, i) => `最新一轮详细说明第 ${i + 1} 行：默认保持展开且可手动收起。`).join('\n');
+  const latestPre = env.doc.createElement('pre');
+  latestPre.scrollHeight = 410;
+  latestPre.textContent = Array.from({ length: 22 }, (_, i) => `export const step${i + 1} = true;`).join('\n');
+  latestMd.appendChild(latestPre);
+  latestTurn.appendChild(latestMd);
+  vp.appendChild(latestTurn);
+
+  const mountedCount = enhancer.scanLongFoldables();
+  assert.equal(mountedCount, 5, '应挂载 2 个长代码块 + 2 个长 Markdown + 1 个已展开长用户消息（共 5 处，原生 9em 不干扰）');
+  assert.equal(oldPre.getAttribute('data-ag-fold-state'), 'collapsed', '非生成中的旧轮长代码块默认应折叠');
+  assert.equal(latestPre.getAttribute('data-ag-fold-state'), 'collapsed', '非生成中的最新一轮长代码块默认也应折叠');
+  assert.equal(oldMd.getAttribute('data-ag-fold-state'), 'collapsed', '旧轮长 Markdown 默认应折叠');
+  assert.equal(latestMd.getAttribute('data-ag-fold-state'), 'expanded', '最新一轮长 Markdown 默认应保持展开并带收起按钮');
+  assert.equal(uExpandedContent.getAttribute('data-ag-fold-state'), 'expanded', '已展开长用户消息应挂载收起按钮且保持展开');
+  assert.equal(uNativeContent.getAttribute('data-ag-fold-kind'), null, '宿主原生 max-h-[9em] 用户消息不得重复挂折叠栏');
+
+  // 点击旧轮代码块按钮展开，再点击用户消息按钮收起
+  const oldPreBar = oldPre.nextElementSibling;
+  assert.ok(oldPreBar?.classList?.contains('ag-fold-bar'), '折叠条应紧邻目标元素后方作为兄弟节点挂载');
+  const oldPreBtn = oldPreBar.querySelector('.ag-fold-btn');
+  assert.ok(oldPreBtn.textContent.includes('24 行'), '代码块折叠按钮应展示行数');
+  oldPreBtn.click();
+  assert.equal(oldPre.getAttribute('data-ag-fold-state'), 'expanded', '点击后应展开代码块');
+  assert.equal(oldPreBtn.getAttribute('aria-expanded'), 'true');
+
+  const uBtn = uExpandedContent.nextElementSibling.querySelector('.ag-fold-btn');
+  uBtn.click();
+  assert.equal(uExpandedContent.getAttribute('data-ag-fold-state'), 'collapsed', '点击用户消息收起按钮后应切换为 collapsed');
+
+  // 正在生成中的最新一轮长代码块不自动折叠
+  const cancelBtn = env.doc.createElement('button');
+  cancelBtn.setAttribute('data-testid', 'input-cancel-button');
+  cancelBtn.offsetWidth = 80;
+  cancelBtn.offsetHeight = 28;
+  env.doc.body.appendChild(cancelBtn);
+
+  const streamingTurn = env.doc.createElement('div');
+  streamingTurn.setAttribute('data-testid', 'agent-response');
+  const streamingMd = env.doc.createElement('div');
+  streamingMd.setAttribute('data-markdown-root', 'true');
+  streamingMd.scrollHeight = 520;
+  streamingMd.textContent = Array.from({ length: 16 }, (_, i) => `流式输出第 ${i + 1} 行`).join('\n');
+  const streamingPre = env.doc.createElement('pre');
+  streamingPre.scrollHeight = 380;
+  streamingPre.textContent = Array.from({ length: 20 }, (_, i) => `console.log(${i});`).join('\n');
+  streamingMd.appendChild(streamingPre);
+  streamingTurn.appendChild(streamingMd);
+  vp.appendChild(streamingTurn);
+
+  enhancer.scanLongFoldables();
+  assert.equal(streamingPre.getAttribute('data-ag-fold-state'), 'expanded', '生成中的最新一轮代码块不得自动折叠');
+  cancelBtn.remove();
+
+  // collectRecentMessages 与自动确认审批扫描不得被折叠按钮文案污染
+  const snapMsgs = enhancer.getMobileSnapshot().messages;
+  assert.ok(snapMsgs.every((m) => !String(m.text || '').includes('展开代码') && !String(m.text || '').includes('收起长回复') && !String(m.text || '').includes('收起消息')),
+    'collectRecentMessages 提取的正文不得混入折叠按钮文案');
+  assert.equal(enhancer.getMobileSnapshot().pendingApprovals.length, 0, '折叠按钮不得被误识别为待审批按钮');
+
+  // 关闭设置面板 #set-long-fold 应立即清空全部折叠并持久化
+  chkLongFold.checked = false;
+  chkLongFold.dispatchEvent({ type: 'change' });
+  assert.equal(enhancer.getLongFold(), false, '关闭开关后应同步停用长内容折叠');
+  assert.equal(env.doc.querySelectorAll('.ag-fold-bar').length, 0, '关闭开关后应移除全部折叠条');
+  assert.equal(env.doc.querySelectorAll('[data-ag-fold-kind]').length, 0, '关闭开关后应清除全部 data-ag-fold-kind 属性');
+  assert.equal(env.localStorage.getItem('ag_suite_long_fold'), 'false', 'ag_suite_long_fold 应持久化为 false');
+  assert.ok(env.postedSettings.some((p) => p.uiPreferences?.longFold === false), '应向宿主推送 uiPreferences.longFold = false');
+
+  enhancer.dispose?.();
+  env.sandbox.__AGContextMeter?.dispose?.();
+
+  // 3. 手机远程页（折叠开关联动 + 间距修复 + 左侧对话点阵导览条 + 客户端 JS 语法 + 版本门禁）
+  const prevStateDir = process.env.AG_METER_STATE_DIR;
+  const tmpState = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-fold-sync-'));
+  const prevAgDir = process.env.AG_DIR;
+  process.env.AG_METER_STATE_DIR = tmpState;
+  process.env.AG_DIR = tmpState;
+  delete require.cache[require.resolve('../meter-collector.js')];
+  delete require.cache[require.resolve('../mobile-remote.js')];
+  const mc = require('../meter-collector.js');
+  const mr = require('../mobile-remote.js');
+  try {
+    mc.savePluginSettings({ uiPreferences: { longFold: false } });
+    mr.clearRemoteUiPrefsCacheForTests();
+    assert.deepEqual(mr.resolveCachedRemoteUiPrefs(), { longFold: false }, '应读取磁盘 uiPreferences.longFold = false');
+
+    const stateHandler = mr.createRemoteHttpHandler({
+      enabled: true,
+      port: 18765,
+      token: 'tok-fold-sync-test',
+      enabledChannels: { lan: true, tailscale: false, bonjour: false, tunnel: false }
+    }, {
+      fetchSnapshot: async () => ({ ok: true, sessionId: 's-fold-1', conversations: [], messages: [] })
+    });
+    let stateBody = '';
+    await stateHandler(
+      {
+        method: 'GET',
+        url: '/api/snapshot?token=tok-fold-sync-test',
+        headers: { host: '127.0.0.1:18765' },
+        socket: { remoteAddress: '127.0.0.1' }
+      },
+      {
+        setHeader() {},
+        getHeader() { return undefined; },
+        writeHead() {},
+        end(buf) { stateBody = Buffer.isBuffer(buf) ? buf.toString('utf8') : String(buf || ''); }
+      }
+    );
+    const stateJson = JSON.parse(stateBody);
+    assert.equal(stateJson.longFold, false, '/api/snapshot 应随快照下发桌面同步的 longFold = false');
+
+    mc.savePluginSettings({ uiPreferences: { longFold: true } });
+    mr.clearRemoteUiPrefsCacheForTests();
+    assert.deepEqual(mr.resolveCachedRemoteUiPrefs(), { longFold: true }, '开启开关并刷新缓存后应恢复 longFold = true');
+
+    const html = mr.buildMobileAppHtml();
+    const scripts = html.match(/<script>([\s\S]*?)<\/script>/g) || [];
+    assert.ok(scripts.length >= 1, '手机远程 HTML 应包含内联脚本');
+    const clientJs = scripts[scripts.length - 1].replace(/^<script>|<\/script>$/g, '');
+    assert.doesNotThrow(() => new Function(clientJs), '手机远程前端脚本不得存在任何语法错误');
+  } finally {
+    if (prevStateDir === undefined) delete process.env.AG_METER_STATE_DIR;
+    else process.env.AG_METER_STATE_DIR = prevStateDir;
+    if (prevAgDir === undefined) delete process.env.AG_DIR;
+    else process.env.AG_DIR = prevAgDir;
+    delete require.cache[require.resolve('../meter-collector.js')];
+    delete require.cache[require.resolve('../mobile-remote.js')];
+    fs.rmSync(tmpState, { recursive: true, force: true });
+  }
+
+  const mrSrc = fs.readFileSync(path.join(ROOT, 'mobile-remote.js'), 'utf8');
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const pulseSrc = fs.readFileSync(path.join(ROOT, 'pulse-capsule-overlay.js'), 'utf8');
+  assert.equal(pkg.version, '0.9.0', 'package.json 应保留 fork 的 0.9.0 版本');
+  assert.ok(mrSrc.includes("MOBILE_UI_VERSION = '2.1.7'"), 'MOBILE_UI_VERSION 应保留 fork 的 2.1.7 版本');
+  assert.ok(pulseSrc.includes("CAPSULE_VERSION = '1.6.5'"), 'pulse-capsule-overlay 版本应与最新 CAPSULE_VERSION 1.6.5 一致');
+
+  assert.ok(mrSrc.includes('applyMobileLongFolds(snap)') && mrSrc.includes('foldStateMap.clear()'),
+    'mobile-remote.js 应包含 applyMobileLongFolds 与切会话清空 foldStateMap 逻辑');
+  assert.ok(mrSrc.includes('applyRemoteLongFoldPref(snap)') && mrSrc.includes('clearMobileLongFolds()'),
+    'mobile-remote.js 应包含桌面开关实时同步与清空折叠逻辑');
+  assert.ok(mrSrc.includes('.messages>.fold-bar.is-user{margin:-10px 0 2px;align-self:flex-end}'),
+    'mobile-remote.js 应修正用户长消息折叠条上边距避免过大留白');
+  assert.ok(
+    mrSrc.includes('id="msg-rail"') &&
+    mrSrc.includes('id="msg-rail-tip"') &&
+    mrSrc.includes('renderMessageRail()') &&
+    mrSrc.includes('updateMessageRailActive(') &&
+    mrSrc.includes('scrollToRailMessage(') &&
+    mrSrc.includes('#msg-rail'),
+    'mobile-remote.js 应包含左侧对话点阵导览条、气泡预览、同步高亮、点击与触摸拖拽跳转及左滑抽屉排重'
+  );
+
+  // 4. 三方合并加固门禁与 5 语种 README 融合检查
+  assert.ok(
+    mrSrc.includes("!$('file-viewer-backdrop').hidden"),
+    'mobile-remote.js 全局左滑抽屉应阻断 file-viewer-backdrop 与 .fv-ws-bar'
+  );
+  assert.ok(mrSrc.includes('.fv-ws-bar') && mrSrc.includes('writeRes?.ok !== false'),
+    'mobile-remote.js 应排除 .fv-ws-bar 误滑并校验 persistCatalogStore 写盘成功再更新 lastSig');
+
+  const collectorSrc = fs.readFileSync(path.join(ROOT, 'meter-collector.js'), 'utf8');
+  assert.ok(collectorSrc.includes('inspectStepsBySig') && collectorSrc.includes('gmSigMatch.count >= 2'),
+    'meter-collector.js 必须区分未索引 GM 0 次命中与重复签名命中，防止最新轮精确用量误回退旧步骤');
+
+  const mainSrc = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'main.js'), 'utf8');
+  assert.ok(mainSrc.includes('matchedRow.stepIndex ?? matchedRow.step_index') && mainSrc.includes('scanBehindCur'),
+    'src/renderer/main.js 应兼容单值 stepIndex 并阻断旧步 scan 覆盖');
+
+  for (const [docPath, tokens] of [
+    [path.join(ROOT, 'README.md'), ['右键复制文件路径', '长消息与代码块折叠']],
+    [path.join(ROOT, 'docs', 'README.en.md'), ['right-click context menu', 'long message & code block folding']],
+    [path.join(ROOT, 'docs', 'README.ja.md'), ['右クリックメニュー', '長文＆コードブロック折りたたみ']],
+    [path.join(ROOT, 'docs', 'README.ko.md'), ['우클릭 메뉴', '긴 메시지·코드 블록 접기']],
+    [path.join(ROOT, 'docs', 'README.es.md'), ['menú contextual con clic derecho', 'plegado de mensajes largos y código']]
+  ]) {
+    const docText = fs.readFileSync(docPath, 'utf8');
+    for (const tok of tokens) {
+      assert.ok(docText.includes(tok), `${path.basename(docPath)} 应同时保留 "${tok}"`);
+    }
+  }
 });
 
 test('remote catalog: 电脑端已归档或已删除且从 GetAllCascadeTrajectories 消失的旧会话应被二次核对清理，不永久残留于磁盘缓存', async () => {

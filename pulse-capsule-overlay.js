@@ -3,7 +3,7 @@
  * 运行环境：客户端渲染进程 Main World / 浏览器扩展 MAIN World (同源 Connect-RPC + React Fiber 精准会话隔离)
  */
 (function () {
-    const CAPSULE_VERSION = '1.5.5';
+    const CAPSULE_VERSION = '1.6.5';
     if (window.__AGY_CTX_CAPSULE_ACTIVE__) {
         if (window.__AGY_CTX_CAPSULE_VERSION__ === CAPSULE_VERSION) return;
         try { window.__AGY_CTX_CAPSULE_DISPOSE__?.(); } catch {}
@@ -52,8 +52,9 @@
 
     const COMPRESSION_MIN_DROP = 5000; // 连续快照含缓存输入下降 > 5000 tokens 判定为自动压缩
     const DEFAULT_LIMIT = 256000;      // 基础保底压缩上限 256k
+    const OFFICIAL_COMPRESSION_BUDGET = 512000; // 1M 物理窗口模型官方默认自动压缩线 512k
     const GPT_OSS_LIMIT = 131072;      // GPT-OSS 120B 模型上限 131072 (128Ki)
-    const CLAUDE_55_LIMIT = 1000000;   // Claude 5.5 模型上下文上限 1M
+    const CLAUDE_55_LIMIT = 1000000;   // Claude 5.5 模型物理上下文上限 1M
     const GEMINI_4_LIMIT = 1048576;    // Gemini 4 / 3.8 Flash 模型物理上下文上限 1Mi (1048576)
 
     // 已知共享 5 小时配额池映射 (对齐官方 LanguageServer 配额池划分)
@@ -112,14 +113,13 @@
         if (raw == null) return 0;
         if (typeof raw === 'number') return Number.isFinite(raw) && raw > 0 ? raw : 0;
         if (typeof raw === 'string') {
-            const trimmed = raw.trim();
-            const m = trimmed.match(/^(\d+(?:\.\d+)?)\s*s$/i);
-            if (m) return Number(m[1]) || 0;
-            const n = Number(trimmed);
-            return Number.isFinite(n) && n > 0 ? n : 0;
+            const m = raw.trim().match(/^(\d+(?:\.\d+)?)\s*(ms|s)?$/i);
+            if (!m) return 0;
+            const val = Number(m[1]) || 0;
+            return val > 0 ? (String(m[2] || '').toLowerCase() === 'ms' ? val / 1000 : val) : 0;
         }
         if (typeof raw === 'object') {
-            const sec = Number(raw.seconds || 0) + Number(raw.nanos || 0) / 1e9;
+            const sec = Number(raw.seconds ?? raw.secs ?? 0) + Number(raw.nanos || 0) / 1e9;
             return Number.isFinite(sec) && sec > 0 ? sec : 0;
         }
         return 0;
@@ -319,91 +319,111 @@
         }
     }
 
-    function ingestGeneratorMetadataRows(rows, cascadeId) {
-        if (!Array.isArray(rows) || rows.length === 0) return null;
-        let latestBudgetEntry = null;
-        let lastTokPerSec = 0;
-        let lastDurationSec = 0;
-        let timedOutSum = 0;
-        let timedDurSum = 0;
-
-        for (let i = 0; i < rows.length; i++) {
-            const row = rows[i];
-            const cm = row?.chatModel;
-            if (!cm) continue;
-
-            const budget = toPositiveIntLimit(cm.chatStartMetadata?.contextWindowMetadata?.maxContextTokens);
-            if (budget) {
-                const turnModel = cm.model || cm.modelId || cm.responseModel || '';
-                const turnLabel = cm.modelDisplayName || '';
-                const turnKeys = getModelCandidateKeys(turnModel, turnLabel);
-                const primaryKey = turnKeys[0] || '';
-                const entry = { modelKey: primaryKey, maxContextTokens: budget };
-                latestBudgetEntry = entry;
-                if (cascadeId) {
-                    setBoundedMap(sessionRuntimeBudgetMap, cascadeId, entry, 40);
-                    const shortCid = normalizeCidKey(cascadeId);
-                    if (shortCid && shortCid !== cascadeId) {
-                        setBoundedMap(sessionRuntimeBudgetMap, shortCid, entry, 40);
-                    }
-                }
-                for (const k of turnKeys) {
-                    setBoundedMap(modelRuntimeBudgetMap, k, budget, 60);
-                }
-            }
-
-            const streamDur = parseDurationSec(cm.streamingDuration ?? cm.durationSec ?? row?.streamingDuration);
-            const usageObj = cm.usage || row?.usage || null;
-            const outTok = extractOutputTokens(usageObj);
-            if (isValidTpsSample(outTok, streamDur)) {
-                lastTokPerSec = Math.round(outTok / streamDur);
-                lastDurationSec = Number(streamDur.toFixed(1));
-                timedOutSum += outTok;
-                timedDurSum += streamDur;
-            }
-        }
-
-        if (cascadeId && timedDurSum > 0 && lastTokPerSec > 0) {
-            const speedEntry = {
-                tokPerSec: lastTokPerSec,
-                avgTokPerSec: Math.round(timedOutSum / timedDurSum),
-                lastDurationSec,
-                timedOutTokensSum: timedOutSum,
-                timedDurationSum: timedDurSum
-            };
-            setBoundedMap(sessionRuntimeSpeedMap, cascadeId, speedEntry, 40);
-            const shortCid = normalizeCidKey(cascadeId);
-            if (shortCid && shortCid !== cascadeId) {
-                setBoundedMap(sessionRuntimeSpeedMap, shortCid, speedEntry, 40);
-            }
-        }
-
-        return latestBudgetEntry;
+    function extractMaxStepIndex(row) {
+        if (!row || typeof row !== 'object') return -1;
+        let maxIdx = -1;
+        if (Array.isArray(row.stepIndices)) for (const v of row.stepIndices) if (Number.isFinite(Number(v)) && Number(v) > maxIdx) maxIdx = Math.trunc(Number(v));
+        const single = row.stepIndex ?? row.step_index;
+        return (single !== undefined && single !== null && Number.isFinite(Number(single))) ? Math.max(maxIdx, Math.trunc(Number(single))) : maxIdx;
     }
 
-    // 根据模型 ID 或显示名称动态获取实际上下文上限 (实测运行时预算 > 当前模型运行时记录 > GetAvailableModels 能力 > 家族兜底)
-    function getContextLimitForModel(modelId, label, options = {}) {
-        const candidateKeys = getModelCandidateKeys(modelId, label);
-        const rtBudget = toPositiveIntLimit(options.runtimeBudget);
-        if (rtBudget > 0) {
-            if (!candidateKeys.length || !options.runtimeModelKey || candidateKeys.includes(normalizeModelKey(options.runtimeModelKey))) {
-                return rtBudget;
+    function ingestGeneratorMetadataRows(rows, cascadeId) {
+        if (!Array.isArray(rows) || rows.length === 0) return null;
+        let lastTokPerSec = 0, lastDurationSec = 0, timedOutSum = 0, timedDurSum = 0;
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i], cm = row?.chatModel;
+            if (!cm) continue;
+            const streamDur = parseDurationSec(cm.streamingDuration ?? cm.durationSec ?? row?.streamingDuration);
+            const outTok = extractOutputTokens(cm.usage || row?.usage || null);
+            if (isValidTpsSample(outTok, streamDur)) {
+                lastTokPerSec = Number((outTok / streamDur).toFixed(1)); lastDurationSec = Number(streamDur.toFixed(2));
+                timedOutSum += outTok; timedDurSum += streamDur;
             }
         }
-
-        for (const k of candidateKeys) {
-            const observed = toPositiveIntLimit(modelRuntimeBudgetMap.get(k));
-            if (observed > 0) return observed;
+        if (cascadeId && timedDurSum > 0 && lastTokPerSec > 0) {
+            const speedEntry = { tokPerSec: lastTokPerSec, avgTokPerSec: Number((timedOutSum / timedDurSum).toFixed(1)), lastDurationSec, timedOutTokensSum: timedOutSum, timedDurationSum: timedDurSum };
+            setBoundedMap(sessionRuntimeSpeedMap, cascadeId, speedEntry, 40);
+            const shortCid = normalizeCidKey(cascadeId);
+            if (shortCid && shortCid !== cascadeId) setBoundedMap(sessionRuntimeSpeedMap, shortCid, speedEntry, 40);
         }
+        for (let i = rows.length - 1; i >= 0; i--) {
+            const row = rows[i], cm = row?.chatModel;
+            if (!cm) continue;
+            const budget = toPositiveIntLimit(cm.chatStartMetadata?.contextWindowMetadata?.maxContextTokens);
+            const turnKeys = getModelCandidateKeys(cm.model || cm.modelId || cm.responseModel || '', cm.modelDisplayName || '');
+            const u = cm.usage || row.usage || {};
+            let inTok = Math.max(0, parseInt(u.inputTokens ?? u.promptTokens ?? '0', 10) || 0);
+            const cacheReadTok = Math.max(0, parseInt(u.cacheReadTokens ?? u.cachedTokens ?? '0', 10) || 0);
+            const cacheCreateTok = Math.max(0, parseInt(u.cacheCreationTokens ?? '0', 10) || 0);
+            const outTok = extractOutputTokens(u);
+            let totalTokens = inTok + cacheReadTok + cacheCreateTok + outTok;
+            if (!totalTokens && u.totalTokens !== undefined) {
+                const totFb = Math.max(0, parseInt(u.totalTokens || '0', 10) || 0);
+                if (totFb > 0) { inTok = totFb; totalTokens = totFb; }
+            }
+            const usageSignature = (inTok + cacheReadTok + cacheCreateTok + outTok) > 0 ? `${inTok}:${cacheReadTok}:${cacheCreateTok}:${outTok}` : '';
+            const ttftSec = parseDurationSec(cm.timeToFirstToken), streamingSec = parseDurationSec(cm.streamingDuration);
+            const durSec = (ttftSec > 0 && streamingSec > 0) ? Number((ttftSec + streamingSec).toFixed(2)) : (streamingSec > 0 ? Number(streamingSec.toFixed(2)) : (ttftSec > 0 ? Number(ttftSec.toFixed(2)) : 0));
+            const speedDenom = streamingSec >= 1.0 ? streamingSec : (streamingSec === 0 && durSec >= 1.0 ? durSec : 0);
+            const streamingTps = isValidTpsSample(outTok, speedDenom) ? Number((outTok / speedDenom).toFixed(1)) : 0;
+            if (!budget && !streamingTps && !totalTokens) continue;
+            const entry = {
+                modelKey: turnKeys[0] || '', maxContextTokens: budget, streamingTps,
+                ttftSec: ttftSec > 0 ? Number(ttftSec.toFixed(2)) : 0, streamingSec: streamingSec > 0 ? Number(streamingSec.toFixed(2)) : 0,
+                durationSec: durSec, outputTokens: outTok, inputTokens: inTok, cacheReadTokens: cacheReadTok,
+                cacheCreationTokens: cacheCreateTok, totalTokens, maxStepIndex: extractMaxStepIndex(row),
+                createdAtMs: parseResetTimeMs(cm.chatStartMetadata?.createdAt || row.createdAt || ''), usageSignature
+            };
+            if (cascadeId) {
+                setBoundedMap(sessionRuntimeBudgetMap, cascadeId, entry, 40);
+                const shortCid = normalizeCidKey(cascadeId);
+                if (shortCid && shortCid !== cascadeId) setBoundedMap(sessionRuntimeBudgetMap, shortCid, entry, 40);
+            }
+            if (budget > 0) for (const k of turnKeys) setBoundedMap(modelRuntimeBudgetMap, k, budget, 60);
+            return entry;
+        }
+        return null;
+    }
 
+    function resolveCustomFixedContextLimit(modelId, label, explicitCustom = 0) {
+        const direct = toPositiveIntLimit(explicitCustom);
+        if (direct > 0) return direct;
+        try {
+            const cp = typeof window !== 'undefined' ? window.__AGContextMeterSettings?.customPlan : null;
+            if (!cp || typeof cp !== 'object') return 0;
+            if (cp.contextScopeMode !== 'per_model') {
+                const uni = cp.contextUnifiedPreference;
+                return (uni && uni.mode === 'fixed') ? (toPositiveIntLimit(uni.limitTokens) || 0) : 0;
+            }
+            const prefs = cp.contextPreferences;
+            if (!prefs || typeof prefs !== 'object') return 0;
+            const candKeys = getModelCandidateKeys(modelId, label);
+            for (const [k, entry] of Object.entries(prefs)) {
+                if (!entry || entry.mode !== 'fixed') continue;
+                const lim = toPositiveIntLimit(entry.limitTokens);
+                if (lim && candKeys.some(ck => getModelCandidateKeys(entry.modelId || k, entry.label || '').includes(ck))) return lim;
+            }
+        } catch (e) {}
+        return 0;
+    }
+
+    function getFamilyPhysicalFallback(modelId, label) {
+        const combined = ((modelId || '') + ' ' + (label || '')).toUpperCase();
+        if (combined.includes('GPT_OSS') || combined.includes('GPT-OSS') || combined.includes('120B')) return GPT_OSS_LIMIT;
+        if (combined.includes('CLAUDE') || combined.includes('OPUS') || combined.includes('SONNET')) return /5[._-]5|M400|M401|M402|M403|M404|M405/.test(combined) ? CLAUDE_55_LIMIT : 200000;
+        if (combined.includes('GEMINI') || combined.includes('NEON') || combined.includes('CARBON') || combined.includes('ARGON') || combined.includes('HYDROGEN') || combined.includes('ORCHESTRATOR') || combined.includes('FLASH') || /M41[789]|M427|M43[78]|M52[5-8]|M53[2-7]|M667|M669|M681|M31[89]|M320/.test(combined)) return GEMINI_4_LIMIT;
+        return DEFAULT_LIMIT;
+    }
+
+    // 获取纯模型物理上下文窗口上限 (绝不读取 modelRuntimeBudgetMap，不受 512k 运行时压缩线覆盖)
+    function getPhysicalMaxTokensForModel(modelId, label, options = {}) {
+        const candidateKeys = getModelCandidateKeys(modelId, label);
         const fiberMax = toPositiveIntLimit(options.fiberMaxTokens);
         if (fiberMax > 0) return fiberMax;
-
         for (const k of candidateKeys) {
             const info = availableModelsMap.get(k);
             if (info && info.maxTokens > 0) return info.maxTokens;
         }
-
         for (const c of userStatusCache.modelConfigs) {
             if (!c) continue;
             const cKeys = getModelCandidateKeys((c.modelOrAlias && c.modelOrAlias.model) || c.model || c.modelId, c.label);
@@ -412,20 +432,35 @@
                 if (mcMax > 0) return mcMax;
             }
         }
+        return getFamilyPhysicalFallback(modelId, label);
+    }
 
-        const combined = ((modelId || '') + ' ' + (label || '')).toUpperCase();
-        if (combined.includes('GPT_OSS') || combined.includes('GPT-OSS') || combined.includes('120B')) {
-            return GPT_OSS_LIMIT;
+    // 根据模型 ID 或显示名称动态获取物理/能力上下文上限 (实测运行时预算 > 当前模型运行时记录 > 物理能力上限)
+    function getContextLimitForModel(modelId, label, options = {}) {
+        const candidateKeys = getModelCandidateKeys(modelId, label);
+        const rtBudget = toPositiveIntLimit(options.runtimeBudget);
+        if (rtBudget > 0 && (!candidateKeys.length || !options.runtimeModelKey || candidateKeys.includes(normalizeModelKey(options.runtimeModelKey)))) return rtBudget;
+        for (const k of candidateKeys) {
+            const observed = toPositiveIntLimit(modelRuntimeBudgetMap.get(k));
+            if (observed > 0) return observed;
         }
-        if (combined.includes('CLAUDE') || combined.includes('OPUS') || combined.includes('SONNET')) {
-            if (/5[._-]5|M400|M401|M402|M403|M404|M405/.test(combined)) {
-                return CLAUDE_55_LIMIT;
-            }
-            return 200000;
+        return getPhysicalMaxTokensForModel(modelId, label, { fiberMaxTokens: options.fiberMaxTokens });
+    }
+
+    // 统一主百分比分母：按实际压缩触发上限计算 (用户自定义固定阈值 > 会话/模型实测 maxContextTokens > 1M 模型官方 512K 压缩线 / 小窗口物理上限)
+    function resolveCompressionBudgetForModel(modelId, label, options = {}) {
+        const customFixed = resolveCustomFixedContextLimit(modelId, label, options.customLimitTokens);
+        if (customFixed > 0) return customFixed;
+        const candidateKeys = getModelCandidateKeys(modelId, label);
+        const rtBudget = toPositiveIntLimit(options.runtimeBudget);
+        if (rtBudget > 0 && (!candidateKeys.length || !options.runtimeModelKey || candidateKeys.includes(normalizeModelKey(options.runtimeModelKey)))) return rtBudget;
+        for (const k of candidateKeys) {
+            const observed = toPositiveIntLimit(modelRuntimeBudgetMap.get(k));
+            if (observed > 0) return observed;
         }
-        if (combined.includes('GEMINI') || combined.includes('NEON') || combined.includes('CARBON') || combined.includes('ARGON') || combined.includes('HYDROGEN') || combined.includes('ORCHESTRATOR') || combined.includes('FLASH') || /M41[789]|M427|M43[78]|M52[5-8]|M53[2-7]|M667|M669|M681|M31[89]|M320/.test(combined)) {
-            return GEMINI_4_LIMIT;
-        }
+        const physicalMax = getPhysicalMaxTokensForModel(modelId, label, { fiberMaxTokens: options.fiberMaxTokens });
+        if (physicalMax > 0 && physicalMax < OFFICIAL_COMPRESSION_BUDGET) return physicalMax;
+        if (physicalMax >= OFFICIAL_COMPRESSION_BUDGET) return OFFICIAL_COMPRESSION_BUDGET;
         return DEFAULT_LIMIT;
     }
 
@@ -686,54 +721,60 @@
         }
     }
 
-    // 从步骤对象提取用于估算的文本内容 (兼容本地 LanguageServer 步骤与云端 Remote Agent / 网页端步骤结构)
+    // 从步骤对象提取用于估算的文本内容 (与 meter-collector 及 isolated 视图保持 100% 同字段口径)
     function extractStepEstimateText(step) {
         if (!step || typeof step !== 'object') return '';
         const parts = [];
+        const pushUniq = (s) => { if (typeof s === 'string' && s && !parts.includes(s)) parts.push(s); };
+        const pushCalls = (list) => {
+            if (!Array.isArray(list)) return;
+            for (const tc of list) {
+                if (!tc) continue;
+                const args = tc.argumentsJson ?? tc.arguments ?? tc.args ?? (tc.function && tc.function.arguments);
+                pushUniq(typeof args === 'string' ? args : (args && typeof args === 'object' ? JSON.stringify(args) : ''));
+            }
+        };
         try {
-            // 1. 本地标准结构 userInput / plannerResponse
+            if (step.checkpoint && typeof step.checkpoint === 'object') {
+                const cpSum = step.checkpoint.sessionSummary || step.checkpoint.summary || '';
+                if (typeof cpSum === 'string' && cpSum) parts.push(cpSum);
+            } else if (/CHECKPOINT/i.test(String(step.type || ''))) {
+                const topSum = step.sessionSummary || step.summary || '';
+                if (typeof topSum === 'string' && topSum) parts.push(topSum);
+            }
             if (step.userInput) {
                 const ui = step.userInput;
-                if (typeof ui.userResponse === 'string') parts.push(ui.userResponse);
-                if (typeof ui.text === 'string') parts.push(ui.text);
-                if (Array.isArray(ui.items)) {
-                    for (const it of ui.items) {
-                        if (it && typeof it.text === 'string') parts.push(it.text);
-                    }
-                }
+                if (typeof ui.userResponse === 'string' && ui.userResponse) parts.push(ui.userResponse);
+                if (typeof ui.text === 'string' && ui.text && ui.text !== ui.userResponse) parts.push(ui.text);
+                if (Array.isArray(ui.items)) for (const it of ui.items) pushUniq(it && it.text);
             }
             if (step.plannerResponse) {
                 const pr = step.plannerResponse;
-                if (typeof pr.response === 'string') parts.push(pr.response);
-                if (typeof pr.thinking === 'string') parts.push(pr.thinking);
-                if (typeof pr.text === 'string') parts.push(pr.text);
+                const mainResp = (typeof pr.modifiedResponse === 'string' && pr.modifiedResponse) ? pr.modifiedResponse : (typeof pr.response === 'string' ? pr.response : '');
+                if (mainResp) parts.push(mainResp);
+                if (typeof pr.thinking === 'string' && pr.thinking) parts.push(pr.thinking);
+                if (typeof pr.text === 'string' && pr.text && pr.text !== mainResp) parts.push(pr.text);
+                pushCalls(pr.toolCalls);
             }
-            if (step.metadata && step.metadata.toolCall && typeof step.metadata.toolCall.argumentsJson === 'string') {
-                parts.push(step.metadata.toolCall.argumentsJson);
-            }
-            // 2. 云端项目 (jetski_remote_agents_3p) 与网页端常见步骤字段
-            if (typeof step.content === 'string') parts.push(step.content);
+            pushUniq(step.metadata && step.metadata.toolCall && step.metadata.toolCall.argumentsJson);
+            if (typeof step.content === 'string' && step.content) parts.push(step.content);
             else if (Array.isArray(step.content)) {
                 for (const c of step.content) {
-                    if (typeof c === 'string') parts.push(c);
-                    else if (c && typeof c.text === 'string') parts.push(c.text);
+                    if (typeof c === 'string' && c) parts.push(c);
+                    else if (c && typeof c.text === 'string' && c.text) parts.push(c.text);
                 }
             }
-            if (typeof step.text === 'string' && !parts.includes(step.text)) parts.push(step.text);
-            if (typeof step.thinking === 'string' && !parts.includes(step.thinking)) parts.push(step.thinking);
-            if (typeof step.response === 'string' && !parts.includes(step.response)) parts.push(step.response);
-            if (typeof step.message === 'string') parts.push(step.message);
-            const toolCalls = step.toolCalls || step.tool_calls;
-            if (Array.isArray(toolCalls)) {
-                for (const tc of toolCalls) {
-                    if (!tc) continue;
-                    const args = tc.arguments || tc.args || tc.argumentsJson || (tc.function && tc.function.arguments);
-                    if (typeof args === 'string') parts.push(args);
-                    else if (args && typeof args === 'object') parts.push(JSON.stringify(args));
-                }
-            }
+            for (const k of ['text', 'thinking', 'response', 'message']) pushUniq(step[k]);
+            pushCalls(step.toolCalls || step.tool_calls);
         } catch (e) {}
         return parts.join('\n');
+    }
+
+    function hasValidUsageFields(mu) {
+        return Boolean(mu && typeof mu === 'object' && (
+            mu.inputTokens !== undefined || mu.promptTokens !== undefined || mu.cacheReadTokens !== undefined || mu.cachedTokens !== undefined ||
+            mu.cacheCreationTokens !== undefined || mu.outputTokens !== undefined || mu.completionTokens !== undefined || mu.totalTokens !== undefined
+        ));
     }
 
     // 核心计算函数：精确快照 + 字符级尾差估算 + 云端无 modelUsage 步骤自适应测速与容量拆解
@@ -757,28 +798,51 @@
         let hasPreciseSnapshot = false;
         let lastTokPerSec = 0;
         let lastDurationSec = 0;
+        let lastTtftSec = 0;
         let timedOutTokensSum = 0;
         let timedDurationSum = 0;
         let stepObservedLimit = 0;
+        let stepObservedPhysicalMax = 0;
         let stepObservedModelKey = '';
+        let lastCheckpointStepIdx = -1;
+        let lastCheckpointAtMs = 0;
+        let lastPlannerStepIdx = -1;
+        let lastPlannerUsageSig = '';
+        let plannerTurnCount = 0;
+        let lastUsageStepIdx = -1;
+        let latestStepTimeMs = 0;
+        const preCheckpointUsageSigs = new Set();
+        const postCheckpointUsageSigs = new Set();
+        const priorPlannerUsageSigs = new Set();
+        const estEntries = [];
 
         if (Array.isArray(steps)) {
-            for (const st of steps) {
+            for (let stepIdx = 0; stepIdx < steps.length; stepIdx++) {
+                const st = steps[stepIdx];
                 if (!st || typeof st !== 'object') continue;
                 const meta = st.metadata || st;
-                const mu = meta.modelUsage || st.modelUsage || (st.checkpoint && st.checkpoint.modelUsage) || (st.usage) || null;
+                const mu = meta.modelUsage || st.modelUsage || (st.checkpoint && (st.checkpoint.modelUsage || st.checkpoint.usage)) || (meta.checkpoint && (meta.checkpoint.modelUsage || meta.checkpoint.usage)) || st.usage || null;
                 const stepModel = (mu && (mu.model || mu.modelId)) || meta.generatorModel || st.model || '';
-                const stepMaxCtx = toPositiveIntLimit(
-                    meta.chatStartMetadata?.contextWindowMetadata?.maxContextTokens
-                    ?? st.chatStartMetadata?.contextWindowMetadata?.maxContextTokens
-                    ?? meta.modelInfo?.maxTokens
-                    ?? meta.model_info?.max_tokens
-                    ?? mu?.maxContextTokens
-                );
-                if (stepMaxCtx > 0 && (!stepModel || !isShadowOrImageModel(stepModel))) {
-                    stepObservedLimit = stepMaxCtx;
+                const stepRuntimeBudget = toPositiveIntLimit(meta.chatStartMetadata?.contextWindowMetadata?.maxContextTokens ?? st.chatStartMetadata?.contextWindowMetadata?.maxContextTokens ?? mu?.maxContextTokens);
+                const stepPhysMax = toPositiveIntLimit(meta.modelInfo?.maxTokens ?? meta.model_info?.max_tokens);
+                if (stepRuntimeBudget > 0 && (!stepModel || !isShadowOrImageModel(stepModel))) {
+                    stepObservedLimit = stepRuntimeBudget;
                     const smKey = normalizeModelKey(stepModel || activeModelId);
                     if (smKey) stepObservedModelKey = smKey;
+                }
+                if (stepPhysMax > 0 && (!stepModel || !isShadowOrImageModel(stepModel))) stepObservedPhysicalMax = stepPhysMax;
+                const stepTimeMs = parseResetTimeMs(meta.finishedGeneratingAt || meta.completedAt || meta.updatedAt || meta.createdAt || meta.created_at || st.finishedGeneratingAt || st.completedAt || st.updatedAt || st.createdAt || st.created_at);
+                if (stepTimeMs > latestStepTimeMs) latestStepTimeMs = stepTimeMs;
+
+                const isCheckpoint = Boolean(st.checkpoint && typeof st.checkpoint === 'object') || /CHECKPOINT/i.test(String(st.type || ''));
+                if (isCheckpoint) {
+                    if (lastPlannerUsageSig) priorPlannerUsageSigs.add(lastPlannerUsageSig);
+                    lastPlannerUsageSig = '';
+                    for (const sig of postCheckpointUsageSigs) preCheckpointUsageSigs.add(sig);
+                    postCheckpointUsageSigs.clear();
+                    lastCheckpointStepIdx = stepIdx;
+                    if (stepTimeMs > 0) lastCheckpointAtMs = stepTimeMs;
+                    lastTokPerSec = 0; lastDurationSec = 0; lastTtftSec = 0; timedOutTokensSum = 0; timedDurationSum = 0;
                 }
 
                 // 尝试从用户输入配置中识别初始选中的模型
@@ -790,80 +854,110 @@
                     }
                 }
 
-                if (mu && (mu.inputTokens !== undefined || mu.outputTokens !== undefined || mu.cacheReadTokens !== undefined || mu.promptTokens !== undefined)) {
+                if (hasValidUsageFields(mu)) {
                     if (isShadowOrImageModel(stepModel)) {
                         shadowModelId = stepModel;
-                        continue;
-                    }
-                    const inTok = Math.max(0, parseInt(mu.inputTokens || mu.promptTokens || '0', 10) || 0);
-                    const cacheRead = Math.max(0, parseInt(mu.cacheReadTokens || mu.cachedTokens || '0', 10) || 0);
-                    const cacheCreate = Math.max(0, parseInt(mu.cacheCreationTokens || '0', 10) || 0);
-                    const outTok = extractOutputTokens(mu);
-                    const cacheInclusiveInput = inTok + cacheRead + cacheCreate;
-                    const snapshotTotal = cacheInclusiveInput + outTok;
+                        // 非 CHECKPOINT 子代理影子步骤直接忽略；若 CHECKPOINT 摘要由影子模型生成，则继续落入下方摘要估算以废弃压缩前旧值
+                        if (!isCheckpoint) continue;
+                    } else {
+                        let inTok = Math.max(0, parseInt(mu.inputTokens ?? mu.promptTokens ?? '0', 10) || 0);
+                        const cacheRead = Math.max(0, parseInt(mu.cacheReadTokens ?? mu.cachedTokens ?? '0', 10) || 0);
+                        const cacheCreate = Math.max(0, parseInt(mu.cacheCreationTokens ?? '0', 10) || 0);
+                        const outTok = extractOutputTokens(mu);
+                        let cacheInclusiveInput = inTok + cacheRead + cacheCreate;
+                        let snapshotTotal = cacheInclusiveInput + outTok;
+                        if (snapshotTotal === 0 && mu.totalTokens !== undefined) {
+                            const totFallback = Math.max(0, parseInt(mu.totalTokens || '0', 10) || 0);
+                            if (totFallback > 0) {
+                                inTok = totFallback;
+                                cacheInclusiveInput = totFallback;
+                                snapshotTotal = totFallback;
+                            }
+                        }
+                        if (!isCheckpoint) {
+                            const stepSig = snapshotTotal > 0 ? `${inTok}:${cacheRead}:${cacheCreate}:${outTok}` : '';
+                            if (lastPlannerUsageSig) priorPlannerUsageSigs.add(lastPlannerUsageSig);
+                            if (stepSig) {
+                                if (lastCheckpointStepIdx >= 0) postCheckpointUsageSigs.add(stepSig);
+                                else preCheckpointUsageSigs.add(stepSig);
+                            }
+                            plannerTurnCount += 1;
+                            lastPlannerStepIdx = stepIdx;
+                            lastPlannerUsageSig = stepSig;
+                            lastTokPerSec = 0;
+                            lastDurationSec = 0;
+                            lastTtftSec = 0;
+                            // 优先按纯流式输出时长计算 tok/s (无流式时长时回退端到端总时长，过滤 <1.0s 或 <30 outTok 短窗噪音)
+                            const streamSec = parseDurationSec(meta.streamingDuration ?? st.streamingDuration ?? st.chatModel?.streamingDuration ?? mu.streamingDuration ?? meta.durationSec);
+                            const ttftSec = parseDurationSec(meta.timeToFirstToken ?? st.timeToFirstToken ?? mu.timeToFirstToken);
+                            const tStart = parseResetTimeMs(meta.createdAt || meta.created_at || meta.startedAt || st.createdAt || st.created_at);
+                            const tEndRaw = meta.finishedGeneratingAt || meta.completedAt || meta.updatedAt || st.finishedGeneratingAt || st.completedAt || st.updatedAt || meta.viewableAt || '';
+                            const tEnd = parseResetTimeMs(tEndRaw);
+                            const wallDurSec = (tStart > 0 && tEnd > tStart) ? (tEnd - tStart) / 1000 : 0;
+                            const totalDurSec = (ttftSec > 0 && streamSec > 0) ? (ttftSec + streamSec) : (wallDurSec > 0 ? wallDurSec : streamSec);
+                            const speedDenom = streamSec >= 1.0 ? streamSec : (streamSec === 0 && totalDurSec >= 1.0 ? totalDurSec : 0);
+                            if (isValidTpsSample(outTok, speedDenom)) {
+                                lastTokPerSec = Number((outTok / speedDenom).toFixed(1));
+                                lastDurationSec = Number((totalDurSec || speedDenom).toFixed(2));
+                                lastTtftSec = ttftSec > 0 ? Number(ttftSec.toFixed(2)) : 0;
+                                timedOutTokensSum += outTok;
+                                timedDurationSum += speedDenom;
+                            }
+                        }
 
-                    // 计算本步端到端每秒输出 Token 速度 (优先 streamingDuration，回退时间戳差，严格过滤短窗 <1.0s 或 <30 outTok)
-                    const streamDurSec = parseDurationSec(
-                        meta.streamingDuration ?? st.streamingDuration ?? st.chatModel?.streamingDuration ?? mu.streamingDuration ?? meta.durationSec
-                    );
-                    const tStart = parseResetTimeMs(meta.createdAt || meta.created_at || meta.startedAt || st.createdAt || st.created_at);
-                    const tEndRaw = meta.finishedGeneratingAt || meta.completedAt || meta.updatedAt || st.finishedGeneratingAt || st.completedAt || st.updatedAt || meta.viewableAt || '';
-                    const tEnd = parseResetTimeMs(tEndRaw);
-                    const wallDurSec = (tStart > 0 && tEnd > tStart) ? (tEnd - tStart) / 1000 : 0;
-                    const durSec = streamDurSec > 0 ? streamDurSec : wallDurSec;
-                    if (isValidTpsSample(outTok, durSec)) {
-                        lastTokPerSec = Math.round(outTok / durSec);
-                        lastDurationSec = Number(durSec.toFixed(1));
-                        timedOutTokensSum += outTok;
-                        timedDurationSum += durSec;
-                    }
-
-                    if (snapshotTotal > 0) {
-                        if (prevCacheInclusiveInput > 0 && (prevCacheInclusiveInput - cacheInclusiveInput) > COMPRESSION_MIN_DROP) {
-                            compressionDetected = true;
-                            compressionBefore = prevCacheInclusiveInput;
-                            compressionAfter = cacheInclusiveInput;
-                            compressionDrop = prevCacheInclusiveInput - cacheInclusiveInput;
+                        if (snapshotTotal > 0) {
+                            if (isCheckpoint || (prevCacheInclusiveInput > 0 && (prevCacheInclusiveInput - cacheInclusiveInput) > COMPRESSION_MIN_DROP)) {
+                                const priorTotal = (baseTokens + estimatedDelta) || prevCacheInclusiveInput;
+                                compressionDetected = true;
+                                compressionBefore = priorTotal > snapshotTotal ? priorTotal : compressionBefore;
+                                compressionAfter = snapshotTotal;
+                                compressionDrop = Math.max(0, compressionBefore - snapshotTotal);
+                                maxPriorCacheRead = 0;
+                            } else if (hasPreciseSnapshot) {
+                                maxPriorCacheRead = Math.max(maxPriorCacheRead, cacheReadTokens);
+                            }
+                            prevCacheInclusiveInput = cacheInclusiveInput;
+                            baseTokens = snapshotTotal; inputTokens = inTok; cacheReadTokens = cacheRead; cacheCreationTokens = cacheCreate; outputTokens = outTok;
+                            estimatedDelta = 0; estInputSum = 0; estOutputSum = 0; estEntries.length = 0; lastUsageStepIdx = stepIdx; hasPreciseSnapshot = true;
+                            if (stepModel && !preferredModelId) activeModelId = stepModel;
+                            continue;
                         }
-                        if (hasPreciseSnapshot) {
-                            maxPriorCacheRead = Math.max(maxPriorCacheRead, cacheReadTokens);
-                        }
-                        prevCacheInclusiveInput = cacheInclusiveInput;
-                        baseTokens = snapshotTotal;
-                        inputTokens = inTok;
-                        cacheReadTokens = cacheRead;
-                        cacheCreationTokens = cacheCreate;
-                        outputTokens = outTok;
-                        estimatedDelta = 0;
-                        hasPreciseSnapshot = true;
-                        if (stepModel && !preferredModelId) {
-                            activeModelId = stepModel;
-                        }
-                        continue;
                     }
                 }
 
+                // CHECKPOINT 压缩步骤（仅当缺少有效压缩后 modelUsage 时才使用摘要基线估算）
+                if (isCheckpoint) {
+                    const summaryTok = estimateTokensFromText(extractStepEstimateText(st)), sysBase = 12500, compactedTotal = sysBase + summaryTok;
+                    const priorTotal = (baseTokens + estimatedDelta) || prevCacheInclusiveInput;
+                    compressionDetected = true;
+                    if (priorTotal > compactedTotal) { compressionBefore = priorTotal; compressionDrop = priorTotal - compactedTotal; }
+                    compressionAfter = compactedTotal; baseTokens = compactedTotal; inputTokens = summaryTok; cacheReadTokens = sysBase;
+                    cacheCreationTokens = 0; outputTokens = 0; estimatedDelta = 0; estInputSum = 0; estOutputSum = 0;
+                    estEntries.length = 0; lastUsageStepIdx = stepIdx; prevCacheInclusiveInput = compactedTotal; maxPriorCacheRead = 0; hasPreciseSnapshot = true;
+                    continue;
+                }
+
                 // 快照之后的步骤 (或云端无 modelUsage 的步骤) 累加字符级估算并测速
+                const stepType = String(st.type || st.role || (st.plannerResponse ? 'PLANNER_RESPONSE' : (st.userInput ? 'USER_INPUT' : ''))).toUpperCase();
+                const isPlanner = stepType.includes('PLANNER') || stepType.includes('MODEL') || stepType.includes('ASSISTANT') || Boolean(st.plannerResponse);
+                if (isPlanner) {
+                    if (lastPlannerUsageSig) priorPlannerUsageSigs.add(lastPlannerUsageSig);
+                    plannerTurnCount += 1;
+                    lastPlannerStepIdx = stepIdx; lastPlannerUsageSig = ''; lastTokPerSec = 0; lastDurationSec = 0; lastTtftSec = 0;
+                }
                 const estText = extractStepEstimateText(st);
                 if (estText) {
                     const stepTok = estimateTokensFromText(estText);
                     estimatedDelta += stepTok;
-                    const stepType = String(st.type || st.role || (st.plannerResponse ? 'PLANNER_RESPONSE' : (st.userInput ? 'USER_INPUT' : ''))).toUpperCase();
-                    const isPlanner = stepType.includes('PLANNER') || stepType.includes('MODEL') || stepType.includes('ASSISTANT') || Boolean(st.plannerResponse);
+                    estEntries.push({ relIdx: stepIdx, tok: stepTok, isPlanner });
                     if (isPlanner) {
                         estOutputSum += stepTok;
-                        const streamDurSec = parseDurationSec(
-                            meta.streamingDuration ?? st.streamingDuration ?? meta.durationSec
-                        );
                         const tStart = parseResetTimeMs(meta.createdAt || meta.created_at || meta.startedAt || st.createdAt || st.created_at);
                         const tEnd = parseResetTimeMs(meta.finishedGeneratingAt || meta.completedAt || meta.updatedAt || st.finishedGeneratingAt || st.completedAt || st.updatedAt);
-                        const wallDurSec = (tStart > 0 && tEnd > tStart) ? (tEnd - tStart) / 1000 : 0;
-                        const durSec = streamDurSec > 0 ? streamDurSec : wallDurSec;
-                        if (isValidTpsSample(stepTok, durSec)) {
-                            lastTokPerSec = Math.round(stepTok / durSec);
-                            lastDurationSec = Number(durSec.toFixed(1));
-                            timedOutTokensSum += stepTok;
-                            timedDurationSum += durSec;
+                        const durSec = (tStart > 0 && tEnd > tStart) ? (tEnd - tStart) / 1000 : 0;
+                        if (stepTok > 5 && durSec >= 0.2 && durSec < 600) {
+                            lastTokPerSec = Number((stepTok / durSec).toFixed(1)); lastDurationSec = Number(durSec.toFixed(2));
+                            timedOutTokensSum += stepTok; timedDurationSum += durSec;
                         }
                     } else {
                         estInputSum += stepTok;
@@ -872,74 +966,109 @@
             }
         }
 
-        // 若为云端项目步骤 (有步骤但服务端未下发底层 modelUsage 快照)，基于系统基础开销 + 历史上下文构建容量拆解
+        const baseStepOffset = Math.max(0, Math.trunc(Number(extraLimits?.baseStepOffset || 0) || 0));
+        const absCheckpointStepIdx = lastCheckpointStepIdx >= 0 ? (baseStepOffset + lastCheckpointStepIdx) : -1;
+        let absLastPlannerStepIdx = lastPlannerStepIdx >= 0 ? (baseStepOffset + lastPlannerStepIdx) : -1;
+        let absLastUsageStepIdx = lastUsageStepIdx >= 0 ? (baseStepOffset + lastUsageStepIdx) : -1;
+
+        // 若 GeneratorMetadata 已返回晚于 CHECKPOINT 且晚于步骤内 modelUsage 的实报快照（或非压缩场景下仅 GeneratorMetadata 提供用量），立即采用实报
+        const gmUsageStep = typeof extraLimits?.generatorUsageMaxStepIndex === 'number' ? extraLimits.generatorUsageMaxStepIndex : -1;
+        const gmTotalTok = Number(extraLimits?.generatorTotalTokens || 0) || 0;
+        const adoptIndexedGm = gmUsageStep >= 0 && gmTotalTok > 0 && gmUsageStep > absCheckpointStepIdx && gmUsageStep > absLastUsageStepIdx;
+        const adoptUnindexedGmOnly = gmUsageStep < 0 && absCheckpointStepIdx < 0 && !hasPreciseSnapshot && gmTotalTok > 0;
+        if (adoptIndexedGm || adoptUnindexedGmOnly) {
+            baseTokens = gmTotalTok; inputTokens = Number(extraLimits.generatorInputTokens || 0) || 0;
+            cacheReadTokens = Number(extraLimits.generatorCacheReadTokens || 0) || 0;
+            cacheCreationTokens = Number(extraLimits.generatorCacheCreationTokens || 0) || 0;
+            outputTokens = Number(extraLimits.generatorUsageOutputTokens || 0) || 0;
+            hasPreciseSnapshot = true;
+            if (adoptIndexedGm) {
+                absLastUsageStepIdx = gmUsageStep;
+                if (gmUsageStep > absLastPlannerStepIdx) absLastPlannerStepIdx = gmUsageStep;
+                if (absCheckpointStepIdx >= 0) compressionDetected = false;
+                estimatedDelta = 0; estInputSum = 0; estOutputSum = 0;
+                for (const e of estEntries) {
+                    if ((baseStepOffset + e.relIdx) > gmUsageStep) {
+                        estimatedDelta += e.tok;
+                        if (e.isPlanner) estOutputSum += e.tok; else estInputSum += e.tok;
+                    }
+                }
+            } else {
+                estimatedDelta = 0; estInputSum = 0; estOutputSum = 0;
+            }
+        }
+
+        // 若 GeneratorMetadata 提供最新轮纯流式速度且不早于 CHECKPOINT 及最新回复步骤，按同一轮整体对齐速度与耗时
+        const gmTps = Number(extraLimits?.generatorStreamingTps || 0);
+        const gmMaxStep = typeof extraLimits?.generatorMaxStepIndex === 'number' ? extraLimits.generatorMaxStepIndex : -1;
+        const gmCreatedMs = Number(extraLimits?.generatorCreatedAtMs || 0);
+        const gmUsageSig = extraLimits?.generatorUsageSignature || '';
+        const gmMatchesPostUsage = Boolean(gmUsageSig && postCheckpointUsageSigs.has(gmUsageSig) && !preCheckpointUsageSigs.has(gmUsageSig));
+        const gmPredatesCheckpoint = absCheckpointStepIdx >= 0 && (
+            gmMaxStep >= 0 ? gmMaxStep <= absCheckpointStepIdx : ((gmCreatedMs > 0 && lastCheckpointAtMs > 0) ? gmCreatedMs <= lastCheckpointAtMs : !gmMatchesPostUsage)
+        );
+        const lastPlannerSignatureUnique = Boolean(lastPlannerUsageSig && !priorPlannerUsageSigs.has(lastPlannerUsageSig));
+        const canAdoptUnindexedSingleTurnGm = Boolean(absCheckpointStepIdx < 0 && lastUsageStepIdx < 0 && plannerTurnCount === 1);
+        const gmProvenLatestUnindexed = lastPlannerUsageSig
+            ? Boolean(lastPlannerSignatureUnique && gmUsageSig && gmUsageSig === lastPlannerUsageSig)
+            : canAdoptUnindexedSingleTurnGm;
+        const gmNotBehindPlanner = absLastPlannerStepIdx < 0
+            ? true : (gmMaxStep >= 0 ? gmMaxStep >= absLastPlannerStepIdx : gmProvenLatestUnindexed);
+        if (gmTps > 0 && !gmPredatesCheckpoint && gmNotBehindPlanner) {
+            const sameTurn = (gmMaxStep >= 0 && gmMaxStep === absLastPlannerStepIdx) || Boolean(lastPlannerSignatureUnique && gmUsageSig && gmUsageSig === lastPlannerUsageSig);
+            lastTokPerSec = gmTps;
+            lastDurationSec = extraLimits?.generatorDurationSec > 0 ? extraLimits.generatorDurationSec : (sameTurn ? lastDurationSec : 0);
+            lastTtftSec = extraLimits?.generatorTtftSec > 0 ? extraLimits.generatorTtftSec : (sameTurn ? lastTtftSec : 0);
+            if (extraLimits?.generatorOutputTokens > 0 && (!sameTurn || outputTokens === 0)) outputTokens = extraLimits.generatorOutputTokens;
+        }
+
         const actualStepCount = totalStepCount || (Array.isArray(steps) ? steps.length : 0);
         if (!hasPreciseSnapshot && (estimatedDelta > 0 || actualStepCount > 0)) {
-            const sysPromptOverhead = actualStepCount > 0 ? 12500 : 0; // 云端环境系统提示词与工具声明基线
-            const totalEst = sysPromptOverhead + estimatedDelta;
-            baseTokens = totalEst;
-            estimatedDelta = 0;
-            cacheReadTokens = Math.round(sysPromptOverhead + estInputSum * 0.75);
-            inputTokens = Math.max(0, totalEst - cacheReadTokens - estOutputSum);
-            outputTokens = estOutputSum;
-            hasPreciseSnapshot = totalEst > 0;
+            const sysPromptOverhead = actualStepCount > 0 ? 12500 : 0, totalEst = sysPromptOverhead + estimatedDelta;
+            baseTokens = totalEst; estimatedDelta = 0; cacheReadTokens = Math.round(sysPromptOverhead + estInputSum * 0.75);
+            inputTokens = Math.max(0, totalEst - cacheReadTokens - estOutputSum); outputTokens = estOutputSum; hasPreciseSnapshot = totalEst > 0;
         }
 
         const rtBudget = toPositiveIntLimit(extraLimits?.runtimeBudget) || stepObservedLimit || 0;
         const rtModelKey = extraLimits?.runtimeModelKey || stepObservedModelKey || '';
-        const finalLimit = getContextLimitForModel(activeModelId || preferredModelId, preferredModelLabel, {
-            runtimeBudget: rtBudget,
-            runtimeModelKey: rtModelKey,
-            fiberMaxTokens: extraLimits?.fiberMaxTokens || 0
+        const fiberMax = toPositiveIntLimit(extraLimits?.fiberMaxTokens) || stepObservedPhysicalMax || 0;
+        const customFixed = resolveCustomFixedContextLimit(activeModelId || preferredModelId, preferredModelLabel, extraLimits?.customLimitTokens);
+        const observedFromModelMap = (() => {
+            for (const k of getModelCandidateKeys(activeModelId || preferredModelId, preferredModelLabel)) {
+                const obs = toPositiveIntLimit(modelRuntimeBudgetMap.get(k));
+                if (obs > 0) return obs;
+            }
+            return 0;
+        })();
+        const effectiveRtBudget = rtBudget || observedFromModelMap || 0;
+        const physicalMaxTokens = getPhysicalMaxTokensForModel(activeModelId || preferredModelId, preferredModelLabel, { fiberMaxTokens: fiberMax });
+        const finalLimit = resolveCompressionBudgetForModel(activeModelId || preferredModelId, preferredModelLabel, {
+            runtimeBudget: rtBudget, runtimeModelKey: rtModelKey, fiberMaxTokens: fiberMax, customLimitTokens: extraLimits?.customLimitTokens
         });
         const contextUsed = baseTokens + estimatedDelta;
         const usagePercent = finalLimit > 0 ? (contextUsed / finalLimit) * 100 : 0;
         const remainPercent = Math.max(0, 100 - usagePercent);
         const totalInputWithCache = inputTokens + cacheReadTokens + cacheCreationTokens;
         const cacheHitRate = totalInputWithCache > 0 ? (cacheReadTokens / totalInputWithCache) * 100 : 0;
-        const cacheDropDetected = Boolean(
-            hasPreciseSnapshot &&
-            totalInputWithCache >= 150000 &&
-            cacheHitRate < 25 &&
-            (maxPriorCacheRead >= 50000 || inputTokens >= 240000)
-        );
+        const cacheDropDetected = Boolean(hasPreciseSnapshot && totalInputWithCache >= 150000 && cacheHitRate < 25 && (maxPriorCacheRead >= 50000 || inputTokens >= 240000));
         const cacheCliffRisk = contextUsed >= 328000 ? 'critical' : (contextUsed >= 240000 ? 'warn' : 'none');
-        if (lastTokPerSec === 0 && extraLimits?.runtimeSpeed?.tokPerSec > 0) {
-            lastTokPerSec = extraLimits.runtimeSpeed.tokPerSec;
-            lastDurationSec = extraLimits.runtimeSpeed.lastDurationSec || 0;
-            timedOutTokensSum += extraLimits.runtimeSpeed.timedOutTokensSum || 0;
-            timedDurationSum += extraLimits.runtimeSpeed.timedDurationSum || 0;
-        }
-        const avgTokPerSec = timedDurationSum > 0 ? Math.round(timedOutTokensSum / timedDurationSum) : lastTokPerSec;
+        const avgTokPerSec = timedDurationSum > 0 ? Number((timedOutTokensSum / timedDurationSum).toFixed(1)) : lastTokPerSec;
 
         return {
-            contextUsed,
-            contextLimit: finalLimit,
-            runtimeBudget: rtBudget,
-            runtimeModelKey: rtModelKey,
-            modelMaxTokens: toPositiveIntLimit(extraLimits?.fiberMaxTokens),
-            usagePercent,
-            remainPercent,
-            inputTokens,
-            cacheReadTokens,
-            cacheCreationTokens,
-            outputTokens,
-            estimatedDelta,
-            hasPreciseSnapshot,
-            cacheHitRate,
-            cacheDropDetected,
-            cacheCliffRisk,
-            tokPerSec: lastTokPerSec,
-            avgTokPerSec,
-            lastDurationSec,
-            compressionDetected,
-            compressionBefore,
-            compressionAfter,
-            compressionDrop,
+            contextUsed, contextLimit: finalLimit, physicalMaxTokens, runtimeBudget: effectiveRtBudget,
+            hasExplicitRuntimeBudget: effectiveRtBudget > 0, hasCustomFixedLimit: customFixed > 0,
+            runtimeModelKey: rtModelKey, modelMaxTokens: fiberMax, usagePercent, remainPercent,
+            inputTokens, cacheReadTokens, cacheCreationTokens, outputTokens, estimatedDelta,
+            hasPreciseSnapshot, cacheHitRate, cacheDropDetected, cacheCliffRisk,
+            tokPerSec: lastTokPerSec, avgTokPerSec, lastDurationSec, ttftSec: lastTtftSec,
+            compressionDetected, compressionBefore, compressionAfter, compressionDrop,
+            lastCheckpointStepIdx: absCheckpointStepIdx, exactUsageStepIndex: absLastUsageStepIdx,
+            lastPlannerStepIdx: absLastPlannerStepIdx, lastPlannerUsageSig,
+            lastPlannerSignatureUnique, canAdoptUnindexedSingleTurnGm,
+            updatedAtMs: latestStepTimeMs || Date.now(),
             modelId: activeModelId || preferredModelId || '',
             modelDisplayName: resolveModelDisplayName(activeModelId || preferredModelId, preferredModelLabel),
-            shadowModelId,
-            stepCount: actualStepCount
+            shadowModelId, stepCount: actualStepCount
         };
     }
 
@@ -1258,7 +1387,10 @@
         const sysOverhead = 12500; // 云端 Agent 系统指令与工具声明基线
         const contextUsed = sysOverhead + textTokens;
         const rtBudget = toPositiveIntLimit(extraLimits?.runtimeBudget);
-        const finalLimit = getContextLimitForModel(preferredModelId, preferredModelLabel, {
+        const physicalMaxTokens = getPhysicalMaxTokensForModel(preferredModelId, preferredModelLabel, {
+            fiberMaxTokens: extraLimits?.fiberMaxTokens || 0
+        });
+        const finalLimit = resolveCompressionBudgetForModel(preferredModelId, preferredModelLabel, {
             runtimeBudget: rtBudget,
             runtimeModelKey: extraLimits?.runtimeModelKey || '',
             fiberMaxTokens: extraLimits?.fiberMaxTokens || 0
@@ -1275,6 +1407,7 @@
         return {
             contextUsed,
             contextLimit: finalLimit,
+            physicalMaxTokens,
             runtimeBudget: rtBudget,
             runtimeModelKey: extraLimits?.runtimeModelKey || '',
             modelMaxTokens: toPositiveIntLimit(extraLimits?.fiberMaxTokens),
@@ -1294,6 +1427,7 @@
             compressionBefore: tracker.compressionBefore,
             compressionAfter: tracker.compressionAfter,
             compressionDrop: tracker.compressionDrop,
+            updatedAtMs: now,
             modelId: preferredModelId || '',
             modelDisplayName: resolveModelDisplayName(preferredModelId, preferredModelLabel),
             shadowModelId: '',
@@ -1677,25 +1811,54 @@
         return getMorandi3AColor(usagePct, refEl);
     }
 
-    function getRuntimeLimitInfo(cascadeId, shortCid, ctx) {
-        let rt = sessionRuntimeBudgetMap.get(cascadeId) || (shortCid ? sessionRuntimeBudgetMap.get(shortCid) : null) || null;
-        if (!rt) {
-            try {
-                const snap = window.__AGContextMeter?.snapshot?.();
-                const snapRoute = snap?.route || '';
-                const snapBudget = toPositiveIntLimit(snap?.latest?.budget);
-                if (snapBudget > 0 && (snapRoute === cascadeId || snapRoute === shortCid)) {
-                    const snapModel = snap?.latest?.modelRaw || snap?.latest?.modelId || snap?.latest?.model || '';
-                    rt = { modelKey: normalizeModelKey(snapModel), maxContextTokens: snapBudget };
+    function getRuntimeLimitInfo(cascadeId, shortCid, ctx, baseStepOffset = 0) {
+        const rt = sessionRuntimeBudgetMap.get(cascadeId) || (shortCid ? sessionRuntimeBudgetMap.get(shortCid) : null) || null;
+        let runtimeBudget = rt?.maxContextTokens || 0, runtimeModelKey = rt?.modelKey || '';
+        let speedTps = rt?.streamingTps || 0, speedDur = rt?.durationSec || 0, speedTtft = rt?.ttftSec || 0, speedOut = rt?.outputTokens || 0;
+        let speedMaxStep = typeof rt?.maxStepIndex === 'number' ? rt.maxStepIndex : -1;
+        let speedCreatedMs = rt?.createdAtMs || 0, speedUsageSig = rt?.usageSignature || '';
+        let usageIn = rt?.inputTokens || 0, usageCache = rt?.cacheReadTokens || 0, usageCreate = rt?.cacheCreationTokens || 0;
+        let usageOut = rt?.outputTokens || 0, usageTot = rt?.totalTokens || 0;
+        let usageMaxStep = typeof rt?.maxStepIndex === 'number' ? rt.maxStepIndex : -1;
+        try {
+            const snap = (window.__AGContextMeter || globalThis.__AGContextMeter)?.snapshot?.(), snapRoute = snap?.route || '';
+            if (snap?.latest && (snapRoute === cascadeId || snapRoute === shortCid)) {
+                const lat = snap.latest;
+                const snapBudget = lat.runtimeBudget !== undefined ? toPositiveIntLimit(lat.runtimeBudget) : toPositiveIntLimit(lat.budget);
+                const snapModel = lat.modelRaw || lat.modelId || lat.model || '';
+                const snapMaxStep = Number(lat.stepCount || 0) > 0 ? (Number(lat.stepCount) - 1) : -1;
+                if (snapBudget > 0 && (!rt || snapMaxStep < 0 || snapMaxStep >= (rt.maxStepIndex ?? -1))) {
+                    runtimeBudget = snapBudget;
+                    if (snapModel) runtimeModelKey = normalizeModelKey(snapModel) || runtimeModelKey;
                 }
-            } catch {}
-        }
+                const snapMetaStep = typeof lat.metaMaxStepIndex === 'number' ? lat.metaMaxStepIndex : -1, snapActual = Number(lat.actual || 0) || 0;
+                if (snapMetaStep >= 0 && snapActual > 0 && !lat.estimated && snapMetaStep > usageMaxStep) {
+                    usageTot = snapActual; usageCache = Number(lat.cached || 0) || 0;
+                    usageCreate = Number(lat.cacheCreation || 0) || 0;
+                    usageIn = Math.max(0, Number(lat.input || 0) - usageCache - usageCreate);
+                    usageOut = Number(lat.output || 0) || 0; usageMaxStep = snapMetaStep;
+                }
+                const snapCpIdx = typeof lat.lastCheckpointStepIdx === 'number' ? lat.lastCheckpointStepIdx : -1;
+                const sp = lat.speed || null, snapStreamTps = Number(sp?.streamingTps ?? sp?.tps ?? 0) || 0;
+                const snapSpeedStep = typeof lat.speedStepIndex === 'number' ? lat.speedStepIndex : -1;
+                if (lat.compressionDetected && !sp) {
+                    if (speedMaxStep < 0 || (snapCpIdx >= 0 && speedMaxStep <= snapCpIdx)) { speedTps = 0; speedDur = 0; speedTtft = 0; speedOut = 0; }
+                } else if (snapStreamTps > 0 && (!speedTps || (snapSpeedStep >= 0 && snapSpeedStep >= speedMaxStep))) {
+                    speedTps = snapStreamTps; speedDur = Number(sp?.duration || 0) || 0; speedTtft = Number(sp?.ttft || 0) || 0;
+                    speedOut = Number(sp?.outputTokens || 0) || 0; speedMaxStep = snapSpeedStep;
+                    speedCreatedMs = Number(lat.speedCreatedAtMs || 0) || 0; speedUsageSig = lat.speedUsageSignature || '';
+                }
+            }
+        } catch {}
         const runtimeSpeed = sessionRuntimeSpeedMap.get(cascadeId) || (shortCid ? sessionRuntimeSpeedMap.get(shortCid) : null) || null;
         return {
-            runtimeBudget: rt?.maxContextTokens || toPositiveIntLimit(ctx?.observedBudget) || 0,
-            runtimeModelKey: rt?.modelKey || '',
-            fiberMaxTokens: toPositiveIntLimit(ctx?.modelMaxTokens) || 0,
-            runtimeSpeed
+            runtimeBudget: runtimeBudget || toPositiveIntLimit(ctx?.observedBudget) || 0, runtimeModelKey, fiberMaxTokens: toPositiveIntLimit(ctx?.modelMaxTokens) || 0,
+            runtimeSpeed,
+            generatorStreamingTps: speedTps, generatorDurationSec: speedDur, generatorTtftSec: speedTtft, generatorOutputTokens: speedOut,
+            generatorMaxStepIndex: speedMaxStep, generatorCreatedAtMs: speedCreatedMs, generatorUsageSignature: speedUsageSig,
+            generatorInputTokens: usageIn, generatorCacheReadTokens: usageCache, generatorCacheCreationTokens: usageCreate,
+            generatorUsageOutputTokens: usageOut, generatorTotalTokens: usageTot, generatorUsageMaxStepIndex: usageMaxStep,
+            baseStepOffset: Math.max(0, Math.trunc(Number(baseStepOffset || 0) || 0))
         };
     }
 
@@ -1708,30 +1871,39 @@
         const status = (effectiveSummary && effectiveSummary.status) || (ctx && ctx.isRunning ? 'RUNNING' : '');
         const lastMod = (effectiveSummary && effectiveSummary.lastModifiedTime) || '';
         const isRunning = status.includes('RUNNING');
+        const cached = sessionCache.get(cascadeId);
 
         let runtimeInfo = sessionRuntimeBudgetMap.get(cascadeId) || (shortCid ? sessionRuntimeBudgetMap.get(shortCid) : null) || null;
-        if (!runtimeInfo || isRunning) {
-            let gmResp = await callLsRpc('GetCascadeTrajectoryGeneratorMetadata', {
-                cascadeId,
-                generatorMetadataOffset: 0,
-                includeMessages: false
-            });
+        if (!runtimeInfo || isRunning || !cached || (stepCount > 0 && (cached.stepCount !== stepCount || (runtimeInfo.maxStepIndex ?? -1) < stepCount - 1))) {
+            let gmOffset = Math.max(0, Number(effectiveSummary?.numTotalGeneratorMetadata || 0) - 3);
+            if (!gmOffset) {
+                try {
+                    const snap = window.__AGContextMeter?.snapshot?.(), snapRoute = snap?.route || '';
+                    if ((snapRoute === cascadeId || snapRoute === shortCid) && Number(snap?.count || 0) > 3) gmOffset = Math.max(0, Number(snap.count) - 3);
+                } catch {}
+            }
+            let gmResp = await callLsRpc('GetCascadeTrajectoryGeneratorMetadata', { cascadeId, generatorMetadataOffset: gmOffset, includeMessages: false });
             if ((!gmResp || !Array.isArray(gmResp.generatorMetadata) || gmResp.generatorMetadata.length === 0) && shortCid && shortCid !== cascadeId) {
-                gmResp = await callLsRpc('GetCascadeTrajectoryGeneratorMetadata', {
-                    cascadeId: shortCid,
-                    generatorMetadataOffset: 0,
-                    includeMessages: false
-                });
+                gmResp = await callLsRpc('GetCascadeTrajectoryGeneratorMetadata', { cascadeId: shortCid, generatorMetadataOffset: gmOffset, includeMessages: false });
+            }
+            if (gmOffset === 0 && stepCount > 25 && Array.isArray(gmResp?.generatorMetadata) && gmResp.generatorMetadata.length > 0) {
+                const tailRowMaxStep = extractMaxStepIndex(gmResp.generatorMetadata[gmResp.generatorMetadata.length - 1]);
+                if (tailRowMaxStep >= 0 && tailRowMaxStep < stepCount - 15) {
+                    const metaProbe = await callLsRpc('GetCascadeTrajectory', { cascadeId, trajectoryVerbosity: 0 });
+                    const totalGen = Number(metaProbe?.numTotalGeneratorMetadata || 0);
+                    if (totalGen > gmResp.generatorMetadata.length) {
+                        const tailGm = await callLsRpc('GetCascadeTrajectoryGeneratorMetadata', { cascadeId, generatorMetadataOffset: Math.max(0, totalGen - 3), includeMessages: false });
+                        if (Array.isArray(tailGm?.generatorMetadata) && tailGm.generatorMetadata.length > 0) gmResp = tailGm;
+                    }
+                }
             }
             if (gmResp && Array.isArray(gmResp.generatorMetadata) && gmResp.generatorMetadata.length > 0) {
                 runtimeInfo = ingestGeneratorMetadataRows(gmResp.generatorMetadata, cascadeId) || runtimeInfo;
             }
         }
-        const extraLimits = getRuntimeLimitInfo(cascadeId, shortCid, ctx);
-
-        const cached = sessionCache.get(cascadeId);
         if (cached && effectiveSummary && !isRunning && cached.stepCount === stepCount && cached.lastModifiedTime === lastMod && cached.steps && cached.steps.length > 0) {
-            cached.usage = analyzeSteps(cached.steps, preferredModelId, preferredModelLabel, stepCount, extraLimits);
+            const extraLimitsCached = getRuntimeLimitInfo(cascadeId, shortCid, ctx, cached.baseOffset || 0);
+            cached.usage = analyzeSteps(cached.steps, preferredModelId, preferredModelLabel, stepCount, extraLimitsCached);
             cached.usage.title = (effectiveSummary.annotations && effectiveSummary.annotations.title) || effectiveSummary.summary || '';
             return cached.usage;
         }
@@ -1745,6 +1917,7 @@
             fetchOffset = Math.max(0, (cached.baseOffset || 0) + steps.length - 5);
         }
         const baseOffset = steps.length === 0 ? fetchOffset : (cached.baseOffset || 0);
+        const extraLimits = getRuntimeLimitInfo(cascadeId, shortCid, ctx, baseOffset);
 
         // 通道 1：尝试调用同源 GetCascadeTrajectorySteps (依次尝试原 ID 与短 UUID，适配本地客户端及支持同源 RPC 的环境)
         let resp = await callLsRpc('GetCascadeTrajectorySteps', {
@@ -1810,6 +1983,18 @@
                 usage.compressionAfter = cached.usage.compressionAfter;
                 usage.compressionDrop = cached.usage.compressionDrop;
             }
+        }
+
+        const modMs = parseResetTimeMs(lastMod);
+        if (modMs > 0 && (!usage.updatedAtMs || modMs > usage.updatedAtMs)) {
+            usage.updatedAtMs = modMs;
+        }
+        usage.conversationId = cascadeId;
+
+        if (usage.compressionDetected) {
+            try {
+                window.__AGContextMeter?.invalidateAfterCompact?.(cascadeId, usage);
+            } catch {}
         }
 
         setBoundedMap(sessionCache, cascadeId, {
@@ -2540,33 +2725,63 @@
                 const modelSwitched = Boolean(ctx.modelId && baseUsage.modelId && normalizeModelKey(ctx.modelId) !== normalizeModelKey(baseUsage.modelId));
                 const effectiveLabel = ctx.modelLabel || (modelSwitched ? '' : baseUsage.modelDisplayName);
                 const shortCid = cid ? normalizeCidKey(cid) : '';
+                const cachedEntry = cid ? sessionCache.get(cid) : null;
+                const rtLimits = getRuntimeLimitInfo(cid, shortCid, ctx, cachedEntry?.baseOffset || 0);
+                if (cachedEntry?.steps?.length && rtLimits.generatorUsageMaxStepIndex >= 0 && rtLimits.generatorUsageMaxStepIndex > (baseUsage.exactUsageStepIndex ?? -1)) {
+                    baseUsage = analyzeSteps(cachedEntry.steps, effectiveModelId, effectiveLabel, cachedEntry.stepCount || cachedEntry.steps.length, rtLimits);
+                    cachedEntry.usage = baseUsage;
+                }
                 const runtimeInfo = sessionRuntimeBudgetMap.get(cid) || (shortCid ? sessionRuntimeBudgetMap.get(shortCid) : null) || null;
-                const dynamicLimit = getContextLimitForModel(effectiveModelId, effectiveLabel, {
-                    runtimeBudget: modelSwitched ? 0 : (runtimeInfo?.maxContextTokens || toPositiveIntLimit(ctx.observedBudget) || toPositiveIntLimit(baseUsage.runtimeBudget)),
-                    runtimeModelKey: runtimeInfo?.modelKey || baseUsage.runtimeModelKey || '',
-                    fiberMaxTokens: toPositiveIntLimit(ctx.modelMaxTokens) || (modelSwitched ? 0 : toPositiveIntLimit(baseUsage.modelMaxTokens))
+                const fiberMax = toPositiveIntLimit(ctx.modelMaxTokens) || (modelSwitched ? 0 : toPositiveIntLimit(baseUsage.modelMaxTokens));
+                const physicalMaxTokens = getPhysicalMaxTokensForModel(effectiveModelId, effectiveLabel, { fiberMaxTokens: fiberMax });
+                const mergedRtBudget = modelSwitched
+                    ? 0
+                    : (rtLimits.runtimeBudget || runtimeInfo?.maxContextTokens || toPositiveIntLimit(ctx.observedBudget) || toPositiveIntLimit(baseUsage.runtimeBudget));
+                const customFixed = resolveCustomFixedContextLimit(effectiveModelId, effectiveLabel, 0);
+                const dynamicLimit = resolveCompressionBudgetForModel(effectiveModelId, effectiveLabel, {
+                    runtimeBudget: mergedRtBudget,
+                    runtimeModelKey: rtLimits.runtimeModelKey || runtimeInfo?.modelKey || baseUsage.runtimeModelKey || '',
+                    fiberMaxTokens: fiberMax
                 });
                 const usagePercent = dynamicLimit > 0 ? (baseUsage.contextUsed / dynamicLimit) * 100 : 0;
                 const remainPercent = Math.max(0, 100 - usagePercent);
                 const effectiveQuota = quotaInfo || findQuotaForModel(effectiveModelId, effectiveLabel, null, ctx.fiberModelConfigs) || baseUsage.quotaInfo;
+                const absCpIdx = typeof baseUsage.lastCheckpointStepIdx === 'number' ? baseUsage.lastCheckpointStepIdx : -1;
+                const absLastPlanner = typeof baseUsage.lastPlannerStepIdx === 'number' ? baseUsage.lastPlannerStepIdx : -1;
+                const rtMaxStep = rtLimits.generatorMaxStepIndex;
+                const rtNotBeforeCp = absCpIdx < 0 || (rtMaxStep >= 0 && rtMaxStep > absCpIdx);
+                const rtProvenLatestUnindexed = baseUsage.lastPlannerUsageSig
+                    ? Boolean(baseUsage.lastPlannerSignatureUnique && rtLimits.generatorUsageSignature && rtLimits.generatorUsageSignature === baseUsage.lastPlannerUsageSig)
+                    : Boolean(baseUsage.canAdoptUnindexedSingleTurnGm);
+                const rtNotBehindPlanner = absLastPlanner < 0
+                    ? true : (rtMaxStep >= 0 ? rtMaxStep >= absLastPlanner : rtProvenLatestUnindexed);
+                const useRtStreamSpeed = Boolean(!modelSwitched && rtLimits.generatorStreamingTps > 0 && rtNotBeforeCp && rtNotBehindPlanner);
+                const rtSameTurnAsBase = (rtMaxStep >= 0 && rtMaxStep === absLastPlanner) || Boolean(baseUsage.lastPlannerSignatureUnique && rtLimits.generatorUsageSignature && rtLimits.generatorUsageSignature === baseUsage.lastPlannerUsageSig);
                 const usage = Object.assign({}, baseUsage, {
-                    conversationId: cid,
-                    contextLimit: dynamicLimit,
-                    usagePercent,
-                    remainPercent,
-                    modelDisplayName: resolveModelDisplayName(effectiveModelId, effectiveLabel),
-                    quotaInfo: effectiveQuota
+                    conversationId: cid || baseUsage.conversationId || '', contextLimit: dynamicLimit, physicalMaxTokens,
+                    runtimeBudget: mergedRtBudget, hasExplicitRuntimeBudget: mergedRtBudget > 0, hasCustomFixedLimit: customFixed > 0,
+                    usagePercent, remainPercent,
+                    tokPerSec: useRtStreamSpeed ? rtLimits.generatorStreamingTps : baseUsage.tokPerSec,
+                    lastDurationSec: useRtStreamSpeed ? (rtLimits.generatorDurationSec > 0 ? rtLimits.generatorDurationSec : (rtSameTurnAsBase ? baseUsage.lastDurationSec : 0)) : baseUsage.lastDurationSec,
+                    ttftSec: useRtStreamSpeed ? (rtLimits.generatorTtftSec > 0 ? rtLimits.generatorTtftSec : (rtSameTurnAsBase ? baseUsage.ttftSec : 0)) : baseUsage.ttftSec,
+                    outputTokens: useRtStreamSpeed ? ((rtSameTurnAsBase && baseUsage.outputTokens > 0) ? baseUsage.outputTokens : (rtLimits.generatorOutputTokens || 0)) : baseUsage.outputTokens,
+                    modelDisplayName: resolveModelDisplayName(effectiveModelId, effectiveLabel), quotaInfo: effectiveQuota
                 });
                 renderFooterCapsule(footer, usage);
             } else {
-                const limit = getContextLimitForModel(ctx.modelId, ctx.modelLabel, {
-                    fiberMaxTokens: toPositiveIntLimit(ctx.modelMaxTokens),
+                const fiberMax = toPositiveIntLimit(ctx.modelMaxTokens);
+                const physicalMaxTokens = getPhysicalMaxTokensForModel(ctx.modelId, ctx.modelLabel, {
+                    fiberMaxTokens: fiberMax
+                });
+                const limit = resolveCompressionBudgetForModel(ctx.modelId, ctx.modelLabel, {
+                    fiberMaxTokens: fiberMax,
                     runtimeBudget: toPositiveIntLimit(ctx.observedBudget)
                 });
                 const emptyUsage = {
-                    conversationId: cid,
+                    conversationId: cid || '',
                     contextUsed: 0,
                     contextLimit: limit,
+                    physicalMaxTokens,
                     usagePercent: 0,
                     remainPercent: 100,
                     inputTokens: 0,
@@ -2734,12 +2949,18 @@
             version: CAPSULE_VERSION,
             analyzeSteps,
             getContextLimitForModel,
+            getPhysicalMaxTokensForModel,
+            resolveCompressionBudgetForModel,
             resolveModelDisplayName,
             renderFooterCapsule,
             computeCapsuleTier,
             ingestAvailableModels: ingestAvailableModelsPayload,
             ingestUserStatusModelConfigs,
             ingestGeneratorMetadata: ingestGeneratorMetadataRows,
+            getRuntimeLimitInfo,
+            refreshConversationUsage,
+            renderAllFooters,
+            setTrajectorySummary: (cid, sum) => { if (cid && sum) trajectoriesMap.set(cid, sum); },
             clearCaches: () => {
                 sessionCache.clear();
                 availableModelsMap.clear();

@@ -437,6 +437,7 @@
     const defaultTotal = getDefaultSlotColor('tokenTotal');
     const effAccent = getEffectiveSlotColor('tokenAccent');
     const rgb = hexToRgb(effAccent) || { r: 167, g: 139, b: 250 };
+    const panelBg = normalizeHex(customColors.panelBg) || getHostZeroLevelBg(isLight);
     const accentVars = {
       '--ag-effective-accent': effAccent,
       '--ag-token-accent-default': defaultAccent,
@@ -447,14 +448,27 @@
       '--ag-accent-border-hover': `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${isLight ? 0.48 : 0.56})`,
       '--ag-accent-glow': `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${isLight ? 0.32 : 0.44})`
     };
+    const surfaceVars = {
+      '--ag-bg-panel': panelBg,
+      '--ag-border-panel': isLight ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.11)',
+      '--ag-shadow-panel': isLight
+        ? '0 14px 36px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.06)'
+        : '0 16px 40px rgba(0, 0, 0, 0.58), 0 2px 10px rgba(0, 0, 0, 0.32)',
+      '--ag-bg-card': isLight ? 'rgba(0, 0, 0, 0.02)' : 'rgba(255, 255, 255, 0.025)',
+      '--ag-bg-card-hover': isLight ? 'rgba(0, 0, 0, 0.04)' : 'rgba(255, 255, 255, 0.045)',
+      '--ag-border-card': isLight ? 'rgba(0, 0, 0, 0.10)' : 'rgba(255, 255, 255, 0.09)',
+      '--ag-text-primary': isLight ? '#18181b' : '#ececef',
+      '--ag-text-secondary': isLight ? '#3f3f46' : '#c8c8d0',
+      '--ag-text-muted': isLight ? '#52525b' : '#a1a1aa'
+    };
     for (const [k, v] of Object.entries(accentVars)) {
       host.style.setProperty(k, v);
     }
-    // 镜像写入宿主根节点，供 Shadow DOM 外部的浮层与底部胶囊继承当前主题强调色
+    // 镜像写入宿主根节点，供 Shadow DOM 外部的浮层、菜单与底部胶囊继承当前主题表面色与强调色
     try {
       const rootStyle = typeof document !== 'undefined' ? document.documentElement?.style : null;
       if (rootStyle && typeof rootStyle.setProperty === 'function') {
-        for (const [k, v] of Object.entries(accentVars)) {
+        for (const [k, v] of Object.entries({ ...accentVars, ...surfaceVars })) {
           rootStyle.setProperty(k, v);
         }
       }

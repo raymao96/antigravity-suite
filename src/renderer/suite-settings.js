@@ -378,6 +378,8 @@
     '例如：my-server 或 SSH 主机名': 'e.g. my-server or SSH host',
     '240K 自动压缩防卡顿': '240K Auto-Compact Anti-Stall',
     '官方默认满 512K 才整理，对话过长后稍作停顿就容易卡顿数分钟。开启后，上下文满 240K 或发生缓存失效时，会在回复结束且输入框为空时自动发送 /compact 压缩历史': 'Official default waits until 512K to organize context, risking multi-minute stalls after pauses. Auto-sends /compact after replies when context reaches 240K or cache drops',
+    '长消息与代码块折叠': 'Fold Long Messages & Code Blocks',
+    '超长代码块与历史长回复自动折叠（保留开头摘要，生成中与最新回复保持展开），支持随时一键展开或收起': 'Auto-fold long code blocks and older long replies (keeping leading preview; streaming and latest reply stay expanded) with one-click toggle',
     '重置配对口令': 'Reset Pairing Passcode',
     '重新生成配对口令，旧链接与已配对设备将失效': 'Regenerate pairing passcode (invalidates old links & paired devices)',
     '默认已开启免登录公网通道，点顶部「远程」图标即可用手机扫码连接。如需绑定自己的固定域名，可在下方展开配置。': 'Zero-login public tunnel is enabled by default — click the topbar Remote icon to scan QR and connect. Expand below to bind a custom fixed domain.',
@@ -557,6 +559,7 @@
     autoAccept: false,
     ghostSuggest: true,
     autoCompact: true,
+    longFold: true,
     quickBuiltinAutoSend: false,
     dockBadgeEnabled: true,
     dockBadgeStyle: 'capsule',
@@ -1277,6 +1280,8 @@
     if (lsGhost === 'true' || lsGhost === 'false') suiteEnhancerPrefs.ghostSuggest = lsGhost !== 'false';
     const lsAutoCompact = localStorage?.getItem?.('ag_suite_auto_compact');
     if (lsAutoCompact === 'true' || lsAutoCompact === 'false') suiteEnhancerPrefs.autoCompact = lsAutoCompact !== 'false';
+    const lsLongFold = localStorage?.getItem?.('ag_suite_long_fold');
+    if (lsLongFold === 'true' || lsLongFold === 'false') suiteEnhancerPrefs.longFold = lsLongFold !== 'false';
     const lsQuickAutoSend = localStorage?.getItem?.('ag_suite_quick_builtin_autosend');
     if (lsQuickAutoSend === 'true' || lsQuickAutoSend === 'false') {
       suiteEnhancerPrefs.quickBuiltinAutoSend = lsQuickAutoSend === 'true';
@@ -1505,6 +1510,7 @@
       localStorage?.setItem?.('ag_suite_auto_accept', suiteEnhancerPrefs.autoAccept ? 'true' : 'false');
       localStorage?.setItem?.('ag_suite_ghost_suggest', suiteEnhancerPrefs.ghostSuggest ? 'true' : 'false');
       localStorage?.setItem?.('ag_suite_auto_compact', suiteEnhancerPrefs.autoCompact !== false ? 'true' : 'false');
+      localStorage?.setItem?.('ag_suite_long_fold', suiteEnhancerPrefs.longFold !== false ? 'true' : 'false');
       localStorage?.setItem?.('ag_suite_quick_builtin_autosend', suiteEnhancerPrefs.quickBuiltinAutoSend ? 'true' : 'false');
       localStorage?.setItem?.('ag_suite_dock_badge_enabled', suiteEnhancerPrefs.dockBadgeEnabled !== false ? 'true' : 'false');
       localStorage?.setItem?.('ag_suite_dock_badge_style', suiteEnhancerPrefs.dockBadgeStyle === 'badge' ? 'badge' : 'capsule');
@@ -1535,6 +1541,7 @@
             autoAccept: suiteEnhancerPrefs.autoAccept,
             ghostSuggest: suiteEnhancerPrefs.ghostSuggest,
             autoCompact: suiteEnhancerPrefs.autoCompact !== false,
+            longFold: suiteEnhancerPrefs.longFold !== false,
             quickBuiltinAutoSend: Boolean(suiteEnhancerPrefs.quickBuiltinAutoSend),
             dockBadgeEnabled: suiteEnhancerPrefs.dockBadgeEnabled !== false,
             dockBadgeStyle: suiteEnhancerPrefs.dockBadgeStyle === 'badge' ? 'badge' : 'capsule',
@@ -2278,11 +2285,13 @@
     const chkAuto = el('set-auto-accept');
     const chkGhost = el('set-ghost-suggest');
     const chkCompact = el('set-auto-compact');
+    const chkLongFold = el('set-long-fold');
     const chkQuickBuiltinAutoSend = el('set-quick-builtin-autosend');
     const chkEngLbl = el('set-english-labels');
     if (chkAuto) chkAuto.checked = Boolean(suiteEnhancerPrefs.autoAccept);
     if (chkGhost) chkGhost.checked = Boolean(suiteEnhancerPrefs.ghostSuggest);
     if (chkCompact) chkCompact.checked = suiteEnhancerPrefs.autoCompact !== false;
+    if (chkLongFold) chkLongFold.checked = suiteEnhancerPrefs.longFold !== false;
     if (chkQuickBuiltinAutoSend) chkQuickBuiltinAutoSend.checked = Boolean(suiteEnhancerPrefs.quickBuiltinAutoSend);
     if (chkEngLbl) chkEngLbl.checked = Boolean(suiteEnhancerPrefs.englishLabels);
     try {
@@ -2621,6 +2630,9 @@
     }
     if (typeof uiPrefs.autoCompact === 'boolean') {
       suiteEnhancerPrefs.autoCompact = uiPrefs.autoCompact;
+    }
+    if (typeof uiPrefs.longFold === 'boolean') {
+      suiteEnhancerPrefs.longFold = uiPrefs.longFold;
     }
     if (typeof uiPrefs.quickBuiltinAutoSend === 'boolean') {
       suiteEnhancerPrefs.quickBuiltinAutoSend = uiPrefs.quickBuiltinAutoSend;
@@ -4387,6 +4399,12 @@
     suiteEnhancerPrefs.autoCompact = Boolean(e?.target?.checked);
     dispatchSuitePrefsChanged();
     void saveSuiteUiPrefs({ autoCompact: suiteEnhancerPrefs.autoCompact });
+  });
+
+  el('set-long-fold')?.addEventListener('change', e => {
+    suiteEnhancerPrefs.longFold = Boolean(e?.target?.checked);
+    dispatchSuitePrefsChanged();
+    void saveSuiteUiPrefs({ longFold: suiteEnhancerPrefs.longFold });
   });
 
   el('set-quick-builtin-autosend')?.addEventListener('change', e => {
